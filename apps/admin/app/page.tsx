@@ -6,10 +6,13 @@ import Hero from "@/components/Hero";
 import SocialProof from "@/components/SocialProof";
 import Features from "@/components/Features";
 import WhyObiren from "@/components/WhyObiren";
-import PrivacySection from "@/components/PrivacySection";
-import SafetySection from "@/components/SafetySection";
-import KnowledgeCentreSection from "@/components/KnowledgeCentreSection";
-import FutureRoadmap from "@/components/FutureRoadmap";
+import PositioningStrip from "@/components/PositioningStrip";
+import TeleGynecologySection from "@/components/TeleGynecologySection";
+import HomepageFeatureSections from "@/components/HomepageFeatureSections";
+import ConditionsSection from "@/components/ConditionsSection";
+import HowItWorks from "@/components/HowItWorks";
+import EarlyAccessCTA from "@/components/EarlyAccessCTA";
+import FinalCTA from "@/components/FinalCTA";
 import Footer from "@/components/Footer";
 import SignInModal from "@/components/SignInModal";
 import OnboardingFlow from "@/components/OnboardingFlow";
@@ -162,13 +165,16 @@ export default function Home() {
 
       <main>
         <Hero onOpenWaitlist={() => setIsSignUpOpen(true)} />
-        <SocialProof />
-        <Features onOpenWaitlist={() => setIsSignUpOpen(true)} />
+        <PositioningStrip />
+        <TeleGynecologySection />
+        <Features />
+        <HowItWorks onOpenWaitlist={() => setIsSignUpOpen(true)} />
+        <HomepageFeatureSections />
+        <ConditionsSection />
         <WhyObiren />
-        <PrivacySection />
-        <SafetySection onOpenWaitlist={() => setIsSignUpOpen(true)} />
-        <KnowledgeCentreSection onOpenWaitlist={() => setIsSignUpOpen(true)} />
-        <FutureRoadmap onOpenWaitlist={() => setIsSignUpOpen(true)} />
+        <SocialProof />
+        <EarlyAccessCTA onOpenWaitlist={() => setIsSignUpOpen(true)} />
+        <FinalCTA onOpenWaitlist={() => setIsSignUpOpen(true)} />
       </main>
 
       <Footer onOpenWaitlist={() => setIsSignUpOpen(true)} />

@@ -21,39 +21,36 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Obiren — Health. Safety. Peace of Mind.",
+  title: "Obiren | Health. Safety. Peace of Mind.",
   description:
-    "Obiren is your all-in-one women's health companion. Track your cycle, monitor pregnancy, consult verified gynecologists, access emergency support, and stay connected to your trusted circle.",
+    "Nigeria's integrated telegynecology, reproductive-health and women's safety platform. Speak privately with qualified professionals, track your cycle, follow your pregnancy and access personal safety tools through one connected experience.",
   keywords: [
     "women health app",
+    "telegynecology",
     "period tracker",
     "pregnancy tracker",
     "gynecologist consultation",
     "women safety app",
     "silent SOS",
-    "trusted circle location",
     "health vault",
     "Obiren",
     "Nigeria women health",
-    "Ghana women health",
-    "UK women health",
-    "US women health",
   ],
-  authors: [{ name: "Obiren Health Inc." }],
+  authors: [{ name: "Obiren" }],
   openGraph: {
-    title: "Obiren — Health. Safety. Peace of Mind.",
+    title: "Obiren | Health. Safety. Peace of Mind.",
     description:
-      "The smarter way to care for your health and safety. Join the early access waitlist today.",
+      "Nigeria's integrated telegynecology, reproductive-health and women's safety platform.",
     url: "https://obiren.com",
     siteName: "Obiren",
-    locale: "en_US",
+    locale: "en_NG",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Obiren — Health. Safety. Peace of Mind.",
+    title: "Obiren | Health. Safety. Peace of Mind.",
     description:
-      "All-in-one women's health, wellness, and safety platform launching soon in UK, US, Nigeria, and Ghana.",
+      "Nigeria's integrated telegynecology, reproductive-health and women's safety platform.",
   },
 };
 

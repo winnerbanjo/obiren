@@ -28,10 +28,12 @@ export default function Navbar({
   }, []);
 
   const navLinks = [
+    { name: "Consult a Specialist", href: "/features/consult" },
     { name: "Cycle Tracking", href: "/features/cycle-tracking" },
     { name: "Pregnancy", href: "/features/pregnancy" },
-    { name: "Safety SOS", href: "/features/safety-sos" },
-    { name: "About Us", href: "/about" },
+    { name: "Safety", href: "/features/safety-sos" },
+    { name: "Health Library", href: "/learn" },
+    { name: "About", href: "/about" },
   ];
 
   return (
@@ -39,11 +41,15 @@ export default function Navbar({
       <header
         className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
           scrolled
-            ? "py-3 bg-white/90 backdrop-blur-xl border-b border-[#E8DFFF]/60 shadow-sm"
-            : "py-5 bg-transparent"
+            ? "bg-white/90 backdrop-blur-xl border-b border-[#E8DFFF]/60 shadow-sm"
+            : "bg-transparent"
         }`}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Announcement Bar */}
+        <div className="bg-[#6C4CF1] text-white text-[10px] sm:text-xs font-semibold tracking-wide py-2 text-center px-4">
+          Launching first in Nigeria 🇳🇬, with the United Kingdom 🇬🇧, United States 🇺🇸 and Ghana 🇬🇭 to follow.
+        </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex items-center justify-between">
             
             {/* Brand Logo */}
@@ -94,7 +100,7 @@ export default function Navbar({
                 className="px-5 py-2.5 bg-[#6C4CF1] hover:bg-[#5B3DE0] text-white text-xs font-bold rounded-full shadow-lg shadow-[#6C4CF1]/25 hover:shadow-xl hover:shadow-[#6C4CF1]/35 hover:-translate-y-0.5 transition-all flex items-center gap-1.5"
               >
                 <UserPlus className="w-4 h-4" />
-                <span>Sign Up</span>
+                <span>Create Free Account</span>
               </button>
             </div>
 
@@ -152,7 +158,7 @@ export default function Navbar({
                   }}
                   className="w-full py-3.5 bg-[#6C4CF1] text-white font-bold text-sm rounded-xl text-center shadow-lg shadow-[#6C4CF1]/30"
                 >
-                  Sign Up (Create Account)
+                  Create Free Account
                 </button>
               </div>
             </div>
