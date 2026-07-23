@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/v1/internal/cron/process-notifications",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/v1/internal/cron/recalculate-predictions",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/v1/internal/cron/directory-reverification",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/v1/internal/cron/data-retention",
+      "schedule": "0 4 * * *"
+    }
+  ]
+}

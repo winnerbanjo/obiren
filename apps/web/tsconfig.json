@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"],
+      "@obiren/types": ["../../packages/types/src/index.ts"],
+      "@obiren/health-engine": ["../../packages/health-engine/src/index.ts"],
+      "@obiren/localization": ["../../packages/localization/src/index.ts"],
+      "@obiren/permissions": ["../../packages/permissions/src/index.ts"],
+      "@obiren/validation": ["../../packages/validation/src/index.ts"],
+      "@obiren/ui": ["../../packages/ui/src/index.tsx"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "../../packages/**/*.ts",
+    "../../packages/**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": ["node_modules"]
+}

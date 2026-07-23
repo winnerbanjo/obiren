@@ -1,0 +1,18 @@
+{
+  "name": "@obiren/ui",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "dependencies": {
+    "clsx": "^2",
+    "lucide-react": "^0.475.0",
+    "react": "^19",
+    "react-dom": "^19",
+    "tailwind-merge": "^3"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@/*": ["src/*"],
+      "@obiren/types": ["../../packages/types/src"],
+      "@obiren/health-engine": ["../../packages/health-engine/src"],
+      "@obiren/localization": ["../../packages/localization/src"],
+      "@obiren/permissions": ["../../packages/permissions/src"],
+      "@obiren/validation": ["../../packages/validation/src"]
+    }
+  },
+  "include": ["src/**/*"]
+}

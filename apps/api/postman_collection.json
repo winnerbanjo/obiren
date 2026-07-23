@@ -1,0 +1,96 @@
+{
+  "info": {
+    "name": "Obiren Production API Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cycles",
+      "item": [
+        {
+          "name": "Current Cycle",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/cycles/current"
+          }
+        },
+        {
+          "name": "Start Period",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/cycles/start-period"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pregnancy",
+      "item": [
+        {
+          "name": "Current Pregnancy",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/pregnancies/current"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Directory",
+      "item": [
+        {
+          "name": "Search Directory",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/directory/search?countryCode=NG"
+          }
+        },
+        {
+          "name": "Nearby Directory",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/directory/nearby?lng=3.3792&lat=6.5244"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Admin Metrics",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/metrics"
+          }
+        }
+      ]
+    }
+  ]
+}

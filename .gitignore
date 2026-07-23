@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+**/node_modules/
+/.pnp
+.pnp.*
+.yarn/*
+
+# testing
+/coverage
+
+# build & compiled output
+.next/
+/.next/
+**/out/
+**/dist/
+*.tsbuildinfo
+
+# misc & OS
+.DS_Store
+*.pem
+*.log
+
+# env files
+.env*
+!.env.example
+
+# vercel
+.vercel
