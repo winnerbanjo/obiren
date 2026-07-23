@@ -10,6 +10,7 @@ import AdminSafetyView from "@/components/AdminSafetyView";
 import AdminCMSView from "@/components/AdminCMSView";
 import AdminPaymentsView from "@/components/AdminPaymentsView";
 import AdminPlatformView from "@/components/AdminPlatformView";
+import AdminPlaceholderView from "@/components/AdminPlaceholderView";
 
 export default function AdminPage() {
   const [adminProfile, setAdminProfile] = useState<any | null>(null);
@@ -24,7 +25,6 @@ export default function AdminPage() {
       if (savedAdmin) {
         setAdminProfile(JSON.parse(savedAdmin));
       } else {
-        // Default pre-authenticated Super Admin for instant preview demo
         const defaultAdmin = {
           name: "Director Vance",
           email: "admin@obiren.com",
@@ -66,6 +66,32 @@ export default function AdminPage() {
     );
   }
 
+  // Determine which component to render based on the active tab
+  const renderContent = () => {
+    switch (activeTab) {
+      case "overview":
+        return <AdminOverviewView selectedCountry={selectedCountry} onNavigate={setActiveTab} />;
+      case "users":
+        return <AdminUsersView selectedCountry={selectedCountry} />;
+      case "professionals":
+        return <AdminHealthcareView selectedCountry={selectedCountry} />;
+      case "emergency_resources":
+      case "safety_incidents":
+        return <AdminSafetyView selectedCountry={selectedCountry} activeTabId={activeTab} />;
+      case "knowledge":
+        return <AdminCMSView selectedCountry={selectedCountry} />;
+      case "payments":
+        return <AdminPaymentsView selectedCountry={selectedCountry} />;
+      case "countries":
+      case "feature_flags":
+      case "audit_logs":
+        return <AdminPlatformView selectedCountry={selectedCountry} activeTabId={activeTab} />;
+      default:
+        // Render placeholder for all unimplemented tabs
+        return <AdminPlaceholderView activeTab={activeTab} />;
+    }
+  };
+
   return (
     <AdminShell
       adminProfile={adminProfile}
@@ -75,36 +101,7 @@ export default function AdminPage() {
       onCountryChange={setSelectedCountry}
       onLogout={handleLogout}
     >
-      {activeTab === "overview" && (
-        <AdminOverviewView
-          selectedCountry={selectedCountry}
-          onNavigate={setActiveTab}
-        />
-      )}
-
-      {(activeTab === "users" || activeTab === "support" || activeTab === "notifications") && (
-        <AdminUsersView selectedCountry={selectedCountry} />
-      )}
-
-      {(activeTab === "professionals" || activeTab === "appointments" || activeTab === "health_tracking" || activeTab === "pregnancy") && (
-        <AdminHealthcareView selectedCountry={selectedCountry} />
-      )}
-
-      {(activeTab === "emergency_resources" || activeTab === "safety_incidents" || activeTab === "trusted_circle") && (
-        <AdminSafetyView selectedCountry={selectedCountry} />
-      )}
-
-      {(activeTab === "knowledge" || activeTab === "medical_reviews") && (
-        <AdminCMSView selectedCountry={selectedCountry} />
-      )}
-
-      {(activeTab === "payments" || activeTab === "refunds") && (
-        <AdminPaymentsView selectedCountry={selectedCountry} />
-      )}
-
-      {(activeTab === "countries" || activeTab === "feature_flags" || activeTab === "audit_logs" || activeTab === "settings") && (
-        <AdminPlatformView selectedCountry={selectedCountry} />
-      )}
+      {renderContent()}
     </AdminShell>
   );
 }

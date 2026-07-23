@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ShieldAlert,
   Radio,
@@ -19,10 +19,18 @@ import { VERIFIED_EMERGENCY_DATASET, VerifiedEmergencyRecord } from "@obiren/loc
 
 interface AdminSafetyViewProps {
   selectedCountry: string;
+  activeTabId?: string;
 }
 
-export default function AdminSafetyView({ selectedCountry }: AdminSafetyViewProps) {
-  const [activeTab, setActiveTab] = useState<"directory" | "incidents">("directory");
+export default function AdminSafetyView({ selectedCountry, activeTabId }: AdminSafetyViewProps) {
+  const defaultTab = activeTabId === "safety_incidents" ? "incidents" : "directory";
+  const [activeTab, setActiveTab] = useState<"directory" | "incidents">(defaultTab);
+
+  // Keep internal tab in sync if sidebar changes
+  useEffect(() => {
+    if (activeTabId === "safety_incidents") setActiveTab("incidents");
+    else if (activeTabId === "emergency_resources") setActiveTab("directory");
+  }, [activeTabId]);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Initial Emergency Resources Directory populated with 31 verified records

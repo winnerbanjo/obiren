@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Globe,
   Flag,
@@ -15,10 +15,21 @@ import {
 
 interface AdminPlatformViewProps {
   selectedCountry: string;
+  activeTabId?: string;
 }
 
-export default function AdminPlatformView({ selectedCountry }: AdminPlatformViewProps) {
-  const [activeTab, setActiveTab] = useState<"flags" | "countries" | "audit">("flags");
+export default function AdminPlatformView({ selectedCountry, activeTabId }: AdminPlatformViewProps) {
+  let defaultTab: "flags" | "countries" | "audit" = "flags";
+  if (activeTabId === "countries") defaultTab = "countries";
+  else if (activeTabId === "audit_logs") defaultTab = "audit";
+  
+  const [activeTab, setActiveTab] = useState<"flags" | "countries" | "audit">(defaultTab);
+
+  useEffect(() => {
+    if (activeTabId === "countries") setActiveTab("countries");
+    else if (activeTabId === "audit_logs") setActiveTab("audit");
+    else if (activeTabId === "feature_flags") setActiveTab("flags");
+  }, [activeTabId]);
 
   // Feature Flags State
   const [featureFlags, setFeatureFlags] = useState([
