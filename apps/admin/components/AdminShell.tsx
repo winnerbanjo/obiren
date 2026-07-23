@@ -214,6 +214,14 @@ export default function AdminShell({
 
           {/* Right Header Filters & Search */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Back to User App */}
+            <a
+              href="/"
+              className="hidden sm:flex items-center gap-1.5 px-4 py-1.5 bg-[#17131D] hover:bg-[#2A2333] text-white rounded-full text-xs font-bold transition-all shadow-sm"
+            >
+              <span>Exit Admin Portal</span>
+            </a>
+
             {/* Country Selector */}
             <div className="flex items-center gap-1.5 bg-[#F5F2FF] border border-[#E8E0FF] px-3 py-1.5 rounded-full text-xs font-bold text-[#17131D]">
               <Globe className="w-3.5 h-3.5 text-[#6C4CF1]" />
