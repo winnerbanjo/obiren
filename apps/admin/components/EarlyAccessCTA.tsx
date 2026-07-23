@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 interface EarlyAccessCTAProps {
   onOpenWaitlist?: () => void;
@@ -16,9 +16,6 @@ export default function EarlyAccessCTA({ onOpenWaitlist }: EarlyAccessCTAProps) 
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-[#9B6BFF]/40 blur-[80px] rounded-full -translate-x-1/2 translate-y-1/2" />
           
           <div className="relative z-10 space-y-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white/10 mb-2 shadow-inner border border-white/20">
-              <Sparkles className="w-8 h-8 text-white" />
-            </div>
             
             <h2 className="text-4xl sm:text-5xl font-extrabold font-display tracking-tight leading-tight">
               Join the early-access programme

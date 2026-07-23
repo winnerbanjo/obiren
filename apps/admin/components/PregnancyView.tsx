@@ -13,7 +13,7 @@ import {
   Pause,
   RotateCcw,
   ShoppingBag,
-  Sparkles,
+
   Sun,
   Activity,
   ChevronDown,
