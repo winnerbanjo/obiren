@@ -72,19 +72,28 @@ export default function AdminPage() {
       case "overview":
         return <AdminOverviewView selectedCountry={selectedCountry} onNavigate={setActiveTab} />;
       case "users":
-        return <AdminUsersView selectedCountry={selectedCountry} />;
+      case "support_tickets":
+      case "notifications":
+        return <AdminUsersView selectedCountry={selectedCountry} activeTabId={activeTab} />;
       case "professionals":
-        return <AdminHealthcareView selectedCountry={selectedCountry} />;
+      case "health_tracking":
+      case "pregnancy":
+      case "appointments":
+        return <AdminHealthcareView selectedCountry={selectedCountry} activeTabId={activeTab} />;
       case "emergency_resources":
       case "safety_incidents":
+      case "trusted_circle":
         return <AdminSafetyView selectedCountry={selectedCountry} activeTabId={activeTab} />;
       case "knowledge":
-        return <AdminCMSView selectedCountry={selectedCountry} />;
+      case "medical_reviews":
+        return <AdminCMSView selectedCountry={selectedCountry} activeTabId={activeTab} />;
       case "payments":
-        return <AdminPaymentsView selectedCountry={selectedCountry} />;
+      case "refund_approvals":
+        return <AdminPaymentsView selectedCountry={selectedCountry} activeTabId={activeTab} />;
       case "countries":
       case "feature_flags":
       case "audit_logs":
+      case "system_settings":
         return <AdminPlatformView selectedCountry={selectedCountry} activeTabId={activeTab} />;
       default:
         // Render placeholder for all unimplemented tabs

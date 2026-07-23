@@ -14,6 +14,7 @@ import {
   Building2,
   ExternalLink,
   Search,
+  Users,
 } from "lucide-react";
 import { VERIFIED_EMERGENCY_DATASET, VerifiedEmergencyRecord } from "@obiren/localization";
 
@@ -23,14 +24,19 @@ interface AdminSafetyViewProps {
 }
 
 export default function AdminSafetyView({ selectedCountry, activeTabId }: AdminSafetyViewProps) {
-  const defaultTab = activeTabId === "safety_incidents" ? "incidents" : "directory";
-  const [activeTab, setActiveTab] = useState<"directory" | "incidents">(defaultTab);
+  let defaultTab: "directory" | "incidents" | "trusted_circle" = "directory";
+  if (activeTabId === "safety_incidents") defaultTab = "incidents";
+  else if (activeTabId === "trusted_circle") defaultTab = "trusted_circle";
+
+  const [activeTab, setActiveTab] = useState<"directory" | "incidents" | "trusted_circle">(defaultTab);
 
   // Keep internal tab in sync if sidebar changes
   useEffect(() => {
     if (activeTabId === "safety_incidents") setActiveTab("incidents");
     else if (activeTabId === "emergency_resources") setActiveTab("directory");
+    else if (activeTabId === "trusted_circle") setActiveTab("trusted_circle");
   }, [activeTabId]);
+  
   const [searchQuery, setSearchQuery] = useState("");
 
   // Initial Emergency Resources Directory populated with 31 verified records
@@ -110,6 +116,12 @@ export default function AdminSafetyView({ selectedCountry, activeTabId }: AdminS
     },
   ];
 
+  const trustedCircles = [
+    { id: "TC-101", user: "Ella Vance", members: 4, activeAlerts: 0, status: "ACTIVE" },
+    { id: "TC-102", user: "Amara Okafor", members: 2, activeAlerts: 0, status: "ACTIVE" },
+    { id: "TC-103", user: "Chloe Smith", members: 5, activeAlerts: 1, status: "ALERT_TRIGGERED" },
+  ];
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header Banner */}
@@ -119,7 +131,7 @@ export default function AdminSafetyView({ selectedCountry, activeTabId }: AdminS
           <p className="text-xs text-[#6E6875]">Curate 31 source-verified emergency contacts across Nigeria, Ghana, UK & US, and monitor SOS triggers.</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setActiveTab("directory")}
             className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
@@ -135,6 +147,14 @@ export default function AdminSafetyView({ selectedCountry, activeTabId }: AdminS
             }`}
           >
             SOS Incidents Log
+          </button>
+          <button
+            onClick={() => setActiveTab("trusted_circle")}
+            className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
+              activeTab === "trusted_circle" ? "bg-[#6C4CF1] text-white" : "bg-[#F5F2FF] text-[#6E6875]"
+            }`}
+          >
+            Trusted Circle
           </button>
         </div>
       </div>
@@ -320,6 +340,40 @@ export default function AdminSafetyView({ selectedCountry, activeTabId }: AdminS
                 <span className="text-[10px] font-bold px-3 py-1 rounded-full bg-emerald-50 text-[#238A5A] border border-emerald-200 self-start sm:self-center">
                   {inc.status}
                 </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "trusted_circle" && (
+        <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden p-6 space-y-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-2xl font-bold font-display text-[#17131D]">Trusted Circle Network Configuration</h2>
+              <p className="text-xs text-[#6E6875]">Manage user safety guardian allocations and network limits.</p>
+            </div>
+            <button className="px-4 py-2 bg-[#17131D] text-white text-xs font-bold rounded-full">Global Limits</button>
+          </div>
+          
+          <div className="space-y-3">
+            {trustedCircles.map((tc) => (
+              <div key={tc.id} className="p-4 bg-white rounded-2xl border border-[#E8E0FF] flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-[#F5F2FF] text-[#6D4AFF] flex items-center justify-center">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-[#17131D] text-sm">{tc.user}</h4>
+                    <p className="text-xs text-[#6E6875] mt-0.5">{tc.members} / 5 Guardians configured</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {tc.status === "ALERT_TRIGGERED" && (
+                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-red-50 text-red-600 animate-pulse">ACTIVE SOS</span>
+                  )}
+                  <button className="px-4 py-2 bg-[#F5F2FF] text-[#6D4AFF] text-xs font-bold rounded-full hover:bg-[#E8E0FF]">Inspect Network</button>
+                </div>
               </div>
             ))}
           </div>

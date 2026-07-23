@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   BookOpen,
   Plus,
@@ -15,9 +15,20 @@ import {
 
 interface AdminCMSViewProps {
   selectedCountry: string;
+  activeTabId?: string;
 }
 
-export default function AdminCMSView({ selectedCountry }: AdminCMSViewProps) {
+export default function AdminCMSView({ selectedCountry, activeTabId }: AdminCMSViewProps) {
+  let defaultTab: "knowledge" | "medical_reviews" = "knowledge";
+  if (activeTabId === "medical_reviews") defaultTab = "medical_reviews";
+
+  const [activeTab, setActiveTab] = useState<"knowledge" | "medical_reviews">(defaultTab);
+
+  useEffect(() => {
+    if (activeTabId === "knowledge") setActiveTab("knowledge");
+    else if (activeTabId === "medical_reviews") setActiveTab("medical_reviews");
+  }, [activeTabId]);
+
   const [articles, setArticles] = useState([
     {
       id: "art-1",
@@ -101,67 +112,122 @@ export default function AdminCMSView({ selectedCountry }: AdminCMSViewProps) {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm">
-        <div>
-          <h2 className="text-2xl font-bold font-display text-[#17131D]">Knowledge Centre CMS & Medical Review</h2>
-          <p className="text-xs text-[#6E6875]">Author evidence-based medical articles and enforce gynecologist review approval workflows.</p>
-        </div>
-
+      {/* Sub-Navigation Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#E7E2EB] pb-4">
         <button
-          onClick={() => setShowEditor(true)}
-          className="px-5 py-2.5 bg-[#6C4CF1] text-white text-xs font-bold rounded-full shadow-md flex items-center gap-1.5 shrink-0"
+          onClick={() => setActiveTab("knowledge")}
+          className={`px-4 py-2 text-xs font-bold rounded-full transition-colors flex items-center gap-1.5 ${
+            activeTab === "knowledge" ? "bg-[#17131D] text-white shadow-md" : "text-[#6E6875] hover:bg-[#F5F2FF]"
+          }`}
         >
-          <Plus className="w-4 h-4" /> Draft New Article
+          <BookOpen className="w-3.5 h-3.5" />
+          Knowledge CMS
+        </button>
+        <button
+          onClick={() => setActiveTab("medical_reviews")}
+          className={`px-4 py-2 text-xs font-bold rounded-full transition-colors flex items-center gap-1.5 ${
+            activeTab === "medical_reviews" ? "bg-[#17131D] text-white shadow-md" : "text-[#6E6875] hover:bg-[#F5F2FF]"
+          }`}
+        >
+          <FileCheck className="w-3.5 h-3.5" />
+          Medical Reviews
+          {articles.some(a => a.status === "UNDER_MEDICAL_REVIEW") && (
+            <span className="w-2 h-2 rounded-full bg-rose-500" />
+          )}
         </button>
       </div>
 
-      {/* Articles Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {articles.map((art) => (
-          <div key={art.id} className="bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm flex flex-col justify-between space-y-4">
-            <div className="space-y-3">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-[#6C4CF1] bg-[#F5F2FF] px-2.5 py-0.5 rounded-full uppercase text-[10px]">
-                  {art.category}
-                </span>
-                <span className="font-bold">{art.flag} {art.country}</span>
-              </div>
-
-              <h3 className="text-base font-bold font-display text-[#17131D] leading-snug">{art.title}</h3>
-              <p className="text-xs text-[#6E6875] line-clamp-2">{art.content}</p>
+      {activeTab === "knowledge" && (
+        <>
+          {/* Header Banner */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm">
+            <div>
+              <h2 className="text-2xl font-bold font-display text-[#17131D]">Knowledge Centre CMS</h2>
+              <p className="text-xs text-[#6E6875]">Author evidence-based medical articles and enforce gynecologist review approval workflows.</p>
             </div>
 
-            <div className="space-y-3 pt-3 border-t border-[#E7E2EB] text-xs">
-              <div className="flex justify-between text-[11px]">
-                <span className="text-[#6E6875]">Medical Reviewer:</span>
-                <span className="font-bold text-[#17131D] truncate">{art.reviewer}</span>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <span
-                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                    art.status === "PUBLISHED"
-                      ? "bg-emerald-50 text-[#238A5A] border border-emerald-200"
-                      : "bg-amber-50 text-[#B87512] border border-amber-200"
-                  }`}
-                >
-                  {art.status}
-                </span>
-
-                {art.status === "UNDER_MEDICAL_REVIEW" && (
-                  <button
-                    onClick={() => approveMedicalReview(art.id)}
-                    className="px-3 py-1 bg-[#238A5A] text-white text-[11px] font-bold rounded-lg shadow-sm"
-                  >
-                    Sign Off & Publish
-                  </button>
-                )}
-              </div>
-            </div>
+            <button
+              onClick={() => setShowEditor(true)}
+              className="px-5 py-2.5 bg-[#6C4CF1] text-white text-xs font-bold rounded-full shadow-md flex items-center gap-1.5 shrink-0"
+            >
+              <Plus className="w-4 h-4" /> Draft New Article
+            </button>
           </div>
-        ))}
-      </div>
+
+          {/* Articles Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {articles.map((art) => (
+              <div key={art.id} className="bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-[#6C4CF1] bg-[#F5F2FF] px-2.5 py-0.5 rounded-full uppercase text-[10px]">
+                      {art.category}
+                    </span>
+                    <span className="font-bold">{art.flag} {art.country}</span>
+                  </div>
+
+                  <h3 className="text-base font-bold font-display text-[#17131D] leading-snug">{art.title}</h3>
+                  <p className="text-xs text-[#6E6875] line-clamp-2">{art.content}</p>
+                </div>
+
+                <div className="space-y-3 pt-3 border-t border-[#E7E2EB] text-xs">
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-[#6E6875]">Medical Reviewer:</span>
+                    <span className="font-bold text-[#17131D] truncate">{art.reviewer}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                        art.status === "PUBLISHED"
+                          ? "bg-emerald-50 text-[#238A5A] border border-emerald-200"
+                          : "bg-amber-50 text-[#B87512] border border-amber-200"
+                      }`}
+                    >
+                      {art.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {activeTab === "medical_reviews" && (
+        <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden p-6 space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold font-display text-[#17131D]">Medical Review Approvals Queue</h2>
+            <p className="text-xs text-[#6E6875]">Clinical specialists must sign off on content before it goes live to the public.</p>
+          </div>
+          
+          <div className="space-y-4">
+            {articles.filter(a => a.status === "UNDER_MEDICAL_REVIEW").map((art) => (
+              <div key={art.id} className="p-4 bg-white rounded-2xl border border-[#E8E0FF] flex justify-between items-center hover:border-[#6C4CF1] transition-colors cursor-pointer">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-[#F5F2FF] rounded-lg text-[#6D4AFF]">
+                    <FileCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-[#17131D] text-sm">{art.title}</h4>
+                    <p className="text-xs text-[#6E6875] mt-0.5">Author: {art.author} • Assigned to: {art.reviewer}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => approveMedicalReview(art.id)} className="px-4 py-2 bg-[#238A5A] text-white text-xs font-bold rounded-full shadow-md">Sign Off & Publish</button>
+                </div>
+              </div>
+            ))}
+            
+            {articles.filter(a => a.status === "UNDER_MEDICAL_REVIEW").length === 0 && (
+              <div className="p-8 text-center bg-[#F5F2FF]/50 rounded-2xl border border-dashed border-[#E8E0FF]">
+                <CheckCircle2 className="w-8 h-8 text-[#6D4AFF] mx-auto mb-2 opacity-50" />
+                <p className="text-xs font-bold text-[#6E6875]">No pending reviews in the queue.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Article Editor Modal */}
       {showEditor && (

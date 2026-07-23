@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   CreditCard,
   RotateCcw,
@@ -10,13 +10,25 @@ import {
   TrendingUp,
   X,
   FileText,
+  DollarSign,
 } from "lucide-react";
 
 interface AdminPaymentsViewProps {
   selectedCountry: string;
+  activeTabId?: string;
 }
 
-export default function AdminPaymentsView({ selectedCountry }: AdminPaymentsViewProps) {
+export default function AdminPaymentsView({ selectedCountry, activeTabId }: AdminPaymentsViewProps) {
+  let defaultTab: "revenue" | "refunds" = "revenue";
+  if (activeTabId === "refund_approvals") defaultTab = "refunds";
+
+  const [activeTab, setActiveTab] = useState<"revenue" | "refunds">(defaultTab);
+
+  useEffect(() => {
+    if (activeTabId === "payments_revenue") setActiveTab("revenue");
+    else if (activeTabId === "refund_approvals") setActiveTab("refunds");
+  }, [activeTabId]);
+
   const [payments, setPayments] = useState([
     {
       id: "tx-9011",
@@ -77,87 +89,142 @@ export default function AdminPaymentsView({ selectedCountry }: AdminPaymentsView
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm">
-        <div>
-          <h2 className="text-2xl font-bold font-display text-[#17131D]">Payment Transactions & Refund Approvals</h2>
-          <p className="text-xs text-[#6E6875]">Manage consultation revenue settlement across Paystack, Stripe & Flutterwave gateways.</p>
-        </div>
+      {/* Sub-Navigation Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#E7E2EB] pb-4">
+        <button
+          onClick={() => setActiveTab("revenue")}
+          className={`px-4 py-2 text-xs font-bold rounded-full transition-colors flex items-center gap-1.5 ${
+            activeTab === "revenue" ? "bg-[#17131D] text-white shadow-md" : "text-[#6E6875] hover:bg-[#F5F2FF]"
+          }`}
+        >
+          <TrendingUp className="w-3.5 h-3.5" />
+          Payments & Revenue
+        </button>
+        <button
+          onClick={() => setActiveTab("refunds")}
+          className={`px-4 py-2 text-xs font-bold rounded-full transition-colors flex items-center gap-1.5 ${
+            activeTab === "refunds" ? "bg-[#17131D] text-white shadow-md" : "text-[#6E6875] hover:bg-[#F5F2FF]"
+          }`}
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          Refund Approvals
+          {payments.some(p => p.status === "REFUND_REQUESTED") && (
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+          )}
+        </button>
+      </div>
 
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-[#F5F2FF] rounded-2xl text-xs border border-[#E8E0FF]">
-            <span className="text-[10px] uppercase font-bold text-[#6E6875] block">Total Platform Settlement</span>
-            <span className="font-extrabold text-[#6C4CF1] text-base">₦14.2M / £38.5K / $42.1K</span>
+      {activeTab === "revenue" && (
+        <>
+          {/* Header Banner */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm">
+            <div>
+              <h2 className="text-2xl font-bold font-display text-[#17131D]">Payment Transactions & Revenue</h2>
+              <p className="text-xs text-[#6E6875]">Manage consultation revenue settlement across Paystack, Stripe & Flutterwave gateways.</p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-[#F5F2FF] rounded-2xl text-xs border border-[#E8E0FF]">
+                <span className="text-[10px] uppercase font-bold text-[#6E6875] block">Total Platform Settlement</span>
+                <span className="font-extrabold text-[#6C4CF1] text-base">₦14.2M / £38.5K / $42.1K</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Financial Transactions Table */}
+          <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-[#F5F2FF]/60 border-b border-[#E7E2EB] text-[#6E6875] uppercase text-[10px] font-bold tracking-wider">
+                    <th className="py-4 px-4">Transaction ID</th>
+                    <th className="py-4 px-4">User</th>
+                    <th className="py-4 px-4">Doctor / Provider</th>
+                    <th className="py-4 px-4">Market</th>
+                    <th className="py-4 px-4">Amount</th>
+                    <th className="py-4 px-4">Gateway</th>
+                    <th className="py-4 px-4">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E7E2EB]">
+                  {filteredPayments.map((p) => (
+                    <tr key={p.id} className="hover:bg-[#F5F2FF]/30 transition-colors">
+                      <td className="py-3.5 px-4 font-mono font-bold text-[#17131D]">{p.id}</td>
+                      <td className="py-3.5 px-4 font-semibold text-[#17131D]">{p.user}</td>
+                      <td className="py-3.5 px-4 text-[#6E6875]">{p.doctor}</td>
+
+                      <td className="py-3.5 px-4 font-bold text-[#17131D]">
+                        <span className="text-base mr-1">{p.flag}</span>
+                        <span>{p.country}</span>
+                      </td>
+
+                      <td className="py-3.5 px-4 font-black text-[#17131D]">{p.amount}</td>
+                      <td className="py-3.5 px-4 font-bold text-[#6C4CF1]">{p.provider}</td>
+
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                            p.status === "SUCCESSFUL"
+                              ? "bg-emerald-50 text-[#238A5A] border border-emerald-200"
+                              : p.status === "REFUND_REQUESTED"
+                              ? "bg-amber-50 text-[#B87512] border border-amber-200"
+                              : "bg-gray-100 text-gray-700"
+                          }`}
+                        >
+                          {p.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeTab === "refunds" && (
+        <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden p-6 space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold font-display text-[#17131D]">Refund Approvals Queue</h2>
+            <p className="text-xs text-[#6E6875]">Review and authorize user refunds for cancelled or disputed consultations.</p>
+          </div>
+          
+          <div className="space-y-4">
+            {filteredPayments.filter(p => p.status === "REFUND_REQUESTED").map((p) => (
+              <div key={p.id} className="p-4 bg-white rounded-2xl border border-[#E8E0FF] flex justify-between items-center hover:border-[#6C4CF1] transition-colors cursor-pointer">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-[#F5F2FF] rounded-lg text-amber-500">
+                    <RotateCcw className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-[#17131D] text-sm">{p.user} ({p.id})</h4>
+                    <p className="text-xs text-[#6E6875] mt-0.5">{p.amount} via {p.provider} • Date: {p.date}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setSelectedRefund(p);
+                      setRefundReason("");
+                    }}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-full shadow-md"
+                  >
+                    Process Refund
+                  </button>
+                </div>
+              </div>
+            ))}
+            
+            {filteredPayments.filter(p => p.status === "REFUND_REQUESTED").length === 0 && (
+              <div className="p-8 text-center bg-[#F5F2FF]/50 rounded-2xl border border-dashed border-[#E8E0FF]">
+                <CheckCircle2 className="w-8 h-8 text-[#6D4AFF] mx-auto mb-2 opacity-50" />
+                <p className="text-xs font-bold text-[#6E6875]">No pending refund requests.</p>
+              </div>
+            )}
           </div>
         </div>
-      </div>
-
-      {/* Financial Transactions Table */}
-      <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-[#F5F2FF]/60 border-b border-[#E7E2EB] text-[#6E6875] uppercase text-[10px] font-bold tracking-wider">
-                <th className="py-4 px-4">Transaction ID</th>
-                <th className="py-4 px-4">User</th>
-                <th className="py-4 px-4">Doctor / Provider</th>
-                <th className="py-4 px-4">Market</th>
-                <th className="py-4 px-4">Amount</th>
-                <th className="py-4 px-4">Gateway</th>
-                <th className="py-4 px-4">Status</th>
-                <th className="py-4 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E7E2EB]">
-              {filteredPayments.map((p) => (
-                <tr key={p.id} className="hover:bg-[#F5F2FF]/30 transition-colors">
-                  <td className="py-3.5 px-4 font-mono font-bold text-[#17131D]">{p.id}</td>
-                  <td className="py-3.5 px-4 font-semibold text-[#17131D]">{p.user}</td>
-                  <td className="py-3.5 px-4 text-[#6E6875]">{p.doctor}</td>
-
-                  <td className="py-3.5 px-4 font-bold text-[#17131D]">
-                    <span className="text-base mr-1">{p.flag}</span>
-                    <span>{p.country}</span>
-                  </td>
-
-                  <td className="py-3.5 px-4 font-black text-[#17131D]">{p.amount}</td>
-                  <td className="py-3.5 px-4 font-bold text-[#6C4CF1]">{p.provider}</td>
-
-                  <td className="py-3.5 px-4">
-                    <span
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                        p.status === "SUCCESSFUL"
-                          ? "bg-emerald-50 text-[#238A5A] border border-emerald-200"
-                          : p.status === "REFUND_REQUESTED"
-                          ? "bg-amber-50 text-[#B87512] border border-amber-200"
-                          : "bg-gray-100 text-gray-700"
-                      }`}
-                    >
-                      {p.status}
-                    </span>
-                  </td>
-
-                  <td className="py-3.5 px-4 text-right">
-                    {p.status === "REFUND_REQUESTED" ? (
-                      <button
-                        onClick={() => {
-                          setSelectedRefund(p);
-                          setRefundReason("");
-                        }}
-                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] rounded-lg shadow-sm"
-                      >
-                        Process Refund
-                      </button>
-                    ) : (
-                      <span className="text-[10px] text-[#6E6875] font-bold">Settled</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
 
       {/* Refund Processing Modal */}
       {selectedRefund && (
