@@ -72,6 +72,7 @@ export default function AdminPage() {
       case "overview":
         return <AdminOverviewView selectedCountry={selectedCountry} onNavigate={setActiveTab} />;
       case "users":
+      case "support":
       case "support_tickets":
       case "notifications":
         return <AdminUsersView selectedCountry={selectedCountry} activeTabId={activeTab} />;
@@ -88,11 +89,13 @@ export default function AdminPage() {
       case "medical_reviews":
         return <AdminCMSView selectedCountry={selectedCountry} activeTabId={activeTab} />;
       case "payments":
+      case "refunds":
       case "refund_approvals":
         return <AdminPaymentsView selectedCountry={selectedCountry} activeTabId={activeTab} />;
       case "countries":
       case "feature_flags":
       case "audit_logs":
+      case "settings":
       case "system_settings":
         return <AdminPlatformView selectedCountry={selectedCountry} activeTabId={activeTab} />;
       default:
