@@ -57,7 +57,7 @@ export default function Hero({ onOpenWaitlist }: HeroProps) {
                 onClick={onOpenWaitlist}
                 className="w-full sm:w-auto px-8 py-4 bg-[#6D4AFF] hover:bg-[#5B3DE0] text-white font-bold text-sm rounded-full shadow-xl shadow-[#6D4AFF]/30 transition-all flex items-center justify-center gap-3 group"
               >
-                <span>Join the Early Access Waitlist</span>
+                <span>Create Your Free Account</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
 

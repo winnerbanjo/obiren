@@ -1,6 +1,7 @@
 "use client";
 
 import { Heart } from "lucide-react";
+import Link from "next/link";
 
 interface FooterProps {
   onOpenWaitlist?: () => void;
@@ -41,11 +42,10 @@ export default function Footer({ onOpenWaitlist }: FooterProps) {
               Product & Features
             </h4>
             <ul className="space-y-2 text-xs text-white/70">
-              <li><a href="#features" className="hover:text-white transition-colors">Cycle Tracking</a></li>
-              <li><a href="#features" className="hover:text-white transition-colors">Pregnancy Companion</a></li>
-              <li><a href="#healthcare" className="hover:text-white transition-colors">Verified Gynecologists</a></li>
-              <li><a href="#safety" className="hover:text-white transition-colors">Silent SOS & Safety</a></li>
-              <li><a href="#features" className="hover:text-white transition-colors">Health Vault</a></li>
+              <li><Link href="/features/cycle-tracking" className="hover:text-white transition-colors">Cycle Tracking</Link></li>
+              <li><Link href="/features/pregnancy" className="hover:text-white transition-colors">Pregnancy Companion</Link></li>
+              <li><Link href="/features/safety-sos" className="hover:text-white transition-colors">Silent SOS & Safety</Link></li>
+              <li><Link href="/about" className="hover:text-white transition-colors">About Us</Link></li>
             </ul>
           </div>
 
@@ -55,10 +55,9 @@ export default function Footer({ onOpenWaitlist }: FooterProps) {
               Resources & Legal
             </h4>
             <ul className="space-y-2 text-xs text-white/70">
-              <li><a href="#faq" className="hover:text-white transition-colors">FAQ</a></li>
-              <li><a href="#privacy" className="hover:text-white transition-colors">Privacy Policy</a></li>
-              <li><a href="#terms" className="hover:text-white transition-colors">Terms of Service</a></li>
-              <li><a href="#security" className="hover:text-white transition-colors">NDPR & HIPAA Compliance</a></li>
+              <li><Link href="/legal/privacy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
+              <li><Link href="/legal/terms" className="hover:text-white transition-colors">Terms of Service</Link></li>
+              <li><Link href="/legal/compliance" className="hover:text-white transition-colors">Trust & Compliance</Link></li>
               <li><a href="mailto:contact@obiren.com" className="hover:text-white transition-colors">Contact Support</a></li>
             </ul>
           </div>

@@ -10,9 +10,7 @@ import PrivacySection from "@/components/PrivacySection";
 import SafetySection from "@/components/SafetySection";
 import KnowledgeCentreSection from "@/components/KnowledgeCentreSection";
 import FutureRoadmap from "@/components/FutureRoadmap";
-import WaitlistCTA from "@/components/WaitlistCTA";
 import Footer from "@/components/Footer";
-import WaitlistModal from "@/components/WaitlistModal";
 import SignInModal from "@/components/SignInModal";
 import OnboardingFlow from "@/components/OnboardingFlow";
 import AppShell from "@/components/AppShell";
@@ -33,7 +31,6 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
 
   // Modal Controls
-  const [isWaitlistOpen, setIsWaitlistOpen] = useState(false);
   const [isSignInOpen, setIsSignInOpen] = useState(false);
   const [isSignUpOpen, setIsSignUpOpen] = useState(false);
 
@@ -158,7 +155,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-white text-[#17131D] font-sans selection:bg-[#E8E0FF] selection:text-[#6C4CF1] overflow-x-hidden">
       <Navbar
-        onOpenWaitlist={() => setIsWaitlistOpen(true)}
+        onOpenWaitlist={() => setIsSignUpOpen(true)}
         onOpenSignIn={() => setIsSignInOpen(true)}
         onOpenSignUp={() => setIsSignUpOpen(true)}
       />
@@ -172,17 +169,11 @@ export default function Home() {
         <SafetySection onOpenWaitlist={() => setIsSignUpOpen(true)} />
         <KnowledgeCentreSection onOpenWaitlist={() => setIsSignUpOpen(true)} />
         <FutureRoadmap onOpenWaitlist={() => setIsSignUpOpen(true)} />
-        <WaitlistCTA onOpenWaitlist={() => setIsSignUpOpen(true)} />
       </main>
 
       <Footer onOpenWaitlist={() => setIsSignUpOpen(true)} />
 
       {/* Modals */}
-      <WaitlistModal
-        isOpen={isWaitlistOpen}
-        onClose={() => setIsWaitlistOpen(false)}
-      />
-
       <SignInModal
         isOpen={isSignInOpen}
         onClose={() => setIsSignInOpen(false)}

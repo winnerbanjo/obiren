@@ -109,14 +109,14 @@ export default function FutureRoadmap({ onOpenWaitlist }: FutureRoadmapProps) {
         <div className="p-8 sm:p-12 bg-white rounded-3xl border border-[#E8DFFF] shadow-sm flex flex-col sm:flex-row items-center justify-between gap-6 max-w-4xl mx-auto">
           <div className="space-y-1 text-center sm:text-left">
             <h3 className="text-xl font-bold font-display text-[#171717]">Want early access to telegynecology beta testing?</h3>
-            <p className="text-xs text-[#666666]">Join the waitlist to receive invitations to private beta testing rounds.</p>
+            <p className="text-xs text-[#666666]">Create an account to receive invitations to private beta testing rounds.</p>
           </div>
-
+          
           <button
             onClick={onOpenWaitlist}
-            className="px-6 py-3 bg-[#6D4AFF] hover:bg-[#5B3DE0] text-white font-bold text-xs rounded-full shadow-md transition-all shrink-0 flex items-center gap-2"
+            className="w-full sm:w-auto px-6 py-3 bg-[#111111] hover:bg-[#333333] text-white font-bold text-xs rounded-full shadow-lg transition-all flex items-center justify-center gap-2"
           >
-            <span>Join Beta Waitlist</span>
+            <span>Create Account</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
