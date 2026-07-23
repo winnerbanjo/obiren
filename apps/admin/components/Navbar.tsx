@@ -79,14 +79,6 @@ export default function Navbar({
 
             {/* Right Action Auth Buttons */}
             <div className="hidden md:flex items-center gap-3">
-              {/* Admin Portal Link */}
-              <a
-                href="/admin"
-                className="px-4.5 py-2.5 bg-[#17131D] hover:bg-[#2A2333] text-white text-xs font-bold rounded-full transition-all flex items-center gap-1.5 shadow-sm"
-              >
-                <span>Admin Portal</span>
-              </a>
-
               {/* Sign In Button */}
               <button
                 onClick={onOpenSignIn}
@@ -108,24 +100,6 @@ export default function Navbar({
 
             {/* Mobile Hamburger & Actions */}
             <div className="md:hidden flex items-center gap-2">
-              <a
-                href="/admin"
-                className="px-3 py-1.5 bg-[#17131D] text-white text-[10px] font-bold rounded-full"
-              >
-                Admin
-              </a>
-              <button
-                onClick={onOpenSignIn}
-                className="px-3 py-1.5 bg-white border border-[#E7E2EB] text-[#17131D] text-[10px] font-bold rounded-full"
-              >
-                Sign In
-              </button>
-              <button
-                onClick={onOpenSignUp}
-                className="px-3 py-1.5 bg-[#6C4CF1] text-white text-[10px] font-bold rounded-full"
-              >
-                Sign Up
-              </button>
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="p-2 text-[#17131D] hover:bg-[#F5F2FF] rounded-xl transition-colors"
