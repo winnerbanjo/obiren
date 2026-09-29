@@ -1,7 +1,7 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import * as twilio from 'twilio';
+import twilio = require('twilio');
 import { NotificationOutbox, NotificationOutboxDocument } from '../../database/schemas/notification.schema';
 
 @Injectable()
