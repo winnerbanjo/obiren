@@ -131,8 +131,10 @@ export default function AdminShell({
 
           {/* Role Pill */}
           <div className="p-3 bg-[#F5F2FF] rounded-2xl border border-[#E8E0FF] text-xs">
-            <span className="text-[10px] uppercase font-bold text-[#6E6875] block">Active Role</span>
-            <span className="font-extrabold text-[#6C4CF1] truncate block">{adminProfile?.roleTitle || "Super Administrator"}</span>
+            <span className="text-[10px] uppercase font-bold text-[#6E6875] block">Granted Roles</span>
+            <span className="font-extrabold text-[#6C4CF1] truncate block">
+              {(adminProfile?.roles || ["user"]).join(", ")}
+            </span>
           </div>
 
           {/* Grouped Nav Links */}
@@ -170,11 +172,11 @@ export default function AdminShell({
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-7 h-7 rounded-full bg-[#6C4CF1] text-white font-bold text-xs flex items-center justify-center shrink-0">
-                {adminProfile?.name?.[0] || "A"}
+                {(adminProfile?.email || "A")[0].toUpperCase()}
               </div>
               <div className="truncate text-xs">
-                <p className="font-bold text-[#17131D] truncate">{adminProfile?.name || "Admin"}</p>
-                <p className="text-[10px] text-[#6E6875]">2FA Active</p>
+                <p className="font-bold text-[#17131D] truncate">{adminProfile?.email || "Admin"}</p>
+                <p className="text-[10px] text-[#6E6875]">DB-verified role</p>
               </div>
             </div>
 

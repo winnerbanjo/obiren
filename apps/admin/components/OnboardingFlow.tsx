@@ -73,7 +73,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
       onComplete({
         firstName: "Ella",
         lastName: "Vance",
-        email: formData.email || "ella@obiren.com",
+        email: formData.email,
         countryCode: formData.countryCode,
         cycleLengthDays: formData.statedAverageCycleLength,
         isPregnant: true,
@@ -149,7 +149,7 @@ export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
               <input
                 type="email"
                 required
-                placeholder="ella@obiren.com"
+                placeholder="you@example.com"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className="w-full px-4 py-3 bg-[#F5F2FF]/60 border border-[#E8E0FF] rounded-xl text-base sm:text-sm"

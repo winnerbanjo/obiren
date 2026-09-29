@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  api:
+    name: API — typecheck, tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: apps/api
+        env:
+          NODE_ENV: test
+
+      - name: Lint
+        run: npm run lint --if-present
+        working-directory: apps/api
+
+      - name: Tests (in-memory MongoDB)
+        run: npx jest --forceExit --ci
+        working-directory: apps/api
+        env:
+          NODE_ENV: test
+          JWT_ACCESS_SECRET: ci-only-access-secret-value-00000000000000000
+          JWT_REFRESH_SECRET: ci-only-refresh-secret-value-000000000000000
+          CORS_ORIGINS: http://localhost:3000
+
+      - name: Build
+        run: npm run build
+        working-directory: apps/api
+
+  web:
+    name: Web — typecheck, lint, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: apps/web
+
+      - name: Build
+        run: npm run build
+        working-directory: apps/web
+        env:
+          NODE_ENV: production
+
+  admin:
+    name: Admin — typecheck, lint, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: apps/admin
+
+      - name: Build
+        run: npm run build
+        working-directory: apps/admin
+        env:
+          NODE_ENV: production

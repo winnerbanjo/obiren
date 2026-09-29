@@ -1,445 +1,220 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import {
-  Users,
-  Search,
-  Filter,
-  ShieldCheck,
-  Lock,
-  Eye,
-  EyeOff,
-  UserX,
-  UserCheck,
-  Mail,
-  Download,
-  Trash2,
-  X,
-  FileText,
-  AlertTriangle,
-  LifeBuoy,
-  Bell,
-  CheckCircle2,
-} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Users, RefreshCw, AlertTriangle, CheckCircle2, Ban, ChevronLeft, ChevronRight } from "lucide-react";
+import { adminApi, ApiError } from "@obiren/api-client";
 
 interface AdminUsersViewProps {
   selectedCountry: string;
-  activeTabId?: string;
+  activeTabId: string;
 }
 
+/**
+ * The Users tab lists REAL registered users straight from the API and can
+ * change account status (suspend/restrict/reinstate) with server-side
+ * authorization. Other sub-tabs (support tickets, notifications) do not have
+ * real backend functionality yet, so they render an honest unavailable state
+ * instead of fake data.
+ */
 export default function AdminUsersView({ selectedCountry, activeTabId }: AdminUsersViewProps) {
-  let defaultTab: "users" | "support" | "notifications" = "users";
-  if (activeTabId === "support") defaultTab = "support";
-  else if (activeTabId === "notifications") defaultTab = "notifications";
+  const [users, setUsers] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [notice, setNotice] = useState("");
+  const [actingId, setActingId] = useState<string | null>(null);
+  const limit = 20;
 
-  const [activeTab, setActiveTab] = useState<"users" | "support" | "notifications">(defaultTab);
+  const isUsersTab = activeTabId === "users";
+
+  const load = useCallback(
+    async (p: number) => {
+      if (!isUsersTab) return;
+      setLoading(true);
+      setErrorMsg("");
+      try {
+        const data = await adminApi.listUsers(p, limit);
+        setUsers(data.users ?? []);
+        setTotal(data.total ?? 0);
+        setPage(data.page ?? p);
+      } catch (err) {
+        setErrorMsg(
+          err instanceof ApiError && err.status === 403
+            ? "Your role does not grant access to user management."
+            : err instanceof ApiError
+              ? err.message
+              : "Could not load users.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [isUsersTab],
+  );
 
   useEffect(() => {
-    if (activeTabId === "users") setActiveTab("users");
-    else if (activeTabId === "support") setActiveTab("support");
-    else if (activeTabId === "notifications") setActiveTab("notifications");
-  }, [activeTabId]);
+    load(1);
+  }, [load]);
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
-  const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const setStatus = async (userId: string, status: string) => {
+    setActingId(userId);
+    setErrorMsg("");
+    setNotice("");
+    try {
+      await adminApi.setUserStatus(userId, status);
+      setNotice(`User status updated to "${status}".`);
+      await load(page);
+    } catch (err) {
+      setErrorMsg(err instanceof ApiError ? err.message : "Could not update the user.");
+    } finally {
+      setActingId(null);
+    }
+  };
 
-  // Unmask sensitive health data step-up protection
-  const [sensitiveUnmasked, setSensitiveUnmasked] = useState(false);
-  const [unmaskReason, setUnmaskReason] = useState("");
-
-  const [users, setUsers] = useState([
-    {
-      id: "u-101",
-      name: "Ella Vance",
-      email: "ella@obiren.com",
-      country: "NG",
-      flag: "🇳🇬",
-      status: "ACTIVE",
-      verification: "VERIFIED",
-      trackingMode: "PREGNANCY",
-      pregnancyWeek: 22,
-      joinedDate: "2026-06-12",
-      lastActive: "Today at 02:45 PM",
-      sensitiveLog: "Last period July 1, 2026. Fetal movement kick counter active (12 kicks today). Ultrasound scan uploaded.",
-    },
-    {
-      id: "u-102",
-      name: "Amara Okafor",
-      email: "amara@example.com",
-      country: "NG",
-      flag: "🇳🇬",
-      status: "ACTIVE",
-      verification: "VERIFIED",
-      trackingMode: "CYCLE_TRACKING",
-      pregnancyWeek: null,
-      joinedDate: "2026-05-18",
-      lastActive: "Yesterday",
-      sensitiveLog: "Cycle length: 28 days. Mild pain logged on Day 2. PCOS educational guidance bookmarked.",
-    },
-    {
-      id: "u-[#103]",
-      name: "Chloe Smith",
-      email: "chloe@example.co.uk",
-      country: "GB",
-      flag: "🇬🇧",
-      status: "ACTIVE",
-      verification: "VERIFIED",
-      trackingMode: "CYCLE_TRACKING",
-      pregnancyWeek: null,
-      joinedDate: "2026-07-02",
-      lastActive: "3 hours ago",
-      sensitiveLog: "Cycle length: 30 days. Basal body temperature tracking active.",
-    },
-    {
-      id: "u-104",
-      name: "Grace Asante",
-      email: "grace@example.com.gh",
-      country: "GH",
-      flag: "🇬🇭",
-      status: "UNDER_REVIEW",
-      verification: "PENDING",
-      trackingMode: "PREGNANCY",
-      pregnancyWeek: 14,
-      joinedDate: "2026-07-14",
-      lastActive: "Today at 09:12 AM",
-      sensitiveLog: "Trimester 2 setup completed. Data export JSON requested.",
-    },
-    {
-      id: "u-105",
-      name: "Sarah Miller",
-      email: "sarah@example.com",
-      country: "US",
-      flag: "🇺🇸",
-      status: "SUSPENDED",
-      verification: "VERIFIED",
-      trackingMode: "CYCLE_TRACKING",
-      pregnancyWeek: null,
-      joinedDate: "2026-04-01",
-      lastActive: "12 days ago",
-      sensitiveLog: "Account suspended due to policy violation in public comments.",
-    },
-  ]);
-
-  const filteredUsers = users.filter((u) => {
-    const matchesCountry = selectedCountry === "ALL" || u.country === selectedCountry;
-    const matchesStatus = statusFilter === "ALL" || u.status === statusFilter;
-    const matchesQuery =
-      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCountry && matchesStatus && matchesQuery;
-  });
-
-  const toggleUserStatus = (id: string) => {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === id
-          ? { ...u, status: u.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" }
-          : u
-      )
+  if (!isUsersTab) {
+    return (
+      <div className="space-y-6 max-w-4xl mx-auto">
+        <div className="bg-white p-10 rounded-3xl border border-[#E7E2EB] shadow-sm text-center space-y-3">
+          <Users className="w-10 h-10 text-[#918A98] mx-auto" />
+          <h3 className="text-lg font-bold font-display text-[#17131D]">Coming soon</h3>
+          <p className="text-xs text-[#6E6875] max-w-md mx-auto">
+            The <strong>{activeTabId.replace(/_/g, " ")}</strong> module is not implemented in the backend yet.
+            Rather than showing simulated data, this screen will light up once the corresponding API exists.
+          </p>
+        </div>
+      </div>
     );
-  };
+  }
 
-  const handleUnmaskSensitiveData = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!unmaskReason) return;
-    setSensitiveUnmasked(true);
-    alert(`Audit Log Created: Admin unmasked sensitive health data for user ${selectedUser.id}. Reason: "${unmaskReason}"`);
-  };
-
-  // Mock Support Tickets
-  const supportTickets = [
-    { id: "T-9910", user: "Amara Okafor", subject: "Prediction Discrepancy", status: "OPEN", priority: "HIGH", date: "2 hours ago" },
-    { id: "T-9911", user: "Chloe Smith", subject: "Cannot upload scan", status: "IN_PROGRESS", priority: "MEDIUM", date: "5 hours ago" },
-    { id: "T-9912", user: "Sarah Miller", subject: "Account Suspension Appeal", status: "ESCALATED", priority: "HIGH", date: "Yesterday" },
-  ];
-
-  // Mock Notifications
-  const notifications = [
-    { id: "N-01", title: "New Specialist Registration", message: "Dr. Amina Bello submitted credentials.", type: "ALERT", time: "10 mins ago" },
-    { id: "N-02", title: "System Maintenance", message: "Database index migration scheduled for 02:00 UTC.", type: "SYSTEM", time: "1 hour ago" },
-    { id: "N-03", title: "SOS Incident Triggered", message: "Emergency incident reported in London.", type: "CRITICAL", time: "3 hours ago" },
-  ];
+  const totalPages = Math.max(1, Math.ceil(total / limit));
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Sub-Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-[#E7E2EB] pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm">
+        <div>
+          <h2 className="text-xl font-bold font-display text-[#17131D]">Registered Users</h2>
+          <p className="text-xs text-[#6E6875]">
+            {total.toLocaleString()} accounts in the production database
+            {selectedCountry !== "ALL" ? ` • market filter: ${selectedCountry}` : ""}
+          </p>
+        </div>
         <button
-          onClick={() => setActiveTab("users")}
-          className={`px-4 py-2 text-xs font-bold rounded-full transition-colors ${
-            activeTab === "users" ? "bg-[#17131D] text-white shadow-md" : "text-[#6E6875] hover:bg-[#F5F2FF]"
-          }`}
+          onClick={() => load(page)}
+          className="px-4 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] text-[#6C4CF1] text-xs font-bold rounded-full inline-flex items-center gap-2"
         >
-          User Accounts
-        </button>
-        <button
-          onClick={() => setActiveTab("support")}
-          className={`px-4 py-2 text-xs font-bold rounded-full transition-colors flex items-center gap-1.5 ${
-            activeTab === "support" ? "bg-[#17131D] text-white shadow-md" : "text-[#6E6875] hover:bg-[#F5F2FF]"
-          }`}
-        >
-          Support Tickets
-          <span className="w-4 h-4 rounded-full bg-rose-500 text-white flex items-center justify-center text-[9px]">3</span>
-        </button>
-        <button
-          onClick={() => setActiveTab("notifications")}
-          className={`px-4 py-2 text-xs font-bold rounded-full transition-colors flex items-center gap-1.5 ${
-            activeTab === "notifications" ? "bg-[#17131D] text-white shadow-md" : "text-[#6E6875] hover:bg-[#F5F2FF]"
-          }`}
-        >
-          System Alerts
-          <span className="w-2 h-2 rounded-full bg-[#6C4CF1]" />
+          <RefreshCw className="w-4 h-4" /> Refresh
         </button>
       </div>
 
-      {activeTab === "users" && (
-        <>
-          {/* Header Banner */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm">
-            <div>
-              <h2 className="text-2xl font-bold font-display text-[#17131D]">User Account Management</h2>
-              <p className="text-xs text-[#6E6875]">Manage registered accounts, verification status, and NDPR/GDPR compliance requests.</p>
-            </div>
+      {errorMsg && (
+        <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-2xl flex items-center gap-2.5">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+      {notice && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded-2xl flex items-center gap-2.5">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{notice}</span>
+        </div>
+      )}
 
-            {/* Controls */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative w-full sm:w-64">
-                <Search className="w-4 h-4 absolute left-3.5 top-3 text-[#6E6875]" />
-                <input
-                  type="text"
-                  placeholder="Search user by name or email..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] rounded-full text-xs font-medium focus:outline-none"
-                />
-              </div>
-
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-4 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] rounded-full text-xs font-bold text-[#17131D] focus:outline-none"
-              >
-                <option value="ALL">All Account Statuses</option>
-                <option value="ACTIVE">Active</option>
-                <option value="UNDER_REVIEW">Under Review</option>
-                <option value="SUSPENDED">Suspended</option>
-              </select>
-            </div>
+      <div className="bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm space-y-4">
+        {loading ? (
+          <div className="py-10 text-center text-sm text-[#6E6875]">Loading users...</div>
+        ) : users.length === 0 ? (
+          <div className="py-10 text-center space-y-2">
+            <Users className="w-10 h-10 text-[#918A98] mx-auto" />
+            <p className="text-sm font-bold text-[#17131D]">No users found</p>
           </div>
-
-          {/* Users Table */}
-          <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-[#F5F2FF]/60 border-b border-[#E7E2EB] text-[#6E6875] uppercase text-[10px] font-bold tracking-wider">
-                    <th className="py-4 px-4">User</th>
-                    <th className="py-4 px-4">Market</th>
-                    <th className="py-4 px-4">Tracking Goal</th>
-                    <th className="py-4 px-4">Account Status</th>
-                    <th className="py-4 px-4">Joined Date</th>
-                    <th className="py-4 px-4">Last Active</th>
-                    <th className="py-4 px-4 text-right">Actions</th>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-[10px] uppercase font-bold text-[#6E6875] border-b border-[#E7E2EB]">
+                  <th className="py-2 pr-4">Email</th>
+                  <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4">Roles</th>
+                  <th className="py-2 pr-4">Country</th>
+                  <th className="py-2 pr-4">Joined</th>
+                  <th className="py-2 pr-4">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u._id || u.id} className="border-b border-[#F5F2FF] last:border-0">
+                    <td className="py-3 pr-4 font-bold text-[#17131D]">{u.email}</td>
+                    <td className="py-3 pr-4">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          u.status === "active"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : u.status === "suspended" || u.status === "restricted"
+                              ? "bg-red-50 text-red-700 border-red-200"
+                              : "bg-amber-50 text-amber-700 border-amber-200"
+                        }`}
+                      >
+                        {u.status}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4 text-[#6E6875]">{(u.roles || []).join(", ")}</td>
+                    <td className="py-3 pr-4 text-[#6E6875]">{u.countryCode}</td>
+                    <td className="py-3 pr-4 text-[#6E6875]">
+                      {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <div className="flex gap-1.5">
+                        {u.status !== "active" ? (
+                          <button
+                            onClick={() => setStatus(u._id || u.id, "active")}
+                            disabled={actingId === (u._id || u.id)}
+                            className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full font-bold disabled:opacity-40"
+                            title="Reinstate account"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setStatus(u._id || u.id, "suspended")}
+                            disabled={actingId === (u._id || u.id)}
+                            className="px-2.5 py-1 bg-red-50 border border-red-200 text-red-700 rounded-full font-bold disabled:opacity-40"
+                            title="Suspend account"
+                          >
+                            <Ban className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E7E2EB]">
-                  {filteredUsers.map((u) => (
-                    <tr key={u.id} className="hover:bg-[#F5F2FF]/30 transition-colors">
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold text-[#17131D]">{u.name}</div>
-                        <div className="text-[11px] text-[#6E6875]">{u.email}</div>
-                      </td>
-
-                      <td className="py-3.5 px-4 font-bold text-[#17131D]">
-                        <span className="text-base mr-1">{u.flag}</span>
-                        <span>{u.country}</span>
-                      </td>
-
-                      <td className="py-3.5 px-4 font-semibold text-[#6C4CF1]">
-                        {u.trackingMode === "PREGNANCY" ? `Pregnancy (W${u.pregnancyWeek})` : "Cycle Tracker"}
-                      </td>
-
-                      <td className="py-3.5 px-4">
-                        <span
-                          className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                            u.status === "ACTIVE"
-                              ? "bg-emerald-50 text-[#238A5A] border border-emerald-200"
-                              : u.status === "UNDER_REVIEW"
-                              ? "bg-amber-50 text-[#B87512] border border-amber-200"
-                              : "bg-red-50 text-[#C53D52] border border-red-200"
-                          }`}
-                        >
-                          {u.status}
-                        </span>
-                      </td>
-
-                      <td className="py-3.5 px-4 text-[#6E6875]">{u.joinedDate}</td>
-                      <td className="py-3.5 px-4 text-[#6E6875]">{u.lastActive}</td>
-
-                      <td className="py-3.5 px-4 text-right space-x-2">
-                        <button
-                          onClick={() => {
-                            setSelectedUser(u);
-                            setSensitiveUnmasked(false);
-                            setUnmaskReason("");
-                          }}
-                          className="px-3 py-1.5 bg-[#F5F2FF] text-[#6C4CF1] hover:bg-[#6C4CF1] hover:text-white font-bold text-[11px] rounded-lg transition-colors"
-                        >
-                          Inspect Account
-                        </button>
-                        <button
-                          onClick={() => toggleUserStatus(u.id)}
-                          className={`px-3 py-1.5 font-bold text-[11px] rounded-lg transition-colors ${
-                            u.status === "ACTIVE"
-                              ? "bg-red-50 text-red-600 hover:bg-red-600 hover:text-white"
-                              : "bg-emerald-50 text-[#238A5A] hover:bg-[#238A5A] hover:text-white"
-                          }`}
-                        >
-                          {u.status === "ACTIVE" ? "Suspend" : "Reactivate"}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </>
-      )}
+        )}
 
-      {activeTab === "support" && (
-        <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden p-6 space-y-6">
-          <div>
-            <h2 className="text-2xl font-bold font-display text-[#17131D]">Support Tickets Queue</h2>
-            <p className="text-xs text-[#6E6875]">Respond to user inquiries and escalate clinical issues.</p>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-3 border-t border-[#E7E2EB]">
+            <button
+              onClick={() => load(page - 1)}
+              disabled={page <= 1}
+              className="px-3 py-1.5 text-xs font-bold text-[#6C4CF1] disabled:opacity-30 inline-flex items-center gap-1"
+            >
+              <ChevronLeft className="w-4 h-4" /> Prev
+            </button>
+            <span className="text-xs font-bold text-[#6E6875]">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => load(page + 1)}
+              disabled={page >= totalPages}
+              className="px-3 py-1.5 text-xs font-bold text-[#6C4CF1] disabled:opacity-30 inline-flex items-center gap-1"
+            >
+              Next <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
-          
-          <div className="space-y-4">
-            {supportTickets.map((t) => (
-              <div key={t.id} className="p-4 bg-[#F5F2FF]/60 rounded-2xl border border-[#E8E0FF] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-md transition-shadow cursor-pointer">
-                <div className="flex gap-4 items-center">
-                  <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center border border-[#E8E0FF] shadow-sm text-[#6D4AFF]">
-                    <LifeBuoy className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-[#17131D] text-sm">{t.subject}</h4>
-                    <p className="text-xs text-[#6E6875]">{t.id} • {t.user} • {t.date}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${t.priority === "HIGH" ? "bg-red-50 text-red-600 border border-red-100" : "bg-amber-50 text-amber-600 border border-amber-100"}`}>{t.priority} PRIORITY</span>
-                  <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-white border border-[#E7E2EB] text-[#17131D]">{t.status}</span>
-                  <button className="px-4 py-2 bg-[#17131D] text-white text-xs font-bold rounded-full">Review</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {activeTab === "notifications" && (
-        <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden p-6 space-y-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-2xl font-bold font-display text-[#17131D]">System Alerts & Notifications</h2>
-              <p className="text-xs text-[#6E6875]">Platform-wide administrative alerts.</p>
-            </div>
-            <button className="px-4 py-2 bg-[#F5F2FF] text-[#6D4AFF] text-xs font-bold rounded-full border border-[#E8E0FF]">Mark all read</button>
-          </div>
-          
-          <div className="space-y-4">
-            {notifications.map((n) => (
-              <div key={n.id} className="p-4 bg-white rounded-2xl border border-[#E8E0FF] flex gap-4 hover:border-[#6D4AFF] transition-colors cursor-pointer">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${n.type === "CRITICAL" ? "bg-red-50 text-red-600" : n.type === "SYSTEM" ? "bg-[#F5F2FF] text-[#6D4AFF]" : "bg-emerald-50 text-emerald-600"}`}>
-                  <Bell className="w-5 h-5" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between">
-                    <h4 className="font-bold text-[#17131D] text-sm">{n.title}</h4>
-                    <span className="text-[10px] text-[#6E6875] font-semibold">{n.time}</span>
-                  </div>
-                  <p className="text-xs text-[#6E6875] mt-1">{n.message}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* User Inspection Modal Drawer */}
-      {selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-xl space-y-6 shadow-2xl border border-[#E7E2EB]">
-            <div className="flex justify-between items-center border-b border-[#E7E2EB] pb-3">
-              <div>
-                <h3 className="text-xl font-bold font-display text-[#17131D]">{selectedUser.name}</h3>
-                <p className="text-xs text-[#6E6875]">{selectedUser.email} • {selectedUser.flag} {selectedUser.country} Market</p>
-              </div>
-              <button onClick={() => setSelectedUser(null)} className="p-2 text-[#6E6875] hover:bg-[#F5F2FF] rounded-full">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 bg-[#F5F2FF] rounded-2xl">
-                  <span className="text-[10px] uppercase font-bold text-[#6E6875] block">Account Status</span>
-                  <span className="font-bold text-[#17131D]">{selectedUser.status}</span>
-                </div>
-                <div className="p-3 bg-[#F5F2FF] rounded-2xl">
-                  <span className="text-[10px] uppercase font-bold text-[#6E6875] block">Tracking Mode</span>
-                  <span className="font-bold text-[#6C4CF1]">{selectedUser.trackingMode}</span>
-                </div>
-              </div>
-
-              {/* Sensitive Health Data Protection Block */}
-              <div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl space-y-3">
-                <div className="flex items-center gap-2 text-xs font-bold text-[#6C4CF1]">
-                  <Lock className="w-4 h-4" />
-                  <span>Protected Sensitive Health Records (PRD 8.2 Compliance)</span>
-                </div>
-
-                {!sensitiveUnmasked ? (
-                  <form onSubmit={handleUnmaskSensitiveData} className="space-y-2">
-                    <p className="text-xs text-[#6E6875]">
-                      Sensitive symptom logs and medical records are masked by default. To view sensitive records for support investigation, state an administrative reason:
-                    </p>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Investigating Support Ticket #9910 regarding prediction discrepancy..."
-                      value={unmaskReason}
-                      onChange={(e) => setUnmaskReason(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-purple-200 rounded-xl text-xs"
-                    />
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-[#6C4CF1] text-white font-bold text-xs rounded-xl shadow-md"
-                    >
-                      Unmask Records & Log Audit Event
-                    </button>
-                  </form>
-                ) : (
-                  <div className="p-3 bg-white rounded-xl border border-purple-200 text-xs font-mono space-y-1">
-                    <span className="text-[10px] font-bold uppercase text-[#238A5A]">Audit Record #9920 Active</span>
-                    <p className="text-[#17131D]">{selectedUser.sensitiveLog}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-[#E7E2EB] flex justify-end">
-              <button
-                onClick={() => setSelectedUser(null)}
-                className="px-6 py-2.5 bg-[#17131D] text-white text-xs font-bold rounded-full"
-              >
-                Close Drawer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

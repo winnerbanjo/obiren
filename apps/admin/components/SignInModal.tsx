@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { authApi, ApiError, AuthUser } from "@obiren/api-client";
 import {
   X,
   Lock,
@@ -21,7 +22,7 @@ import { LoginSchema } from "@obiren/validation";
 interface SignInModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (userProfile: any) => void;
+  onSuccess: (auth: AuthUser) => void;
   onSwitchToSignUp: () => void;
 }
 
@@ -47,33 +48,9 @@ export default function SignInModal({
 
   if (!isOpen) return null;
 
-  // 1-Click Demo Login for Ella
-  const handleQuickDemoElla = () => {
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      onSuccess({
-        firstName: "Ella",
-        lastName: "Vance",
-        email: "ella@obiren.com",
-        countryCode: "NG",
-        cycleLengthDays: 28,
-        isPregnant: true,
-        pregnancyWeek: 22,
-        dueDate: "2026-12-01",
-      });
-      onClose();
-    }, 600);
-  };
-
-  const handlePasswordSignIn = (e: React.FormEvent) => {
+  const handlePasswordSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
-
-    if (email === "ella@obiren.com" && password === "Ella2026!") {
-      handleQuickDemoElla();
-      return;
-    }
 
     const valResult = LoginSchema.safeParse({ email, password });
     if (!valResult.success) {
@@ -83,18 +60,17 @@ export default function SignInModal({
 
     setLoading(true);
 
-    // Simulate authenticating user profile
-    setTimeout(() => {
-      setLoading(false);
-      onSuccess({
-        firstName: email.split("@")[0] ? email.split("@")[0].charAt(0).toUpperCase() + email.split("@")[0].slice(1) : "Ella",
-        lastName: "Vance",
-        email: email,
-        countryCode: "NG",
-        cycleLengthDays: 28,
-      });
+    try {
+      const result = await authApi.login(email, password);
+      onSuccess(result.user);
       onClose();
-    }, 800);
+    } catch (err) {
+      setErrorMsg(
+        err instanceof ApiError ? err.message : "Unable to sign in right now. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleMagicLink = (e: React.FormEvent) => {
@@ -154,31 +130,6 @@ export default function SignInModal({
             </div>
           </div>
 
-          {/* Prominent 1-Click Demo Account Card for Ella */}
-          <div className="p-4 bg-gradient-to-br from-[#21182F] via-[#2F2148] to-[#21182F] text-white rounded-2xl shadow-md mb-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-white/10 px-2.5 py-0.5 rounded-full border border-white/15 text-[#E8E0FF]">
-                Instant Demo Account
-              </span>
-              <span className="text-[10px] font-bold text-emerald-400">🇳🇬 NG Market</span>
-            </div>
-
-            <div>
-              <p className="text-sm font-bold text-white">Ella Vance (Week 22 Pregnant)</p>
-              <p className="text-xs text-white/70">Email: <strong className="text-white">ella@obiren.com</strong> | Password: <strong className="text-white">Ella2026!</strong></p>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleQuickDemoElla}
-              disabled={loading}
-              className="w-full py-2.5 bg-[#6C4CF1] hover:bg-[#5B3DE0] text-white text-xs font-bold rounded-full transition-all flex items-center justify-center gap-1.5 shadow-sm"
-            >
-              <Zap className="w-3.5 h-3.5 fill-white/20" />
-              <span>Sign In As Ella (1-Click Preset)</span>
-            </button>
-          </div>
-
           {/* Mode Switcher Tabs */}
           <div className="flex gap-2 p-1 bg-[#F4F1FF] rounded-xl text-xs font-bold mb-6">
             <button
@@ -211,7 +162,7 @@ export default function SignInModal({
                 <input
                   type="email"
                   required
-                  placeholder="ella@obiren.com"
+                  placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-4 py-3 bg-[#F4F1FF]/60 border border-[#E8DFFF] focus:border-[#6C4CF1] focus:bg-white rounded-xl text-sm outline-none transition-all"
@@ -290,7 +241,7 @@ export default function SignInModal({
                     <input
                       type="email"
                       required
-                      placeholder="ella@obiren.com"
+                      placeholder="you@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full px-4 py-3 bg-[#F4F1FF]/60 border border-[#E8DFFF] focus:border-[#6C4CF1] rounded-xl text-sm outline-none"
@@ -333,7 +284,7 @@ export default function SignInModal({
                     <input
                       type="email"
                       required
-                      placeholder="ella@obiren.com"
+                      placeholder="you@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full px-4 py-3 bg-[#F4F1FF]/60 border border-[#E8DFFF] focus:border-[#6C4CF1] rounded-xl text-sm outline-none"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AdminLoginModal from "@/components/AdminLoginModal";
 import AdminShell from "@/components/AdminShell";
 import AdminOverviewView from "@/components/AdminOverviewView";
@@ -11,52 +11,73 @@ import AdminCMSView from "@/components/AdminCMSView";
 import AdminPaymentsView from "@/components/AdminPaymentsView";
 import AdminPlatformView from "@/components/AdminPlatformView";
 import AdminPlaceholderView from "@/components/AdminPlaceholderView";
+import { authApi, setAccessToken, AuthUser } from "@obiren/api-client";
+
+const ADMIN_ROLES = [
+  "super_admin",
+  "platform_admin",
+  "compliance_officer",
+  "emergency_manager",
+  "content_manager",
+  "medical_reviewer",
+  "support_agent",
+];
 
 export default function AdminPage() {
-  const [adminProfile, setAdminProfile] = useState<any | null>(null);
+  const [adminProfile, setAdminProfile] = useState<AuthUser | null>(null);
+  const [restoring, setRestoring] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedCountry, setSelectedCountry] = useState("ALL");
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
+  // Restore the admin session from the HTTP-only refresh cookie.
+  // No fake admin is ever created: if there is no valid session with an
+  // administrative role, the login modal is shown.
+  const restore = useCallback(async () => {
+    setRestoring(true);
     try {
-      const savedAdmin = localStorage.getItem("obiren_admin_profile");
-      if (savedAdmin) {
-        setAdminProfile(JSON.parse(savedAdmin));
+      const auth = await authApi.restore();
+      if (auth && (auth.roles || []).some((r) => ADMIN_ROLES.includes(r))) {
+        setAdminProfile(auth);
       } else {
-        const defaultAdmin = {
-          name: "Director Vance",
-          email: "admin@obiren.com",
-          role: "super_admin",
-          roleTitle: "Super Administrator",
-          sessionIp: "102.89.23.14 (Lagos, NG)",
-          authenticatedAt: new Date().toLocaleTimeString(),
-        };
-        setAdminProfile(defaultAdmin);
-        localStorage.setItem("obiren_admin_profile", JSON.stringify(defaultAdmin));
+        setAccessToken(null);
+        setAdminProfile(null);
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
+      setAdminProfile(null);
+    } finally {
+      setRestoring(false);
     }
   }, []);
 
-  const handleLoginSuccess = (profile: any) => {
-    setAdminProfile(profile);
-    try {
-      localStorage.setItem("obiren_admin_profile", JSON.stringify(profile));
-    } catch (e) {}
+  useEffect(() => {
+    restore();
+  }, [restore]);
+
+  const handleLoginSuccess = (auth: AuthUser) => {
+    setAdminProfile(auth);
     setActiveTab("overview");
   };
 
-  const handleLogout = () => {
-    setAdminProfile(null);
+  const handleLogout = async () => {
     try {
-      localStorage.removeItem("obiren_admin_profile");
-    } catch (e) {}
+      await authApi.logout();
+    } catch {
+      // Clear locally regardless.
+    }
+    setAccessToken(null);
+    setAdminProfile(null);
   };
 
-  if (!mounted) return null;
+  if (restoring) {
+    return (
+      <div className="min-h-screen bg-[#21182F] flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <span className="inline-block w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+          <p className="text-white/70 text-xs font-bold uppercase tracking-wider">Restoring secure session...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!adminProfile) {
     return (
