@@ -1,11 +1,6 @@
 import type { Metadata } from "next";
-import WaitlistPageClient from "./waitlist/WaitlistPageClient";
+import WaitlistPageClient from "./WaitlistPageClient";
 
-/**
- * The waitlist capture IS the root experience. obiren.co lands directly on
- * the dramatic email capture; the previous marketing landing page now lives
- * at /home. Metadata mirrors /waitlist for consistent social previews.
- */
 export const metadata: Metadata = {
   title: "Obiren | Women's Health, Connected",
   description:
@@ -18,12 +13,12 @@ export const metadata: Metadata = {
     "women safety app",
     "Obiren waitlist",
   ],
-  alternates: { canonical: "/" },
+  alternates: { canonical: "/waitlist" },
   openGraph: {
     title: "Obiren | Women's Health, Connected",
     description:
       "Cycle tracking, pregnancy support, secure records, care access, and safety: together in one private space built for women. Join the waitlist.",
-    url: "/",
+    url: "/waitlist",
     siteName: "Obiren",
     type: "website",
   },
@@ -35,6 +30,6 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootWaitlistPage() {
+export default function WaitlistPage() {
   return <WaitlistPageClient />;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import BrandLogo from "./BrandLogo";
 import {
   ShieldCheck,
   Heart,
@@ -82,9 +83,7 @@ export default function Hero({ onOpenWaitlist }: HeroProps) {
             <div className="w-full max-w-md bg-white rounded-[32px] p-6 shadow-2xl border border-[#E8DFFF] space-y-6 relative">
               <div className="flex justify-between items-center border-b border-[#F4F1FF] pb-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-[#6D4AFF] text-white flex items-center justify-center font-bold text-xs">
-                    <Heart className="w-4 h-4 fill-white/20" />
-                  </div>
+                  <BrandLogo mark height={30} variant="violet" />
                   <span className="font-bold text-sm text-[#171717]">Obiren Ecosystem</span>
                 </div>
                 <span className="text-[10px] uppercase font-bold text-[#38B26C] bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
@@ -98,7 +97,7 @@ export default function Hero({ onOpenWaitlist }: HeroProps) {
                   <span className="font-bold text-[#6D4AFF]">Cycle Forecast</span>
                   <span className="text-[#666666]">Day 14</span>
                 </div>
-                <p className="text-xs font-bold text-[#171717]">Next period estimated: Aug 12 – Aug 15</p>
+                <p className="text-xs font-bold text-[#171717]">Next period estimated: Aug 12 to Aug 15</p>
                 <p className="text-[10px] text-[#666666]">Weighted algorithm calculation confidence: HIGH</p>
               </div>
 

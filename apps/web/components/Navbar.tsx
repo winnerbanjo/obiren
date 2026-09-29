@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, ArrowUpRight, Heart, LogIn, UserPlus } from "lucide-react";
+import BrandLogo from "./BrandLogo";
 
 interface NavbarProps {
   onOpenWaitlist: () => void;
@@ -50,18 +51,9 @@ export default function Navbar({
             <button
               onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
               className="flex items-center gap-2 group text-left"
+              aria-label="Obiren, back to top"
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#6C4CF1] to-[#9B6BFF] flex items-center justify-center text-white shadow-md shadow-[#6C4CF1]/20 group-hover:scale-105 transition-transform">
-                <Heart className="w-5 h-5 fill-white/20" />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-2xl font-bold font-display tracking-tight text-[#17131D]">
-                  Obiren<span className="text-[#6C4CF1]">.</span>
-                </span>
-                <span className="text-[10px] uppercase font-semibold tracking-widest text-[#6E6875] -mt-1 hidden sm:block">
-                  Health & Safety
-                </span>
-              </div>
+              <BrandLogo pfp height={44} className="group-hover:scale-105 transition-transform" />
             </button>
 
             {/* Desktop Navigation Links */}

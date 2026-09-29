@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import BrandLogo from "./BrandLogo";
 import {
   Heart,
   LayoutDashboard,
@@ -67,11 +68,8 @@ export default function AppShell({
             onClick={() => onTabChange("dashboard")}
             className="flex items-center gap-3 text-left w-full group"
           >
-            <div className="w-10 h-10 rounded-2xl bg-[#6C4CF1] flex items-center justify-center text-white shadow-md shadow-[#6C4CF1]/20 group-hover:scale-105 transition-transform">
-              <Heart className="w-5 h-5 fill-white/20" />
-            </div>
+            <BrandLogo pfp height={40} className="group-hover:scale-105 transition-transform" />
             <div>
-              <span className="text-xl font-bold font-display text-[#17131D]">Obiren</span>
               <span className="block text-[10px] uppercase font-bold tracking-widest text-[#6E6875]">
                 {userProfile?.countryCode || "NG"} Market
               </span>
@@ -152,9 +150,7 @@ export default function AppShell({
               onClick={() => onTabChange("dashboard")}
               className="flex items-center gap-2 text-left min-w-0"
             >
-              <div className="w-8 h-8 rounded-xl bg-[#6C4CF1] flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm">
-                <Heart className="w-4 h-4 fill-white/20" />
-              </div>
+              <BrandLogo mark height={34} variant="violet" className="shrink-0" />
               <div className="min-w-0">
                 <h1 className="text-xs sm:text-lg font-bold font-display text-[#17131D] capitalize truncate">
                   {activeTab} Overview

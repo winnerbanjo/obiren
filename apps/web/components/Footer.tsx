@@ -1,6 +1,7 @@
 "use client";
 
 import { Heart } from "lucide-react";
+import BrandLogo from "./BrandLogo";
 
 interface FooterProps {
   onOpenWaitlist?: () => void;
@@ -16,12 +17,7 @@ export default function Footer({ onOpenWaitlist }: FooterProps) {
           {/* Brand Col */}
           <div className="md:col-span-4 space-y-4">
             <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#6D4AFF] to-[#9B6BFF] flex items-center justify-center text-white shadow-md">
-                <Heart className="w-5 h-5 fill-white/20" />
-              </div>
-              <span className="text-2xl font-bold font-display tracking-tight text-white">
-                Obiren<span className="text-[#9B6BFF]">.</span>
-              </span>
+              <BrandLogo pfp height={44} />
             </div>
 
             <p className="text-xs text-white/70 leading-relaxed max-w-sm">

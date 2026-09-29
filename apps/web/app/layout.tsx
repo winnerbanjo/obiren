@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Inter } from "next/font/google";
+import { ThemeProvider, ThemeInitScript } from "@/components/theme/ThemeProvider";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -65,10 +66,14 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${jakarta.variable} ${inter.variable} scroll-smooth antialiased`}
+      className={`${jakarta.variable} ${inter.variable} light scroll-smooth antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-screen bg-white text-[#171717] font-sans selection:bg-[#E8DFFF] selection:text-[#6D4AFF]">
-        {children}
+      <head>
+        <ThemeInitScript />
+      </head>
+      <body className="min-h-screen bg-[var(--obiren-bg)] text-[var(--obiren-text)] font-sans selection:bg-[#E8DFFF] selection:text-[#6D4AFF]">
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

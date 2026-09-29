@@ -1,16 +1,37 @@
 @import "tailwindcss";
 
+@custom-variant light (html:not(.dark) &);
+
 @layer base {
-  :root {
-    --color-obiren-primary: #6D4AFF;
-    --color-obiren-accent: #9B6BFF;
-    --color-obiren-light: #F4F1FF;
-    --color-obiren-lilac: #E8DFFF;
-    --color-obiren-dark: #2B2142;
-    --color-obiren-darker: #1C152B;
-    --color-obiren-text-primary: #171717;
-    --color-obiren-text-secondary: #666666;
-    --color-obiren-success: #38B26C;
+  :root,
+  .dark {
+    /* Brand palette (identical in both themes) */
+    --color-obiren-primary: #6d4aff;
+    --color-obiren-accent: #9b6bff;
+    --color-obiren-light: #f4f1ff;
+    --color-obiren-lilac: #e8dfff;
+    --color-obiren-dark: #2b2142;
+    --color-obiren-darker: #1c152b;
+    --color-obiren-success: #38b26c;
+
+    /* Semantic theme tokens — dark is the default theme */
+    --obiren-bg: #0e0a16;
+    --obiren-surface: #1c152b;
+    --obiren-surface-2: #2b2142;
+    --obiren-border: rgba(255, 255, 255, 0.1);
+    --obiren-text: #f5f3fa;
+    --obiren-text-muted: rgba(245, 243, 250, 0.55);
+    --obiren-text-faint: rgba(245, 243, 250, 0.35);
+  }
+
+  html.light {
+    --obiren-bg: #faf9fe;
+    --obiren-surface: #ffffff;
+    --obiren-surface-2: #f4f1ff;
+    --obiren-border: rgba(28, 21, 43, 0.12);
+    --obiren-text: #1c152b;
+    --obiren-text-muted: rgba(28, 21, 43, 0.62);
+    --obiren-text-faint: rgba(28, 21, 43, 0.42);
   }
 
   html {
@@ -19,11 +40,18 @@
   }
 
   body {
-    background-color: #FFFFFF;
-    color: #171717;
+    background-color: var(--obiren-bg);
+    color: var(--obiren-text);
     overflow-x: hidden;
     selection-background-color: #E8DFFF;
     selection-color: #6D4AFF;
+  }
+
+  /* Smooth theme transition */
+  body,
+  body::before,
+  body::after {
+    transition: background-color 0.35s ease, color 0.35s ease;
   }
 }
 
@@ -119,4 +147,13 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: #6D4AFF;
+}
+
+/* Respect reduced motion for the theme transition */
+@media (prefers-reduced-motion: reduce) {
+  body,
+  body::before,
+  body::after {
+    transition: none;
+  }
 }

@@ -1,6 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
-import cookieParser from 'cookie-parser';
+import * as cookieParser from 'cookie-parser';
 import { env } from '../config/env.validation';
 
 /**
