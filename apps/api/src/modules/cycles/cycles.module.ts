@@ -3,7 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { CyclesController, DailyLogsController } from './cycles.controller';
 import { CyclesService } from './cycles.service';
 import { Cycle, CycleSchema, DailyLog, DailyLogSchema } from '../../database/schemas/cycle.schema';
-import { AuthModule } from '../auth/auth.module';
+import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
 
 @Module({
   imports: [
@@ -11,7 +11,7 @@ import { AuthModule } from '../auth/auth.module';
       { name: Cycle.name, schema: CycleSchema },
       { name: DailyLog.name, schema: DailyLogSchema },
     ]),
-    AuthModule,
+    JwtAuthModule,
   ],
   controllers: [CyclesController, DailyLogsController],
   providers: [CyclesService],

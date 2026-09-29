@@ -32,6 +32,7 @@
     "class-validator": "^0.14.1",
     "cloudinary": "^2.5.1",
     "clsx": "^2.1.1",
+    "cookie-parser": "^1.4.7",
     "express": "^4.21.2",
     "helmet": "^8.0.0",
     "joi": "^17.13.3",
@@ -41,9 +42,11 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "ts-node": "^10.9.2",
-    "twilio": "^5.4.3"
+    "twilio": "^5.4.3",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@nestjs/testing": "^11.2.6",
     "@types/bcryptjs": "^2.4.6",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",

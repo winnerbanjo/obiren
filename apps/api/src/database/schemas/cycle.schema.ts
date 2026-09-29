@@ -5,7 +5,7 @@ export type CycleDocument = Cycle & Document;
 
 @Schema({ timestamps: true, collection: 'cycles' })
 export class Cycle {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   userId: Types.ObjectId;
 
   @Prop({ type: Date, required: true })

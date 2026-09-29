@@ -3,12 +3,12 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { PregnancyController } from './pregnancy.controller';
 import { PregnancyService } from './pregnancy.service';
 import { Pregnancy, PregnancySchema } from '../../database/schemas/pregnancy.schema';
-import { AuthModule } from '../auth/auth.module';
+import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Pregnancy.name, schema: PregnancySchema }]),
-    AuthModule,
+    JwtAuthModule,
   ],
   controllers: [PregnancyController],
   providers: [PregnancyService],

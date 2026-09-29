@@ -22,9 +22,10 @@ export class NotificationsController {
 
   @Get('internal/cron/process-notifications')
   async processNotificationOutbox(@Query('cronSecret') cronSecret: string, @Headers('x-cron-secret') headerSecret: string) {
-    const expected = process.env.CRON_SECRET || 'obiren_cron_security_bearer_token_32b';
+    // No fallback: without CRON_SECRET the endpoint is denied in EVERY env.
+    const expected = process.env.CRON_SECRET;
     const secret = cronSecret || headerSecret;
-    if (secret !== expected && process.env.NODE_ENV === 'production') {
+    if (!expected || !secret || secret !== expected) {
       return { success: false, error: 'Unauthorized CRON_SECRET token' };
     }
     return this.notificationsService.processNotificationOutbox();

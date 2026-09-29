@@ -58,7 +58,7 @@ export class NotificationOutbox {
   @Prop({ type: String })
   providerStatus?: string;
 
-  @Prop({ required: true, unique: true })
+  @Prop({ required: true })
   idempotencyKey: string;
 
   @Prop({ type: Date })

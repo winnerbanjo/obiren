@@ -1,40 +1,26 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { configureApp } from './common/bootstrap';
+import { env } from './config/env.validation';
 import { MongoExceptionFilter } from './common/filters/mongo-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Fails fast on invalid production configuration.
+  const config = env();
 
-  // Security Headers (PRD Audit Section 14)
-  app.use(helmet());
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
-  app.setGlobalPrefix('api/v1');
+  // Unified security/bootstrap configuration (helmet, CORS, pipes, prefix).
+  configureApp(app);
 
-  // PRD Requirement 6: Global Exception Filter for 409 Duplicate Resource Conflict mapping
+  // PRD Requirement 6: Global Exception Filter for 409 Duplicate Resource Conflict mapping.
   app.useGlobalFilters(new MongoExceptionFilter());
 
-  // PRD Section 9.4 Global DTO Validation Pipe
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: {
-        enableImplicitConversion: true,
-      },
-    }),
+  await app.listen(config.port);
+  // eslint-disable-next-line no-console
+  console.log(
+    `🚀 Obiren API [${config.nodeEnv}] running on http://localhost:${config.port}/api/v1 (CORS: ${config.corsOrigins.join(', ')})`,
   );
-
-  app.enableCors({
-    origin: '*',
-    credentials: true,
-  });
-
-  const port = process.env.PORT || 3000;
-  await app.listen(port);
-  console.log(`🚀 Obiren Production Monolith API running on http://localhost:${port}/api/v1`);
 }
 
 bootstrap();

@@ -5,7 +5,7 @@ export type DirectoryServiceDocument = DirectoryService & Document;
 
 @Schema({ timestamps: true, collection: 'directory_services' })
 export class DirectoryService {
-  @Prop({ required: true, unique: true })
+  @Prop({ required: true })
   record_id: string;
 
   @Prop({ required: true })

@@ -6,7 +6,7 @@ import { AuditLog, AuditLogSchema } from '../../database/schemas/audit-log.schem
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { Pregnancy, PregnancySchema } from '../../database/schemas/pregnancy.schema';
 import { DirectoryService, DirectoryServiceSchema } from '../../database/schemas/directory.schema';
-import { AuthModule } from '../auth/auth.module';
+import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
 
 @Module({
   imports: [
@@ -16,7 +16,7 @@ import { AuthModule } from '../auth/auth.module';
       { name: Pregnancy.name, schema: PregnancySchema },
       { name: DirectoryService.name, schema: DirectoryServiceSchema },
     ]),
-    AuthModule,
+    JwtAuthModule,
   ],
   controllers: [AdminController],
   providers: [AdminService],

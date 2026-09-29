@@ -5,7 +5,7 @@ export type PregnancyDocument = Pregnancy & Document;
 
 @Schema({ timestamps: true, collection: 'pregnancies' })
 export class Pregnancy {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   userId: Types.ObjectId;
 
   @Prop({

@@ -1,49 +1,79 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as crypto from 'crypto';
+import { env } from '../../config/env.validation';
 import { HealthVaultDoc, HealthVaultDocDocument, HealthVaultAccessLog, HealthVaultAccessLogDocument } from '../../database/schemas/health-vault.schema';
 
 @Injectable()
 export class HealthVaultService {
+  private readonly logger = new Logger(HealthVaultService.name);
+
   constructor(
     @InjectModel(HealthVaultDoc.name) private docModel: Model<HealthVaultDocDocument>,
     @InjectModel(HealthVaultAccessLog.name) private logModel: Model<HealthVaultAccessLogDocument>,
   ) {}
 
-  // Generate Cloudinary Server-Side Signature (PRD Audit 10: Secret never returned to client)
-  async generateUploadIntent(userId: string, dto: any) {
-    const timestamp = Math.floor(Date.now() / 1000);
-    const folder = 'obiren-health-vault-private';
-    const apiSecret = process.env.CLOUDINARY_API_SECRET || 'abcdefghijklmnopqrstuvwxyz012345';
+  private meta() {
+    return { requestId: `req_${Date.now()}` };
+  }
 
-    const paramsToSign = `folder=${folder}&timestamp=${timestamp}${apiSecret}`;
+  private cloudinaryConfigured(): boolean {
+    const c = env().cloudinary;
+    return Boolean(c.cloudName && c.apiKey && c.apiSecret);
+  }
+
+  /**
+   * Genuine Cloudinary upload signature (SHA-1 over alphabetically sorted
+   * params + api_secret). Only the signature, timestamp, folder and API key
+   * are returned to the client - NEVER the API secret.
+   */
+  async generateUploadIntent(userId: string, dto: any) {
+    if (!this.cloudinaryConfigured()) {
+      throw new ServiceUnavailableException(
+        'Health Vault storage is not configured. Ask the operator to set Cloudinary credentials.',
+      );
+    }
+
+    const { cloudName, apiKey, apiSecret } = env().cloudinary;
+    const timestamp = Math.floor(Date.now() / 1000);
+    const folder = `obiren-health-vault-private/${userId}`;
+    const publicId = `doc_${userId}_${timestamp}`;
+
+    // Cloudinary requires params sorted alphabetically, then api_secret appended.
+    const paramsToSign = `folder=${folder}&public_id=${publicId}&timestamp=${timestamp}${apiSecret}`;
     const signature = crypto.createHash('sha1').update(paramsToSign).digest('hex');
+
+    await this.logModel.create({
+      documentId: null,
+      accessedByUserId: new Types.ObjectId(userId),
+      action: 'GENERATE_UPLOAD_INTENT',
+      accessedAt: new Date(),
+    });
 
     return {
       success: true,
       data: {
-        uploadUrl: `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME || 'obiren-cloud'}/auto/upload`,
-        apiKey: process.env.CLOUDINARY_API_KEY || '123456789012345',
+        uploadUrl: `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`,
+        apiKey,
         signature,
         timestamp,
         folder,
+        publicId,
+        // The client must send exactly these params along with the file.
+        paramsToSign: { folder, public_id: publicId, timestamp },
       },
-      meta: { requestId: `req_${Date.now()}` },
+      meta: this.meta(),
     };
   }
 
   async getDocuments(userId: string) {
-    const docs = await this.docModel.find({
-      userId: new Types.ObjectId(userId),
-      status: { $ne: 'deleted' },
-    }).exec();
+    const docs = await this.docModel
+      .find({ userId: new Types.ObjectId(userId), status: { $ne: 'deleted' } })
+      .sort({ createdAt: -1 })
+      .exec();
 
-    return {
-      success: true,
-      data: docs,
-      meta: { requestId: `req_${Date.now()}` },
-    };
+    return { success: true, data: docs, meta: this.meta() };
   }
 
   async saveDocument(userId: string, dto: any) {
@@ -51,44 +81,62 @@ export class HealthVaultService {
       userId: new Types.ObjectId(userId),
       title: dto.title,
       documentType: dto.documentType || 'medical_note',
-      cloudinaryPublicId: dto.cloudinaryPublicId || `doc_${Date.now()}`,
+      cloudinaryPublicId: dto.cloudinaryPublicId,
+      dateOfRecord: dto.dateOfRecord ? new Date(dto.dateOfRecord) : undefined,
+      healthcareProviderName: dto.healthcareProviderName,
+      tags: dto.tags || [],
       accessLevel: dto.accessLevel || 'private',
       status: 'active',
     });
 
-    return {
-      success: true,
-      data: doc,
-      meta: { requestId: `req_${Date.now()}` },
-    };
+    return { success: true, data: doc, meta: this.meta() };
   }
 
-  // PRD Section 25.5 & Audit 10 Requirement: Short-lived signed download URLs & access control logging
+  /**
+   * Short-lived signed download URL using Cloudinary's authenticated
+   * delivery. The token is a real SHA-256 signature over
+   * <public_id>-<timestamp> with the API secret, expiring in 5 minutes.
+   */
   async getSignedDownloadUrl(userId: string, documentId: string) {
-    const userObjectId = new Types.ObjectId(userId);
-    const docObjectId = new Types.ObjectId(documentId);
+    const { cloudName, apiKey, apiSecret } = env().cloudinary;
 
-    const doc = await this.docModel.findById(docObjectId);
+    const doc = await this.docModel.findById(documentId);
     if (!doc || doc.status === 'deleted') {
       throw new NotFoundException('Document not found');
     }
 
-    // Access check: User must be owner (or authorized role)
-    if (doc.userId.toString() !== userId) {
-      throw new ForbiddenException('Access denied: You do not have permission to view this private Health Vault document.');
+    // Ownership check FIRST - unauthorized users must always get 403 and
+    // must never learn whether storage is configured.
+    if ((doc.userId as Types.ObjectId).toString() !== userId) {
+      await this.logModel.create({
+        documentId: doc._id,
+        accessedByUserId: new Types.ObjectId(userId),
+        action: 'DOWNLOAD_DENIED_NOT_OWNER',
+        accessedAt: new Date(),
+      });
+      throw new ForbiddenException('Access denied: You do not have permission to view this document.');
     }
 
-    // Audit log entry for non-owner or owner access
+    if (!this.cloudinaryConfigured()) {
+      throw new ServiceUnavailableException(
+        'Health Vault storage is not configured. Ask the operator to set Cloudinary credentials.',
+      );
+    }
+
+    const expiresAt = Math.floor(Date.now() / 1000) + 300; // 5 minutes
+    const signature = crypto
+      .createHash('sha256')
+      .update(`${doc.cloudinaryPublicId}-${expiresAt}${apiSecret}`)
+      .digest('hex');
+
+    const signedDownloadUrl = `https://res.cloudinary.com/${cloudName}/image/authenticated/s--${signature.slice(0, 16)}--/v${expiresAt}/${doc.cloudinaryPublicId}.pdf?sign=${signature}&expires=${expiresAt}&api_key=${apiKey}`;
+
     await this.logModel.create({
       documentId: doc._id,
-      accessedByUserId: userObjectId,
+      accessedByUserId: new Types.ObjectId(userId),
       action: 'GENERATE_SIGNED_DOWNLOAD_URL',
       accessedAt: new Date(),
     });
-
-    const timestamp = Math.floor(Date.now() / 1000) + 300; // 5 min expiry
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME || 'obiren-cloud';
-    const signedDownloadUrl = `https://res.cloudinary.com/${cloudName}/image/authenticated/s--temp--/v${timestamp}/${doc.cloudinaryPublicId}.pdf`;
 
     return {
       success: true,
@@ -97,7 +145,30 @@ export class HealthVaultService {
         signedDownloadUrl,
         expiresInSeconds: 300,
       },
-      meta: { requestId: `req_${Date.now()}` },
+      meta: this.meta(),
     };
+  }
+
+  async deleteDocument(userId: string, documentId: string) {
+    const doc = await this.docModel.findById(documentId);
+    if (!doc || doc.status === 'deleted') {
+      throw new NotFoundException('Document not found');
+    }
+    if ((doc.userId as Types.ObjectId).toString() !== userId) {
+      throw new ForbiddenException('Access denied: You do not have permission to modify this document.');
+    }
+
+    doc.status = 'deleted';
+    doc.deletedAt = new Date();
+    await doc.save();
+
+    await this.logModel.create({
+      documentId: doc._id,
+      accessedByUserId: new Types.ObjectId(userId),
+      action: 'DELETE_DOCUMENT',
+      accessedAt: new Date(),
+    });
+
+    return { success: true, data: { documentId: doc._id.toString(), status: 'deleted' }, meta: this.meta() };
   }
 }

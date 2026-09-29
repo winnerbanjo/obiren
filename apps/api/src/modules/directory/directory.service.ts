@@ -31,30 +31,48 @@ export class DirectoryServiceBackend implements OnModuleInit {
     }
   }
 
-  async search(params: any) {
+  async search(params: {
+    q?: string;
+    countryCode?: string;
+    category?: string;
+    page?: number;
+    limit?: number;
+  }) {
     const q = (params.q || '').trim();
     const countryCode = params.countryCode;
+    const page = params.page || 1;
+    const limit = params.limit || 20;
 
     const filter: any = {};
     if (countryCode && countryCode !== 'ALL') {
       filter.countryCode = countryCode;
     }
+    if (params.category) {
+      filter.top_category = { $regex: params.category.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'), $options: 'i' };
+    }
 
     if (q) {
+      const escaped = q.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
       filter.$or = [
-        { organisation_name: { $regex: q, $options: 'i' } },
-        { top_category: { $regex: q, $options: 'i' } },
-        { service_summary: { $regex: q, $options: 'i' } },
+        { organisation_name: { $regex: escaped, $options: 'i' } },
+        { top_category: { $regex: escaped, $options: 'i' } },
+        { service_summary: { $regex: escaped, $options: 'i' } },
       ];
     }
 
-    const results = await this.directoryModel.find(filter).exec();
+    const [results, total] = await Promise.all([
+      this.directoryModel.find(filter).skip((page - 1) * limit).limit(limit).exec(),
+      this.directoryModel.countDocuments(filter),
+    ]);
 
     return {
       success: true,
       data: results,
       meta: {
-        total: results.length,
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
         requestId: `req_${Date.now()}`,
       },
     };
@@ -69,7 +87,7 @@ export class DirectoryServiceBackend implements OnModuleInit {
     };
   }
 
-  async getNearby(lng?: number, lat?: number, maxDistanceMeters = 50000) {
+  async getNearby(lng?: number, lat?: number, maxDistanceMeters = 50000, limit = 20) {
     if (!lng || !lat) {
       const fallback = await this.directoryModel.find().limit(10).exec();
       return {
@@ -89,6 +107,7 @@ export class DirectoryServiceBackend implements OnModuleInit {
           },
         },
       })
+      .limit(limit)
       .exec();
 
     return {

@@ -8,7 +8,7 @@ export class User {
   @Prop({ required: true, trim: true }) // Display email form
   email: string;
 
-  @Prop({ required: true, unique: true, lowercase: true, trim: true }) // Single canonical unique index
+  @Prop({ required: true, lowercase: true, trim: true }) // Single canonical unique index
   emailNormalized: string;
 
   @Prop({ required: false })
@@ -36,8 +36,23 @@ export class User {
   @Prop({ type: Date })
   emailVerifiedAt?: Date;
 
+  @Prop({ type: String })
+  emailVerificationTokenHash?: string;
+
+  @Prop({ type: Date })
+  emailVerificationExpiresAt?: Date;
+
+  @Prop({ type: String })
+  passwordResetTokenHash?: string;
+
+  @Prop({ type: Date })
+  passwordResetExpiresAt?: Date;
+
   @Prop({ type: Date })
   lastLoginAt?: Date;
+
+  @Prop({ type: Boolean, default: false })
+  hasSafetyPin?: boolean;
 
   @Prop({ type: Date })
   deletionRequestedAt?: Date;
@@ -57,7 +72,7 @@ export type UserProfileDocument = UserProfile & Document;
 
 @Schema({ timestamps: true, collection: 'user_profiles' })
 export class UserProfile {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, unique: true })
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   userId: Types.ObjectId;
 
   @Prop({ type: String })

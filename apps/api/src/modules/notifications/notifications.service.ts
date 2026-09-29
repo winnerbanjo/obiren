@@ -12,15 +12,16 @@ export class NotificationsService {
   ) {}
 
   // PRD Section 22.3 Requirement: Twilio Webhook X-Twilio-Signature validation
+  // No auth-token fallback: without TWILIO_AUTH_TOKEN every webhook is rejected.
   verifyTwilioSignature(signature: string, url: string, params: any): boolean {
-    const authToken = process.env.TWILIO_AUTH_TOKEN || '00000000000000000000000000000000';
-    if (!signature) return false;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    if (!authToken || !signature) return false;
     return twilio.validateRequest(authToken, signature, url, params);
   }
 
   async handleTwilioInbound(payload: any, signature: string, reqUrl: string) {
     const isValid = this.verifyTwilioSignature(signature, reqUrl, payload);
-    if (!isValid && process.env.NODE_ENV === 'production') {
+    if (!isValid) {
       throw new ForbiddenException('Invalid Twilio Request Signature (X-Twilio-Signature validation failed).');
     }
 

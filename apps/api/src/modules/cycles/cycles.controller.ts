@@ -1,6 +1,13 @@
-import { Controller, Get, Post, Put, Body, Param, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { CyclesService } from './cycles.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
+  StartPeriodSchema,
+  EndPeriodSchema,
+  DailyLogUpsertSchema,
+  DailyLogDateParam,
+} from '../../common/validation/api-schemas';
 
 @UseGuards(JwtAuthGuard)
 @Controller('cycles')
@@ -18,12 +25,12 @@ export class CyclesController {
   }
 
   @Post('start-period')
-  async startPeriod(@Req() req: any, @Body() body: any) {
+  async startPeriod(@Req() req: any, @Body(new ZodValidationPipe(StartPeriodSchema)) body) {
     return this.cyclesService.startPeriod(req.user.sub, body.date);
   }
 
   @Post('end-period')
-  async endPeriod(@Req() req: any, @Body() body: any) {
+  async endPeriod(@Req() req: any, @Body(new ZodValidationPipe(EndPeriodSchema)) body) {
     return this.cyclesService.endPeriod(req.user.sub, body.date);
   }
 }
@@ -34,12 +41,19 @@ export class DailyLogsController {
   constructor(private readonly cyclesService: CyclesService) {}
 
   @Get(':date')
-  async getDailyLog(@Req() req: any, @Param('date') date: string) {
+  async getDailyLog(
+    @Req() req: any,
+    @Param('date', new ZodValidationPipe(DailyLogDateParam)) date: string,
+  ) {
     return this.cyclesService.getDailyLog(req.user.sub, date);
   }
 
   @Put(':date')
-  async upsertDailyLog(@Req() req: any, @Param('date') date: string, @Body() body: any) {
+  async upsertDailyLog(
+    @Req() req: any,
+    @Param('date', new ZodValidationPipe(DailyLogDateParam)) date: string,
+    @Body(new ZodValidationPipe(DailyLogUpsertSchema)) body,
+  ) {
     return this.cyclesService.upsertDailyLog(req.user.sub, date, body);
   }
 }

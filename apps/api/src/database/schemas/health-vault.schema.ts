@@ -18,7 +18,7 @@ export class HealthVaultDoc {
   })
   documentType: string;
 
-  @Prop({ required: true, unique: true })
+  @Prop({ required: true })
   cloudinaryPublicId: string;
 
   @Prop({ type: Date })
@@ -38,6 +38,9 @@ export class HealthVaultDoc {
 
   @Prop({ type: String, enum: ['active', 'archived', 'deleted'], default: 'active' })
   status: string;
+
+  @Prop({ type: Date })
+  deletedAt?: Date;
 }
 
 export const HealthVaultDocSchema = SchemaFactory.createForClass(HealthVaultDoc);

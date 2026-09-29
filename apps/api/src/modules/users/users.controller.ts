@@ -1,6 +1,8 @@
-import { Controller, Get, Patch, Post, Body, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { UpdateProfileSchema } from '../../common/validation/api-schemas';
 
 @UseGuards(JwtAuthGuard)
 @Controller('users')
@@ -13,7 +15,7 @@ export class UsersController {
   }
 
   @Patch('me')
-  async updateProfile(@Req() req: any, @Body() body: any) {
+  async updateProfile(@Req() req: any, @Body(new ZodValidationPipe(UpdateProfileSchema)) body) {
     return this.usersService.updateProfile(req.user.sub, body);
   }
 

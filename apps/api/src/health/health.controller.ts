@@ -3,15 +3,14 @@ import { Controller, Get } from '@nestjs/common';
 @Controller('health')
 export class HealthController {
   @Get()
-  checkHealth() {
+  health() {
     return {
-      status: 'ok',
-      service: 'Obiren Production Monolith API',
-      version: '1.0.0',
-      timestamp: new Date().toISOString(),
-      database: {
-        status: 'connected',
-        cluster: 'MongoDB Atlas',
+      success: true,
+      data: {
+        status: 'ok',
+        service: 'obiren-api',
+        version: '1.0.0',
+        timestamp: new Date().toISOString(),
       },
     };
   }

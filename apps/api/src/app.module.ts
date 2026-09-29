@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { env } from './config/env.validation';
 
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -12,6 +13,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { SafetyModule } from './modules/safety/safety.module';
 import { HealthVaultModule } from './modules/health-vault/health-vault.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { WaitlistModule } from './modules/waitlist/waitlist.module';
 import { HealthModule } from './health/health.module';
 
 @Module({
@@ -20,14 +22,13 @@ import { HealthModule } from './health/health.module';
     // Rate Limiting Protection (PRD Section 10.6)
     ThrottlerModule.forRoot([{
       ttl: 60000, // 1 minute
-      limit: 30, // 30 requests per minute
+      limit: 30, // 30 requests per minute per IP
     }]),
-    // PRD Section 6.4 Mongoose Connection Configuration for Serverless Vercel Functions
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        uri: config.get<string>('MONGODB_URI') || 'mongodb://localhost:27017/obiren_development',
+      useFactory: () => ({
+        uri: env().mongoUri,
         maxPoolSize: 20,
         minPoolSize: 0,
         serverSelectionTimeoutMS: 5000,
@@ -44,6 +45,7 @@ import { HealthModule } from './health/health.module';
     SafetyModule,
     HealthVaultModule,
     AdminModule,
+    WaitlistModule,
     HealthModule,
   ],
 })
