@@ -5,23 +5,20 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
   Lock,
-  Mail,
   Eye,
   EyeOff,
   ArrowRight,
-  ShieldCheck,
   CheckCircle2,
   AlertCircle,
-  KeyRound,
-  Heart,
   Zap,
 } from "lucide-react";
 import { LoginSchema } from "@obiren/validation";
+import { authApi, ApiError, AuthUser } from "@obiren/api-client";
 
 interface SignInModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (userProfile: any) => void;
+  onSuccess: (auth: AuthUser) => void;
   onSwitchToSignUp: () => void;
 }
 
@@ -31,49 +28,25 @@ export default function SignInModal({
   onSuccess,
   onSwitchToSignUp,
 }: SignInModalProps) {
-  const [authMode, setAuthMode] = useState<"password" | "magic" | "forgot">("password");
+  const [authMode, setAuthMode] = useState<"password" | "forgot">("password");
 
   // Form States
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
 
   // Status & Error
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [magicSent, setMagicSent] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState("");
+  const [resendSent, setResendSent] = useState(false);
 
   if (!isOpen) return null;
 
-  // 1-Click Demo Login for Ella
-  const handleQuickDemoElla = () => {
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      onSuccess({
-        firstName: "Ella",
-        lastName: "Vance",
-        email: "ella@obiren.com",
-        countryCode: "NG",
-        cycleLengthDays: 28,
-        isPregnant: true,
-        pregnancyWeek: 22,
-        dueDate: "2026-12-01",
-      });
-      onClose();
-    }, 600);
-  };
-
-  const handlePasswordSignIn = (e: React.FormEvent) => {
+  const handlePasswordSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
-
-    if (email === "ella@obiren.com" && password === "Ella2026!") {
-      handleQuickDemoElla();
-      return;
-    }
 
     const valResult = LoginSchema.safeParse({ email, password });
     if (!valResult.success) {
@@ -82,36 +55,27 @@ export default function SignInModal({
     }
 
     setLoading(true);
-
-    // Simulate authenticating user profile
-    setTimeout(() => {
-      setLoading(false);
-      onSuccess({
-        firstName: email.split("@")[0] ? email.split("@")[0].charAt(0).toUpperCase() + email.split("@")[0].slice(1) : "Ella",
-        lastName: "Vance",
-        email: email,
-        countryCode: "NG",
-        cycleLengthDays: 28,
-      });
+    try {
+      const result = await authApi.login(email, password);
+      if (!result.user.emailVerified) {
+        setUnverifiedEmail(result.user.email);
+        setErrorMsg("Please verify your email address before signing in. Check your inbox for the verification link.");
+        return;
+      }
+      onSuccess(result.user);
       onClose();
-    }, 800);
-  };
-
-  const handleMagicLink = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email) {
-      setErrorMsg("Please enter your email address to receive a sign-in link.");
-      return;
-    }
-
-    setLoading(true);
-    setTimeout(() => {
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setErrorMsg(err.message || "Invalid email or password.");
+      } else {
+        setErrorMsg("Unable to sign in right now. Please try again.");
+      }
+    } finally {
       setLoading(false);
-      setMagicSent(true);
-    }, 800);
+    }
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) {
       setErrorMsg("Please enter your registered email address.");
@@ -119,10 +83,28 @@ export default function SignInModal({
     }
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await authApi.forgotPassword(email);
       setForgotSent(true);
-    }, 800);
+    } catch {
+      // Generic response either way - do not reveal account existence.
+      setForgotSent(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!unverifiedEmail) return;
+    setLoading(true);
+    try {
+      await authApi.resendVerification(unverifiedEmail);
+      setResendSent(true);
+    } catch {
+      setResendSent(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -150,34 +132,31 @@ export default function SignInModal({
 
             <div>
               <h3 className="text-2xl font-bold font-display text-[#171717]">Sign In to Obiren</h3>
-              <p className="text-xs text-[#666666]">Access your private 256-bit encrypted health space.</p>
+              <p className="text-xs text-[#666666]">Access your private, encrypted health space.</p>
             </div>
           </div>
 
-          {/* Prominent 1-Click Demo Account Card for Ella */}
-          <div className="p-4 bg-gradient-to-br from-[#21182F] via-[#2F2148] to-[#21182F] text-white rounded-2xl shadow-md mb-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-white/10 px-2.5 py-0.5 rounded-full border border-white/15 text-[#E8E0FF]">
-                Instant Demo Account
-              </span>
-              <span className="text-[10px] font-bold text-emerald-400">🇳🇬 NG Market</span>
+          {/* Error / verification banner */}
+          {errorMsg && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl mb-4 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div className="space-y-2">
+                <span>{errorMsg}</span>
+                {unverifiedEmail && !resendSent && (
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    className="block underline font-bold"
+                  >
+                    Resend verification email
+                  </button>
+                )}
+                {unverifiedEmail && resendSent && (
+                  <span className="block text-emerald-700">Verification email sent. Please check your inbox.</span>
+                )}
+              </div>
             </div>
-
-            <div>
-              <p className="text-sm font-bold text-white">Ella Vance (Week 22 Pregnant)</p>
-              <p className="text-xs text-white/70">Email: <strong className="text-white">ella@obiren.com</strong> | Password: <strong className="text-white">Ella2026!</strong></p>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleQuickDemoElla}
-              disabled={loading}
-              className="w-full py-2.5 bg-[#6C4CF1] hover:bg-[#5B3DE0] text-white text-xs font-bold rounded-full transition-all flex items-center justify-center gap-1.5 shadow-sm"
-            >
-              <Zap className="w-3.5 h-3.5 fill-white/20" />
-              <span>Sign In As Ella (1-Click Preset)</span>
-            </button>
-          </div>
+          )}
 
           {/* Mode Switcher Tabs */}
           <div className="flex gap-2 p-1 bg-[#F4F1FF] rounded-xl text-xs font-bold mb-6">
@@ -188,20 +167,12 @@ export default function SignInModal({
               Password Login
             </button>
             <button
-              onClick={() => { setAuthMode("magic"); setErrorMsg(""); }}
-              className={`flex-1 py-2 rounded-lg transition-all ${authMode === "magic" ? "bg-[#6C4CF1] text-white" : "text-[#666666]"}`}
+              onClick={() => { setAuthMode("forgot"); setErrorMsg(""); }}
+              className={`flex-1 py-2 rounded-lg transition-all ${authMode === "forgot" ? "bg-[#6C4CF1] text-white" : "text-[#666666]"}`}
             >
-              Magic Link
+              Forgot Password
             </button>
           </div>
-
-          {/* Error Alert Banner */}
-          {errorMsg && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl mb-4 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
 
           {/* 1. PASSWORD SIGN IN FORM */}
           {authMode === "password" && (
@@ -211,24 +182,16 @@ export default function SignInModal({
                 <input
                   type="email"
                   required
-                  placeholder="ella@obiren.com"
+                  placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
                   className="w-full px-4 py-3 bg-[#F4F1FF]/60 border border-[#E8DFFF] focus:border-[#6C4CF1] focus:bg-white rounded-xl text-sm outline-none transition-all"
                 />
               </div>
 
               <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[#666666]">Password</label>
-                  <button
-                    type="button"
-                    onClick={() => { setAuthMode("forgot"); setErrorMsg(""); }}
-                    className="text-xs font-bold text-[#6C4CF1] hover:underline"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#666666] mb-1">Password</label>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
@@ -236,6 +199,7 @@ export default function SignInModal({
                     placeholder="Enter password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
                     className="w-full pl-4 pr-11 py-3 bg-[#F4F1FF]/60 border border-[#E8DFFF] focus:border-[#6C4CF1] focus:bg-white rounded-xl text-sm outline-none transition-all"
                   />
                   <button
@@ -246,18 +210,6 @@ export default function SignInModal({
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-1">
-                <label className="flex items-center gap-2 cursor-pointer text-xs text-[#666666] font-semibold">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="accent-[#6C4CF1] w-4 h-4"
-                  />
-                  <span>Remember this device</span>
-                </label>
               </div>
 
               <button
@@ -277,50 +229,7 @@ export default function SignInModal({
             </form>
           )}
 
-          {/* 2. MAGIC LINK FORM */}
-          {authMode === "magic" && (
-            <div className="space-y-4">
-              {!magicSent ? (
-                <form onSubmit={handleMagicLink} className="space-y-4">
-                  <p className="text-xs text-[#666666] leading-relaxed">
-                    Enter your email to receive a 1-click passwordless sign in link.
-                  </p>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-[#666666] mb-1">Email Address</label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="ella@obiren.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full px-4 py-3 bg-[#F4F1FF]/60 border border-[#E8DFFF] focus:border-[#6C4CF1] rounded-xl text-sm outline-none"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-3.5 bg-[#6C4CF1] hover:bg-[#5B3DE0] text-white font-bold text-xs rounded-full shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {loading ? (
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <span>Send Magic Sign-In Link</span>
-                    )}
-                  </button>
-                </form>
-              ) : (
-                <div className="text-center py-6 space-y-3 bg-[#F4F1FF] rounded-2xl border border-[#E8DFFF] p-4">
-                  <CheckCircle2 className="w-10 h-10 text-[#238A5A] mx-auto" />
-                  <p className="text-sm font-bold text-[#171717]">Check your inbox!</p>
-                  <p className="text-xs text-[#666666]">
-                    We emailed a magic sign-in link to <strong>{email}</strong>. Click the link to log in instantly.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 3. FORGOT PASSWORD FORM */}
+          {/* 2. FORGOT PASSWORD FORM */}
           {authMode === "forgot" && (
             <div className="space-y-4">
               {!forgotSent ? (
@@ -333,9 +242,10 @@ export default function SignInModal({
                     <input
                       type="email"
                       required
-                      placeholder="ella@obiren.com"
+                      placeholder="you@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      autoComplete="email"
                       className="w-full px-4 py-3 bg-[#F4F1FF]/60 border border-[#E8DFFF] focus:border-[#6C4CF1] rounded-xl text-sm outline-none"
                     />
                   </div>
@@ -373,7 +283,7 @@ export default function SignInModal({
               }}
               className="font-bold text-[#6C4CF1] hover:underline"
             >
-              Sign Up Now (7-Step Onboarding)
+              Sign Up Now
             </button>
           </div>
 

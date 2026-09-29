@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
 import SocialProof from "@/components/SocialProof";
@@ -25,70 +25,118 @@ import HealthVaultView from "@/components/HealthVaultView";
 import ProfessionalsView from "@/components/ProfessionalsView";
 import SettingsView from "@/components/SettingsView";
 import DailyLogModal from "@/components/DailyLogModal";
+import { authApi, usersApi, pregnancyApi, ApiError, setAccessToken, AuthUser } from "@obiren/api-client";
+
+/**
+ * Session model: the access token lives in memory only; the refresh token
+ * is an HTTP-only cookie managed by the API. On boot we silently restore
+ * the session from the cookie - localStorage is never the authority.
+ */
+export interface ObirenSession {
+  auth: AuthUser;
+  firstName: string;
+  lastName: string;
+  displayName: string;
+  countryCode: string;
+  trackingGoal: string;
+  onboardingStatus: string;
+  pregnancy: { id: string; currentWeek?: number; estimatedDueDate: string } | null;
+}
 
 export default function Home() {
-  const [userProfile, setUserProfile] = useState<any | null>(null);
+  const [session, setSession] = useState<ObirenSession | null>(null);
+  const [restoring, setRestoring] = useState(true);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isDailyLogOpen, setIsDailyLogOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
 
   // Modal Controls
   const [isWaitlistOpen, setIsWaitlistOpen] = useState(false);
   const [isSignInOpen, setIsSignInOpen] = useState(false);
   const [isSignUpOpen, setIsSignUpOpen] = useState(false);
 
-  // Load active session from localStorage on mount so page refreshes never drop session
-  useEffect(() => {
-    setMounted(true);
+  const loadSession = useCallback(async (auth: AuthUser) => {
+    let profile: Awaited<ReturnType<typeof usersApi.getProfile>> | null = null;
+    let pregnancy: Awaited<ReturnType<typeof pregnancyApi.getCurrent>> = null;
     try {
-      const savedProfile = localStorage.getItem("obiren_user_profile");
-      if (savedProfile) {
-        setUserProfile(JSON.parse(savedProfile));
-      }
-    } catch (e) {
-      console.error("Failed to parse stored profile", e);
+      profile = await usersApi.getProfile();
+    } catch {
+      // Profile is optional at first login; dashboard handles empty fields.
     }
+    try {
+      pregnancy = await pregnancyApi.getCurrent();
+    } catch {
+      pregnancy = null;
+    }
+    setSession({
+      auth,
+      firstName: profile?.firstName || auth.profile?.firstName || "",
+      lastName: profile?.lastName || auth.profile?.lastName || "",
+      displayName: profile?.displayName || auth.profile?.displayName || auth.email.split("@")[0],
+      countryCode: auth.countryCode,
+      trackingGoal: profile?.trackingGoal || auth.profile?.trackingGoal || "CYCLE_TRACKING",
+      onboardingStatus: profile?.onboardingStatus || auth.profile?.onboardingStatus || "COMPLETED",
+      pregnancy:
+        pregnancy && pregnancy.id
+          ? { id: pregnancy.id, currentWeek: pregnancy.currentWeek, estimatedDueDate: pregnancy.estimatedDueDate }
+          : null,
+    });
   }, []);
 
-  const handleOnboardingComplete = (profile: any) => {
-    setUserProfile(profile);
-    try {
-      localStorage.setItem("obiren_user_profile", JSON.stringify(profile));
-    } catch (e) {}
+  // Restore session from the HTTP-only refresh cookie on boot.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const auth = await authApi.restore();
+        if (auth && !cancelled) await loadSession(auth);
+      } catch {
+        // No valid session - stay on the public landing page.
+      } finally {
+        if (!cancelled) setRestoring(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      setAccessToken(null);
+    };
+  }, [loadSession]);
+
+  const handleOnboardingComplete = async (auth: AuthUser) => {
     setIsSignUpOpen(false);
+    await loadSession(auth);
     setActiveTab("dashboard");
   };
 
-  const handleSignInSuccess = (profile: any) => {
-    setUserProfile(profile);
-    try {
-      localStorage.setItem("obiren_user_profile", JSON.stringify(profile));
-    } catch (e) {}
+  const handleSignInSuccess = async (auth: AuthUser) => {
     setIsSignInOpen(false);
+    await loadSession(auth);
     setActiveTab("dashboard");
   };
 
-  const handleLogout = () => {
-    setUserProfile(null);
+  const handleLogout = async () => {
     try {
-      localStorage.removeItem("obiren_user_profile");
-    } catch (e) {}
+      await authApi.logout();
+    } catch {
+      // Logging out locally regardless.
+    }
+    setAccessToken(null);
+    setSession(null);
+    setIsDailyLogOpen(false);
   };
 
-  if (!mounted) return null;
-
-  // If user is authenticated, render the Application Shell
-  if (userProfile) {
+  // The landing page markup is identical on server and client (no
+  // hydration mismatch); the authenticated shell swaps in after restore.
+  if (session) {
     return (
       <AppShell
-        userProfile={userProfile}
+        userProfile={session}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onLogout={handleLogout}
       >
         {activeTab === "dashboard" && (
           <DashboardView
-            userProfile={userProfile}
+            userProfile={session}
             onNavigate={setActiveTab}
             onOpenDailyLog={() => setIsDailyLogOpen(true)}
           />
@@ -96,48 +144,38 @@ export default function Home() {
 
         {activeTab === "cycle" && (
           <PeriodTrackerView
-            userProfile={userProfile}
+            userProfile={session}
             onOpenDailyLog={() => setIsDailyLogOpen(true)}
           />
         )}
 
         {activeTab === "pregnancy" && (
-          <PregnancyView userProfile={userProfile} />
+          <PregnancyView userProfile={session} onSessionRefresh={() => loadSession(session.auth)} />
         )}
 
-        {activeTab === "learn" && (
-          <KnowledgeCentreView userProfile={userProfile} />
-        )}
+        {activeTab === "learn" && <KnowledgeCentreView userProfile={session} />}
 
-        {activeTab === "safety" && (
-          <SafetyCentreView userProfile={userProfile} />
-        )}
+        {activeTab === "safety" && <SafetyCentreView userProfile={session} />}
 
-        {activeTab === "professionals" && (
-          <ProfessionalsView userProfile={userProfile} />
-        )}
+        {activeTab === "professionals" && <ProfessionalsView userProfile={session} />}
 
-        {activeTab === "vault" && (
-          <HealthVaultView userProfile={userProfile} />
-        )}
+        {activeTab === "vault" && <HealthVaultView userProfile={session} />}
 
-        {activeTab === "settings" && (
-          <SettingsView userProfile={userProfile} />
-        )}
+        {activeTab === "settings" && <SettingsView userProfile={session} onLogout={handleLogout} />}
 
         {/* Daily Check-in Modal */}
         <DailyLogModal
           isOpen={isDailyLogOpen}
           onClose={() => setIsDailyLogOpen(false)}
-          onSaveLog={(log) => {
-            console.log("Saved Daily Log:", log);
+          onSaveLog={() => {
+            // Data refresh is handled inside the modal after a successful save.
           }}
         />
       </AppShell>
     );
   }
 
-  // If Sign Up flow is active, render progressive 7-step Onboarding
+  // Sign Up flow: progressive 7-step onboarding (real registration).
   if (isSignUpOpen) {
     return (
       <div className="min-h-screen bg-[#FBFAFD] flex flex-col justify-center">
@@ -154,7 +192,9 @@ export default function Home() {
     );
   }
 
-  // Unauthenticated Landing Page View with Sign In & Sign Up Modals
+  // Unauthenticated Landing Page View with Sign In & Sign Up Modals.
+  // (While restoring a session we intentionally render the public landing
+  // page rather than blanking the screen.)
   return (
     <div className="min-h-screen bg-white text-[#17131D] font-sans selection:bg-[#E8E0FF] selection:text-[#6C4CF1] overflow-x-hidden">
       <Navbar
@@ -178,10 +218,7 @@ export default function Home() {
       <Footer onOpenWaitlist={() => setIsSignUpOpen(true)} />
 
       {/* Modals */}
-      <WaitlistModal
-        isOpen={isWaitlistOpen}
-        onClose={() => setIsWaitlistOpen(false)}
-      />
+      <WaitlistModal isOpen={isWaitlistOpen} onClose={() => setIsWaitlistOpen(false)} />
 
       <SignInModal
         isOpen={isSignInOpen}

@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@obiren/api-client": "*",
     "@obiren/types": "*",
     "@obiren/health-engine": "*",
     "@obiren/localization": "*",

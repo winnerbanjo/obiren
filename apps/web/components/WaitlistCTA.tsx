@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, ShieldCheck, CheckCircle2, Mail, Globe } from "lucide-react";
+import { ArrowRight, ShieldCheck, CheckCircle2, Mail, Globe, AlertCircle } from "lucide-react";
+import { waitlistApi, ApiError } from "@obiren/api-client";
 
 interface WaitlistCTAProps {
   onOpenWaitlist: () => void;
@@ -13,25 +14,27 @@ export default function WaitlistCTA({ onOpenWaitlist }: WaitlistCTAProps) {
   const [country, setCountry] = useState("GB");
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
 
     setLoading(true);
+    setErrorMsg("");
     try {
-      const res = await fetch("/api/waitlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, countryCode: country }),
-      });
-
-      if (res.ok) {
-        setSubmitted(true);
-        setEmail("");
-      }
+      // Real, durable waitlist signup through the Obiren API.
+      await waitlistApi.join({ email, market: country, source: "web-cta" });
+      setSubmitted(true);
+      setEmail("");
     } catch (err) {
-      console.error(err);
+      setErrorMsg(
+        err instanceof ApiError && err.fields?.email
+          ? err.fields.email
+          : err instanceof ApiError
+            ? err.message
+            : "Something went wrong. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -111,6 +114,13 @@ export default function WaitlistCTA({ onOpenWaitlist }: WaitlistCTAProps) {
                     )}
                   </button>
                 </div>
+
+                {errorMsg && (
+                  <div className="mt-3 p-3 bg-red-500/20 border border-red-400/40 text-red-200 text-xs font-bold rounded-xl flex items-center justify-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{errorMsg}</span>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-center gap-4 text-xs text-white/60 pt-2">
                   <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-[#38B26C]" /> Priority Access</span>

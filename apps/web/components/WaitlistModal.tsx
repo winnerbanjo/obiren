@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, CheckCircle2, ArrowRight, ShieldCheck, HeartHandshake } from "lucide-react";
+import { X, CheckCircle2, ArrowRight, ShieldCheck, HeartHandshake, AlertCircle } from "lucide-react";
+import { waitlistApi, ApiError } from "@obiren/api-client";
 
 interface WaitlistModalProps {
   isOpen: boolean;
@@ -26,28 +27,34 @@ export default function WaitlistModal({ isOpen, onClose }: WaitlistModalProps) {
   }>({ submitted: false });
 
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setErrorMsg("");
 
     try {
-      const res = await fetch("/api/waitlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+      // Real, durable waitlist signup through the Obiren API.
+      const data = await waitlistApi.join({
+        email: formData.email,
+        firstName: formData.firstName || undefined,
+        market: formData.countryCode,
+        source: "web",
       });
-
-      const data = await res.json();
-      if (res.ok) {
-        setStatus({
-          submitted: true,
-          position: data.position || 1420,
-          message: data.message || "Your spot on the Obiren waitlist has been reserved.",
-        });
-      }
+      setStatus({
+        submitted: true,
+        position: data.position,
+        message: data.message || "Your spot on the Obiren waitlist has been reserved.",
+      });
     } catch (err) {
-      console.error(err);
+      setErrorMsg(
+        err instanceof ApiError && err.fields?.email
+          ? err.fields.email
+          : err instanceof ApiError
+            ? err.message
+            : "Something went wrong. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -153,6 +160,13 @@ export default function WaitlistModal({ isOpen, onClose }: WaitlistModalProps) {
                     </select>
                   </div>
                 </div>
+
+                {errorMsg && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{errorMsg}</span>
+                  </div>
+                )}
 
                 <button
                   type="submit"
