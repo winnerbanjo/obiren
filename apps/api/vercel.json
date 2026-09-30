@@ -5,6 +5,10 @@
       "maxDuration": 60
     }
   },
+  "rewrites": [
+    { "source": "/api/v1/(.*)", "destination": "/api/index" },
+    { "source": "/", "destination": "/api/index" }
+  ],
   "crons": [
     {
       "path": "/api/v1/internal/cron/process-notifications",
