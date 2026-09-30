@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { WaitlistService } from './waitlist.service';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { WaitlistSignupSchema } from '../../common/validation/api-schemas';
@@ -32,13 +32,18 @@ export class WaitlistController {
   }
 
   /**
-   * DEV-ONLY draft view of captured waitlist emails (HTML or ?format=json).
-   * Hard-disabled in production. The JWT-guarded /entries endpoint is the
-   * real audit surface there.
+   * Draft view of captured waitlist emails (HTML or ?format=json).
+   * In production it only answers to the private list key (shared with the
+   * password-gated /waitlist/list page). The JWT-guarded /entries endpoint
+   * remains the real audit surface.
    */
   @Get('preview')
-  async preview(@Query('format') format?: string, @Res() res?: Response) {
-    if (process.env.NODE_ENV === 'production') {
+  async preview(@Query('format') format?: string, @Req() req?: Request, @Res() res?: Response) {
+    const listKey = process.env.WAITLIST_LIST_PASSWORD;
+    const authorized =
+      process.env.NODE_ENV !== 'production' ||
+      (!!listKey && req?.headers?.['x-list-key'] === listKey);
+    if (!authorized) {
       return res!.status(404).send('Not found');
     }
     const { data } = await this.waitlistService.list(1, 200);

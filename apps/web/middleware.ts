@@ -86,5 +86,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/waitlist/list"],
+  matcher: ["/waitlist/list", "/waitlist/list/:path*"],
 };

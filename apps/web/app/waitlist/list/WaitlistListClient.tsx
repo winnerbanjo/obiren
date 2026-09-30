@@ -17,9 +17,9 @@ type Entry = {
 };
 
 /**
- * Draft admin view: every email captured by the waitlist, newest first.
- * Reads the dev-only /api/v1/waitlist/preview endpoint (JSON mode). In
- * production this surface is replaced by the JWT-gated /entries endpoint.
+ * Private admin view: every email captured by the waitlist, newest first.
+ * The page sits behind a middleware password gate; data comes from a
+ * server-side route handler that forwards the shared key to the API.
  */
 export default function WaitlistListClient() {
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -32,7 +32,7 @@ export default function WaitlistListClient() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/v1/waitlist/preview?format=json", { cache: "no-store" });
+      const res = await fetch("/waitlist/list/data", { cache: "no-store" });
       if (!res.ok) throw new Error(`API responded ${res.status}`);
       const json = await res.json();
       setEntries(json?.data?.entries ?? []);
@@ -163,11 +163,8 @@ export default function WaitlistListClient() {
               ))}
             </ul>
           </div>
-        )}
-
-        <p className="mt-6 text-[11px] text-[var(--obiren-text-faint)]">
-          Dev-only draft view, auto-refreshes every 15s. Production uses the admin-gated
-          /api/v1/waitlist/entries endpoint.
+        )}        <p className="mt-6 text-[11px] text-[var(--obiren-text-faint)]">
+          Private view, protected by a password gate. Auto-refreshes every 15s.
         </p>
       </main>
     </div>
