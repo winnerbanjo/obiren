@@ -139,21 +139,6 @@ export default function WaitlistPageClient() {
         </div>
       </main>
 
-      {/* ---------------- Footer line ---------------- */}
-      <footer className="relative z-10 pb-7">
-        <div className="max-w-6xl mx-auto px-5 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-[10px] text-[var(--obiren-text-faint)]">
-          <span>
-            Obiren means “woman” in Itsekiri.{" "}
-            <a
-              href="/waitlist/list"
-              className="underline underline-offset-2 hover:text-[#9B6BFF] light:hover:text-[#6D4AFF] transition-colors"
-            >
-              View all signups (draft)
-            </a>
-          </span>
-          <span>In an emergency, always contact local emergency services first.</span>
-        </div>
-      </footer>
     </div>
   );
 }

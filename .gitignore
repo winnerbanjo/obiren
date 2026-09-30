@@ -26,3 +26,6 @@ node_modules/
 
 # vercel
 .vercel
+
+# Private handoff notes (passwords, secrets)
+private/
