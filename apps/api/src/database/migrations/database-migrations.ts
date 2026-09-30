@@ -1,12 +1,29 @@
 import mongoose from 'mongoose';
 import * as crypto from 'crypto';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+
+/**
+ * mongodb-memory-server is an optional devDependency used only when running
+ * migrations with no database URI (local sandboxes). Production always has
+ * MONGODB_URI, so it is loaded lazily - production builds skip devDependencies
+ * and must not import it statically.
+ */
+async function loadMemoryServer(): Promise<any> {
+  // Computed specifier: tsc must not resolve this optional devDependency at
+  // build time (production installs skip devDependencies).
+  const pkgId = ['mongodb', 'memory', 'server'].join('-');
+  try {
+    return (await import(pkgId)).MongoMemoryServer;
+  } catch {
+    throw new Error('mongodb-memory-server is not installed. Install devDependencies to run migrations without a database URI.');
+  }
+}
 
 export async function runVersionedMigrations(dbUri?: string): Promise<{ success: boolean; applied: string[] }> {
-  let mongod: MongoMemoryServer | null = null;
+  let mongod: any | null = null;
   let uri = dbUri || process.env.MONGODB_URI;
 
   if (!uri) {
+    const MongoMemoryServer = await loadMemoryServer();
     mongod = await MongoMemoryServer.create();
     uri = mongod.getUri();
   }
