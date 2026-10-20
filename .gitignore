@@ -23,6 +23,8 @@ node_modules/
 # env files
 .env*
 !.env.example
+*docs
+
 
 # vercel
 .vercel
