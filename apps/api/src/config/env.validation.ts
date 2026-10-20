@@ -1,3 +1,17 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { config as loadDotEnv } from 'dotenv';
+
+// Load the API-local development environment before any configuration is read.
+// Resolve correctly from either the monorepo root or apps/api, in source and
+// compiled deployments. Existing process/deployment variables take precedence.
+const localEnvPath = [
+  path.resolve(process.cwd(), 'apps/api/.env'),
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(__dirname, '../../.env'),
+].find((candidate) => fs.existsSync(candidate));
+if (localEnvPath) loadDotEnv({ path: localEnvPath, quiet: true });
+
 /**
  * Obiren centralized environment validation.
  *
@@ -21,6 +35,8 @@ export interface ValidatedEnv {
   jwtRefreshSecret: string;
   corsOrigins: string[];
   cronSecret?: string;
+  healthDataEncryptionKey?: string;
+  healthDataEncryptionKeyId: string;
   cloudinary: { cloudName?: string; apiKey?: string; apiSecret?: string };
   twilio: { accountSid?: string; authToken?: string; whatsappFrom?: string };
   mail: { mailtrapToken?: string; fromEmail?: string; fromName?: string };
@@ -82,6 +98,16 @@ export function validateEnv(env: Record<string, string | undefined> = process.en
     warnings.push('CRON_SECRET not set - internal cron endpoints are UNAUTHENTICATED in production');
   }
 
+  const healthDataEncryptionKey = env.HEALTH_DATA_ENCRYPTION_KEY || undefined;
+  if (healthDataEncryptionKey) {
+    const keyBytes = /^[0-9a-f]{64}$/i.test(healthDataEncryptionKey)
+      ? Buffer.from(healthDataEncryptionKey, 'hex')
+      : Buffer.from(healthDataEncryptionKey, 'base64');
+    if (keyBytes.length !== 32) productionErrors.push('HEALTH_DATA_ENCRYPTION_KEY must encode exactly 32 bytes (64 hex or base64)');
+  } else if (isProd()) {
+    productionErrors.push('HEALTH_DATA_ENCRYPTION_KEY is required in production for private health notes');
+  }
+
   const cloudinary = {
     cloudName: env.CLOUDINARY_CLOUD_NAME || undefined,
     apiKey: env.CLOUDINARY_API_KEY || undefined,
@@ -132,6 +158,8 @@ export function validateEnv(env: Record<string, string | undefined> = process.en
     jwtRefreshSecret: (jwtRefreshSecret || `dev-only-refresh-secret-change-me-00000000000`) as string,
     corsOrigins,
     cronSecret,
+    healthDataEncryptionKey,
+    healthDataEncryptionKeyId: env.HEALTH_DATA_ENCRYPTION_KEY_ID || 'default',
     cloudinary,
     twilio,
     mail,

@@ -43,7 +43,7 @@ export default function PeriodTrackerView({
         cyclesApi.getHistory(),
       ]);
       setCurrent(cur ?? null);
-      setHistory(hist ?? []);
+      setHistory(hist?.cycles ?? []);
     } catch (err) {
       if (err instanceof ApiError) {
         setErrorMsg(`Could not load your cycle data: ${err.message}`);
@@ -92,7 +92,7 @@ export default function PeriodTrackerView({
   const exportCycleData = async () => {
     try {
       const [cur, hist] = await Promise.all([cyclesApi.getCurrent(), cyclesApi.getHistory()]);
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ current: cur, history: hist }, null, 2));
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ current: cur, history: hist.cycles, summary: hist.summary }, null, 2));
       const downloadAnchor = document.createElement("a");
       downloadAnchor.setAttribute("href", dataStr);
       downloadAnchor.setAttribute("download", `obiren_cycle_history_${new Date().toISOString().split("T")[0]}.json`);

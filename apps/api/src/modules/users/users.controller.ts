@@ -1,35 +1,74 @@
 import { Body, Controller, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { UpdateProfileSchema } from '../../common/validation/api-schemas';
+import { OnboardingPatchSchema, UpdateProfileSchema } from '../../common/validation/api-schemas';
 
+@ApiTags('Users')
+@ApiBearerAuth('accessToken')
 @UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
+  @ApiOperation({ summary: 'Get the current user profile', description: 'Returns the authenticated account and profile summary. The user is derived from the access token; no user ID is accepted from the client.' })
+  @ApiResponse({ status: 200, description: 'Profile returned.' })
+  @ApiResponse({ status: 401, description: 'Missing, expired, or invalid access token.' })
   async getProfile(@Req() req: any) {
     return this.usersService.getProfile(req.user.sub);
   }
 
+  @Get('onboarding')
+  @ApiOperation({ summary: 'Get the current user’s onboarding draft', description: 'Returns the authenticated user’s resumable onboarding state. A user identifier is never accepted from the client.' })
+  @ApiResponse({ status: 200, description: 'Onboarding draft or an empty first-step draft.' })
+  async getOnboarding(@Req() req: any) {
+    return this.usersService.getOnboarding(req.user.sub);
+  }
+
+  @Patch('onboarding')
+  @ApiOperation({ summary: 'Save onboarding progress', description: 'Partially updates the current user’s onboarding draft. Canonical steps are numbered 1 through 8; the draft can be resumed or rewound.' })
+  @ApiBody({ schema: { type: 'object', additionalProperties: false, properties: { step: { type: 'integer', minimum: 1, maximum: 8 }, objective: { type: 'string', enum: ['CYCLE_TRACKING', 'PREGNANCY', 'FERTILITY', 'GENERAL_WELLNESS'] }, lastMenstrualPeriod: { type: 'string', format: 'date' }, cycleLengthDays: { type: 'integer', minimum: 20, maximum: 45 }, bleedingDays: { type: 'integer', minimum: 1, maximum: 15 }, conditions: { type: 'array', maxItems: 30, items: { type: 'string', maxLength: 80 } }, concerns: { type: 'array', maxItems: 30, items: { type: 'string', maxLength: 120 } }, notificationsEnabled: { type: 'boolean' } } } })
+  @ApiResponse({ status: 200, description: 'Onboarding draft saved.' })
+  async updateOnboarding(@Req() req: any, @Body(new ZodValidationPipe(OnboardingPatchSchema)) body) {
+    return this.usersService.updateOnboarding(req.user.sub, body);
+  }
+
+  @Post('onboarding/complete')
+  @ApiOperation({ summary: 'Complete onboarding', description: 'Completes the user’s onboarding after all eight steps and the required objective have been saved. The server sets onboardingStatus; it is not client-editable.' })
+  @ApiResponse({ status: 201, description: 'Onboarding completed and profile preferences committed.' })
+  @ApiResponse({ status: 422, description: 'Onboarding draft is incomplete or already in an invalid state.' })
+  async completeOnboarding(@Req() req: any) {
+    return this.usersService.completeOnboarding(req.user.sub);
+  }
+
   @Patch('me')
+  @ApiOperation({ summary: 'Update the current user profile', description: 'Partial update: include only fields to change. Dates use YYYY-MM-DD. Unknown fields are rejected.' })
+  @ApiBody({ schema: { type: 'object', additionalProperties: false, properties: { firstName: { type: 'string', maxLength: 80 }, lastName: { type: 'string', maxLength: 80 }, displayName: { type: 'string', maxLength: 120 }, dateOfBirth: { type: 'string', format: 'date' }, phoneNumber: { type: 'string', maxLength: 32 }, countryCode: { type: 'string', enum: ['NG', 'GH', 'GB', 'US'] }, timeZone: { type: 'string', maxLength: 64, example: 'Africa/Lagos' }, trackingGoal: { type: 'string', enum: ['CYCLE_TRACKING', 'PREGNANCY', 'FERTILITY', 'GENERAL_WELLNESS'] }, preferredLanguage: { type: 'string', minLength: 2, maxLength: 8 } } } })
+  @ApiResponse({ status: 200, description: 'Profile updated.' })
+  @ApiResponse({ status: 401, description: 'Missing, expired, or invalid access token.' })
   async updateProfile(@Req() req: any, @Body(new ZodValidationPipe(UpdateProfileSchema)) body) {
     return this.usersService.updateProfile(req.user.sub, body);
   }
 
   @Get('me/export')
+  @ApiOperation({ summary: 'Export the current user’s personal data', description: 'Returns the authenticated user’s available account and profile data in a portable JSON representation.' })
+  @ApiResponse({ status: 200, description: 'Personal data export.' })
   async exportData(@Req() req: any) {
     return this.usersService.exportUserData(req.user.sub);
   }
 
   @Post('me/request-deletion')
+  @ApiOperation({ summary: 'Request account deletion', description: 'Schedules account deletion after a 30-day grace period. This is a consequential account action; the user can cancel it during the grace period.' })
+  @ApiResponse({ status: 201, description: 'Deletion request accepted with the scheduled deletion date.' })
   async requestDeletion(@Req() req: any) {
     return this.usersService.requestAccountDeletion(req.user.sub);
   }
 
   @Post('me/cancel-deletion')
+  @ApiOperation({ summary: 'Cancel a pending account deletion', description: 'Restores the current account to active status and clears its pending deletion request.' })
+  @ApiResponse({ status: 201, description: 'Pending deletion cancelled.' })
   async cancelDeletion(@Req() req: any) {
     return this.usersService.cancelAccountDeletion(req.user.sub);
   }

@@ -99,7 +99,7 @@ export class UserProfile {
   @Prop({ type: String, default: 'CYCLE_TRACKING' })
   trackingGoal: string;
 
-  @Prop({ type: String, default: 'COMPLETED' })
+  @Prop({ type: String, default: 'PENDING' })
   onboardingStatus: string;
 }
 

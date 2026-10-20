@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { WaitlistService } from './waitlist.service';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -8,25 +9,38 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 
+@ApiTags('Waitlist')
 @Controller('waitlist')
 export class WaitlistController {
   constructor(private readonly waitlistService: WaitlistService) {}
 
   /** Public signup - stricter rate limit (10 per minute per IP) and validated. */
   @Post()
+  @ApiOperation({ summary: 'Join the early-access waitlist', description: 'Public, rate-limited signup (10 requests per minute per IP). Duplicate emails receive the same response shape as new signups to prevent account enumeration.' })
+  @ApiBody({ schema: { type: 'object', additionalProperties: false, required: ['email'], properties: { email: { type: 'string', format: 'email', maxLength: 320, example: 'maya@example.com' }, firstName: { type: 'string', maxLength: 80 }, source: { type: 'string', maxLength: 60, default: 'web' }, market: { type: 'string', maxLength: 60 }, referral: { type: 'string', maxLength: 120 } } } })
+  @ApiResponse({ status: 201, description: 'Signup accepted; response indicates whether the email was already on the list.' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded.' })
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   async join(@Body(new ZodValidationPipe(WaitlistSignupSchema)) body) {
     return this.waitlistService.join(body);
   }
 
   @Get()
+  @ApiOperation({ summary: 'Get public waitlist totals', description: 'Returns aggregate signup count only; no personal information is exposed.' })
+  @ApiResponse({ status: 200, description: 'Aggregate waitlist count.' })
   async stats() {
     return this.waitlistService.stats();
   }
 
+  @ApiBearerAuth('accessToken')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('super_admin', 'platform_admin')
   @Get('entries')
+  @ApiOperation({ summary: 'List waitlist entries (admin)', description: 'Privileged operational endpoint for paginated waitlist entries. Requires a bearer token with super_admin or platform_admin role; not intended for mobile clients.' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: '1-based page number (default 1).', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Page size (default 50; maximum 200).', example: 50 })
+  @ApiResponse({ status: 200, description: 'Paginated waitlist entries.' })
+  @ApiResponse({ status: 403, description: 'Administrative role required.' })
   async list(@Query('page') page?: string, @Query('limit') limit?: string) {
     return this.waitlistService.list(Number(page) || 1, Math.min(Number(limit) || 50, 200));
   }
@@ -38,6 +52,11 @@ export class WaitlistController {
    * remains the real audit surface.
    */
   @Get('preview')
+  @ApiOperation({ summary: 'Waitlist preview (operator-only)', description: 'Development preview returning HTML by default or JSON with format=json. In production requires the private X-List-Key header. Use the role-protected /waitlist/entries API for normal admin access; this route is not for mobile clients.' })
+  @ApiQuery({ name: 'format', required: false, enum: ['json'], description: 'Return JSON instead of the default HTML preview.' })
+  @ApiHeader({ name: 'X-List-Key', required: false, description: 'Required in production; value is configured by the operator.' })
+  @ApiResponse({ status: 200, description: 'Waitlist preview in requested format.' })
+  @ApiResponse({ status: 404, description: 'Preview is not available to this caller.' })
   async preview(@Query('format') format?: string, @Req() req?: Request, @Res() res?: Response) {
     const listKey = process.env.WAITLIST_LIST_PASSWORD;
     const authorized =

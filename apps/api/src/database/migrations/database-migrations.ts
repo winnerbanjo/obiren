@@ -181,6 +181,65 @@ export async function runVersionedMigrations(dbUri?: string): Promise<{ success:
     } else {
       console.log(`Migration [${mig001Id}] already applied. Skipping.`);
     }
+
+    const mig002Id = '002_onboarding_consent_indexes';
+    const mig002Name = 'Create unique onboarding draft and append-only consent history indexes';
+    const mig002Checksum = crypto.createHash('sha256').update(mig002Id + mig002Name).digest('hex');
+    const existing002 = await migrationsCollection.findOne({ migrationId: mig002Id, status: 'COMPLETED' });
+    if (!existing002) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig002Id },
+        { $set: { name: mig002Name, checksum: mig002Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('onboarding').createIndex({ userId: 1 }, { unique: true, name: 'uniq_onboarding_userId' });
+      await db.collection('consent_events').createIndex(
+        { userId: 1, purpose: 1, recordedAt: -1 },
+        { name: 'idx_consent_user_purpose_recorded' },
+      );
+      await migrationsCollection.updateOne(
+        { migrationId: mig002Id },
+        { $set: { completedAt: new Date(), status: 'COMPLETED' } },
+      );
+      appliedMigrations.push(mig002Id);
+    }
+
+    const mig004Id = '004_pregnancy_logs';
+    const mig004Name = 'Add owner/date pregnancy check-in indexes';
+    const mig004Checksum = crypto.createHash('sha256').update(mig004Id + mig004Name).digest('hex');
+    const existing004 = await migrationsCollection.findOne({ migrationId: mig004Id, status: 'COMPLETED' });
+    if (!existing004) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig004Id },
+        { $set: { name: mig004Name, checksum: mig004Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('pregnancy_logs').createIndex({ pregnancyId: 1, date: 1 }, { unique: true, name: 'uniq_pregnancy_log_parent_date' });
+      await db.collection('pregnancy_logs').createIndex({ userId: 1, date: 1 }, { name: 'idx_pregnancy_log_user_date' });
+      await migrationsCollection.updateOne(
+        { migrationId: mig004Id },
+        { $set: { completedAt: new Date(), status: 'COMPLETED' } },
+      );
+      appliedMigrations.push(mig004Id);
+    }
+
+    const mig003Id = '003_cycle_period_query_index';
+    const mig003Name = 'Add cycle history date/status compound index';
+    const mig003Checksum = crypto.createHash('sha256').update(mig003Id + mig003Name).digest('hex');
+    const existing003 = await migrationsCollection.findOne({ migrationId: mig003Id, status: 'COMPLETED' });
+    if (!existing003) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig003Id },
+        { $set: { name: mig003Name, checksum: mig003Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('cycles').createIndex({ userId: 1, startedAt: 1, status: 1 }, { name: 'idx_cycle_user_started_status' });
+      await migrationsCollection.updateOne(
+        { migrationId: mig003Id },
+        { $set: { completedAt: new Date(), status: 'COMPLETED' } },
+      );
+      appliedMigrations.push(mig003Id);
+    }
   } catch (err: any) {
     console.error('Migration failed:', err);
     throw err;

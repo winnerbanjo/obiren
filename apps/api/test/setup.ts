@@ -10,6 +10,8 @@ module.exports = async () => {
   process.env.JWT_ACCESS_SECRET = 'test-only-access-secret-value-0000000000000000';
   process.env.JWT_REFRESH_SECRET = 'test-only-refresh-secret-value-000000000000000';
   process.env.CORS_ORIGINS = 'http://localhost:3000,http://localhost:3001';
+  process.env.HEALTH_DATA_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  process.env.HEALTH_DATA_ENCRYPTION_KEY_ID = 'test-key';
   (global as any).__MONGOD__ = mongod;
 };
 

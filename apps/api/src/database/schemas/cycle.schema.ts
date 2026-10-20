@@ -47,6 +47,7 @@ CycleSchema.index(
   },
 );
 CycleSchema.index({ userId: 1, startedAt: -1 });
+CycleSchema.index({ userId: 1, startedAt: 1, status: 1 }, { name: 'idx_cycle_user_started_status' });
 CycleSchema.index({ userId: 1, status: 1 });
 
 export type DailyLogDocument = DailyLog & Document;
@@ -103,7 +104,11 @@ export class DailyLog {
 
   @Prop({ type: String })
   notes?: string;
+
+  @Prop({ type: Number, default: 1, min: 1 })
+  version: number;
 }
 
 export const DailyLogSchema = SchemaFactory.createForClass(DailyLog);
 DailyLogSchema.index({ userId: 1, date: 1 }, { unique: true });
+DailyLogSchema.index({ userId: 1, version: -1 }, { name: 'idx_daily_log_user_version' });

@@ -239,38 +239,75 @@ export const usersApi = {
 
 export interface CycleData {
   id?: string;
+  _id?: string;
   startedAt?: string;
+  periodEndedAt?: string;
+  endedAt?: string;
+  periodLength?: number;
+  cycleLength?: number;
+  notes?: string;
   dayOfCycle?: number;
+  timeZone?: string;
   status?: string;
   prediction?: {
     predictedStartDate: string;
     predictedEndDate: string;
-    rangeStart: string;
-    rangeEnd: string;
+    rangeStart?: string;
+    rangeEnd?: string;
+    periodPrediction?: { startDate: string; rangeStart: string; rangeEnd: string };
+    fertileWindow?: { startDate?: string; endDate?: string };
     estimatedOvulationDate?: string;
+    ovulationEstimate?: string;
     estimatedFertileWindowStart?: string;
     estimatedFertileWindowEnd?: string;
     confidence: 'LOW' | 'MEDIUM' | 'HIGH';
     explanationCode: string;
+    calculationVersion?: string;
+    isContraceptiveAdvice?: false;
   };
+}
+
+export interface CycleHistoryData {
+  cycles: CycleData[];
+  summary: {
+    recordedCycleCount: number;
+    usableIntervalCount: number;
+    avgCycleLength: number | null;
+    confidence: 'LOW' | 'PERSONALIZED';
+    isContraceptiveAdvice: false;
+  };
+  nextCursor: string | null;
 }
 
 export interface DailyLogData {
   date: string;
+  version?: number;
   bleeding?: { level: string; clots?: boolean };
   pain?: { level: number; locations?: string[] };
   moods?: string[];
   symptoms?: string[];
+  sexualActivity?: { occurred?: boolean; protection?: string };
   notes?: string;
 }
 
 export const cyclesApi = {
   getCurrent: () => request<CycleData | null>('GET', '/cycles/current'),
-  getHistory: () => request<CycleData[]>('GET', '/cycles/history'),
+  getHistory: (query: { from?: string; to?: string; cursor?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return request<CycleHistoryData>('GET', `/cycles/history${suffix}`);
+  },
+  getHistoryDetail: (id: string) => request<{ cycle: CycleData; dailyLogs: DailyLogData[]; flowPattern: Record<string, number> }>('GET', `/cycles/history/${id}`),
+  update: (id: string, updates: { startDate?: string; endDate?: string | null; notes?: string | null }) => request<CycleData>('PATCH', `/cycles/${id}`, updates),
   startPeriod: (date?: string) => request<{ cycle: CycleData; prediction: CycleData['prediction'] }>('POST', '/cycles/start-period', date ? { date } : {}),
   endPeriod: (date?: string) => request<CycleData>('POST', '/cycles/end-period', date ? { date } : {}),
   getDailyLog: (date: string) => request<DailyLogData>('GET', `/daily-logs/${date}`),
-  upsertDailyLog: (date: string, log: Partial<DailyLogData>) => request<DailyLogData>('PUT', `/daily-logs/${date}`, log),
+  upsertDailyLog: (date: string, log: Partial<Omit<DailyLogData, 'version'>>) => request<DailyLogData>('PUT', `/daily-logs/${date}`, log),
+  patchDailyLog: (date: string, version: number, updates: Partial<Omit<DailyLogData, 'date' | 'version'>>) =>
+    request<DailyLogData>('PATCH', `/daily-logs/${date}`, { ...updates, version }),
+  deleteDailyLog: (date: string, version: number) =>
+    request<{ date: string; deleted: true }>('DELETE', `/daily-logs/${date}?version=${version}`),
 };
 
 // ---------------------------------------------------------------------------

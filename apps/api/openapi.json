@@ -1,237 +1,3173 @@
 {
-  "openapi": "3.0.0",
-  "info": {
-    "title": "Obiren Production Monolith API",
-    "version": "1.0.0",
-    "description": "Production API specification for Obiren Women Health, Safety, and Clinical Ecosystem"
-  },
-  "servers": [
-    {
-      "url": "http://localhost:3000/api/v1",
-      "description": "Local Development Server"
-    }
-  ],
+  "openapi": "3.1.0",
   "paths": {
     "/auth/register": {
       "post": {
-        "summary": "Register new Obiren user",
+        "description": "Creates a pending account and sends an email-verification link. Email is normalized to lowercase. In development, the verification token is included in the response; production delivers it by email.",
+        "operationId": "AuthController_register",
+        "parameters": [],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "email": {
-                    "type": "string"
-                  },
-                  "password": {
-                    "type": "string"
-                  },
-                  "firstName": {
-                    "type": "string"
-                  },
-                  "lastName": {
-                    "type": "string"
-                  },
-                  "countryCode": {
-                    "type": "string"
-                  }
-                },
+                "additionalProperties": false,
                 "required": [
                   "email",
-                  "password"
-                ]
+                  "password",
+                  "firstName",
+                  "lastName"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 320,
+                    "example": "maya@example.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "format": "password",
+                    "minLength": 8,
+                    "maxLength": 128,
+                    "description": "Must include at least one uppercase letter and one number.",
+                    "example": "SecurePass1"
+                  },
+                  "firstName": {
+                    "type": "string",
+                    "maxLength": 80,
+                    "example": "Maya"
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "maxLength": 80,
+                    "example": "Okafor"
+                  },
+                  "countryCode": {
+                    "type": "string",
+                    "enum": [
+                      "NG",
+                      "GH",
+                      "GB",
+                      "US"
+                    ],
+                    "default": "NG"
+                  },
+                  "preferredLanguage": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 8,
+                    "default": "en"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "User registered"
+            "description": "Account created; email verification is pending.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "data": {
+                    "userId": "66a0b6f3e5f21c8e7a112233",
+                    "email": "maya@example.com",
+                    "status": "pending_verification",
+                    "message": "Account created. Check your email to verify your address."
+                  },
+                  "meta": {
+                    "requestId": "req_1729339200000"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or email already registered."
           }
-        }
+        },
+        "summary": "Create an account",
+        "tags": [
+          "Authentication"
+        ]
       }
     },
     "/auth/login": {
       "post": {
-        "summary": "Login user and receive JWT access & refresh tokens",
+        "description": "Returns a 15-minute bearer access token and a 30-day rotating refresh token. Native clients should set platform to ios or android and store refresh tokens in secure storage. Browser clients may use the HttpOnly obiren_refresh cookie.",
+        "operationId": "AuthController_login",
+        "parameters": [],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "email": {
-                    "type": "string"
-                  },
-                  "password": {
-                    "type": "string"
-                  }
-                },
+                "additionalProperties": false,
                 "required": [
                   "email",
                   "password"
-                ]
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "maya@example.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "format": "password",
+                    "example": "SecurePass1"
+                  },
+                  "platform": {
+                    "type": "string",
+                    "enum": [
+                      "web",
+                      "ios",
+                      "android"
+                    ],
+                    "default": "web",
+                    "example": "ios"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Authenticated successfully"
+            "description": "Authenticated. Store accessToken and refreshToken from data.tokens.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "data": {
+                    "user": {
+                      "id": "66a0b6f3e5f21c8e7a112233",
+                      "email": "maya@example.com",
+                      "countryCode": "NG",
+                      "roles": [
+                        "user"
+                      ],
+                      "status": "active",
+                      "emailVerified": true
+                    },
+                    "tokens": {
+                      "accessToken": "<jwt-access-token>",
+                      "accessTokenExpiresIn": "15m",
+                      "refreshToken": "<opaque-refresh-token>",
+                      "refreshTokenExpiresIn": "30d"
+                    }
+                  },
+                  "meta": {
+                    "requestId": "req_1729339200000"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid email or password.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_INVALID_CREDENTIALS",
+                    "message": "The email address or password is incorrect."
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account is not permitted to sign in."
           }
-        }
+        },
+        "summary": "Sign in",
+        "tags": [
+          "Authentication"
+        ]
       }
     },
     "/auth/refresh": {
       "post": {
-        "summary": "Rotate refresh token and get new access token",
+        "description": "Exchanges a valid refresh token for a new access token and refresh token. The old refresh token is revoked immediately; replace it in secure storage. Native clients provide refreshToken in JSON. Browser clients may send the HttpOnly cookie.",
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "refreshToken"
+                ],
+                "properties": {
+                  "refreshToken": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 256,
+                    "description": "Required for native clients; optional when the refresh cookie is present."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": "Token rotated"
+            "description": "Tokens rotated successfully. Persist both returned tokens; the submitted refresh token can no longer be reused.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "data": {
+                    "accessToken": "<new-jwt-access-token>",
+                    "refreshToken": "<new-opaque-refresh-token>"
+                  },
+                  "meta": {
+                    "requestId": "req_1729339200000"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refresh token is invalid, expired, revoked, or replayed."
           }
-        }
+        },
+        "summary": "Rotate tokens",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "description": "Revokes the supplied refresh token and clears the browser refresh cookie. Native clients should pass their current refreshToken.",
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "refreshToken": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 256,
+                    "description": "Current refresh token for a native client."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session revoked; safe to call again."
+          }
+        },
+        "summary": "Sign out and revoke a refresh session",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "description": "Returns the account identity, roles, verification state, and a compact profile. Use this after sign-in or token refresh to hydrate the current-user state.",
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Authenticated account.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "data": {
+                    "id": "66a0b6f3e5f21c8e7a112233",
+                    "email": "maya@example.com",
+                    "roles": [
+                      "user"
+                    ],
+                    "status": "active",
+                    "countryCode": "NG",
+                    "emailVerified": true,
+                    "profile": {
+                      "firstName": "Maya",
+                      "lastName": "Okafor",
+                      "displayName": "Maya Okafor",
+                      "trackingGoal": "CYCLE_TRACKING",
+                      "onboardingStatus": "COMPLETED"
+                    }
+                  },
+                  "meta": {
+                    "requestId": "req_1729339200000"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired, or invalid access token."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get the authenticated account",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/sessions": {
+      "get": {
+        "description": "Returns the current user’s sessions newest first. Refresh-token values are never returned.",
+        "operationId": "AuthController_getSessions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Session metadata."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List the authenticated account’s sessions",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/verify-email": {
+      "post": {
+        "description": "Consumes the single-use, time-limited token delivered in the verification email.",
+        "operationId": "AuthController_verifyEmail",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "token"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Email verified."
+          },
+          "400": {
+            "description": "Verification token is invalid or expired."
+          }
+        },
+        "summary": "Verify an email address",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/resend-verification": {
+      "post": {
+        "description": "Requests a new verification email. The generic response does not disclose whether the account exists.",
+        "operationId": "AuthController_resendVerification",
+        "parameters": [
+          {
+            "name": "email",
+            "required": true,
+            "in": "query",
+            "description": "Email address to send a verification message to.",
+            "schema": {
+              "example": "maya@example.com",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Generic confirmation returned to prevent account enumeration."
+          }
+        },
+        "summary": "Resend email verification",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/forgot-password": {
+      "post": {
+        "description": "Sends password-reset instructions when an eligible account exists. The response is intentionally generic to prevent account enumeration.",
+        "operationId": "AuthController_forgotPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "maya@example.com"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generic confirmation returned regardless of account existence."
+          }
+        },
+        "summary": "Request a password reset",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/reset-password": {
+      "post": {
+        "description": "Consumes a valid password-reset token and revokes all existing sessions. Passwords require at least eight characters, one uppercase letter, and one number.",
+        "operationId": "AuthController_resetPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "token",
+                  "newPassword"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 256
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "format": "password",
+                    "minLength": 8,
+                    "maxLength": 128,
+                    "example": "NewSecurePass1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password updated; sign in again."
+          },
+          "400": {
+            "description": "Reset token is invalid or expired."
+          }
+        },
+        "summary": "Set a new password",
+        "tags": [
+          "Authentication"
+        ]
       }
     },
     "/users/me": {
       "get": {
-        "summary": "Get current user profile",
+        "description": "Returns the authenticated account and profile summary. The user is derived from the access token; no user ID is accepted from the client.",
+        "operationId": "UsersController_getProfile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Profile returned."
+          },
+          "401": {
+            "description": "Missing, expired, or invalid access token."
+          }
+        },
         "security": [
           {
-            "bearerAuth": []
+            "accessToken": []
           }
+        ],
+        "summary": "Get the current user profile",
+        "tags": [
+          "Users"
         ]
       },
       "patch": {
-        "summary": "Update user profile",
+        "description": "Partial update: include only fields to change. Dates use YYYY-MM-DD. Unknown fields are rejected.",
+        "operationId": "UsersController_updateProfile",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "firstName": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "displayName": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "dateOfBirth": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "phoneNumber": {
+                    "type": "string",
+                    "maxLength": 32
+                  },
+                  "countryCode": {
+                    "type": "string",
+                    "enum": [
+                      "NG",
+                      "GH",
+                      "GB",
+                      "US"
+                    ]
+                  },
+                  "timeZone": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "example": "Africa/Lagos"
+                  },
+                  "trackingGoal": {
+                    "type": "string",
+                    "enum": [
+                      "CYCLE_TRACKING",
+                      "PREGNANCY",
+                      "FERTILITY",
+                      "GENERAL_WELLNESS"
+                    ]
+                  },
+                  "preferredLanguage": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile updated."
+          },
+          "401": {
+            "description": "Missing, expired, or invalid access token."
+          }
+        },
         "security": [
           {
-            "bearerAuth": []
+            "accessToken": []
           }
+        ],
+        "summary": "Update the current user profile",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/onboarding": {
+      "get": {
+        "description": "Returns the authenticated user’s resumable onboarding state. A user identifier is never accepted from the client.",
+        "operationId": "UsersController_getOnboarding",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Onboarding draft or an empty first-step draft."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get the current user’s onboarding draft",
+        "tags": [
+          "Users"
+        ]
+      },
+      "patch": {
+        "description": "Partially updates the current user’s onboarding draft. Canonical steps are numbered 1 through 8; the draft can be resumed or rewound.",
+        "operationId": "UsersController_updateOnboarding",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "step": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8
+                  },
+                  "objective": {
+                    "type": "string",
+                    "enum": [
+                      "CYCLE_TRACKING",
+                      "PREGNANCY",
+                      "FERTILITY",
+                      "GENERAL_WELLNESS"
+                    ]
+                  },
+                  "lastMenstrualPeriod": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "cycleLengthDays": {
+                    "type": "integer",
+                    "minimum": 20,
+                    "maximum": 45
+                  },
+                  "bleedingDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 15
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 80
+                    }
+                  },
+                  "concerns": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 120
+                    }
+                  },
+                  "notificationsEnabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Onboarding draft saved."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Save onboarding progress",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/onboarding/complete": {
+      "post": {
+        "description": "Completes the user’s onboarding after all eight steps and the required objective have been saved. The server sets onboardingStatus; it is not client-editable.",
+        "operationId": "UsersController_completeOnboarding",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Onboarding completed and profile preferences committed."
+          },
+          "422": {
+            "description": "Onboarding draft is incomplete or already in an invalid state."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Complete onboarding",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/me/export": {
+      "get": {
+        "description": "Returns the authenticated user’s available account and profile data in a portable JSON representation.",
+        "operationId": "UsersController_exportData",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Personal data export."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Export the current user’s personal data",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/me/request-deletion": {
+      "post": {
+        "description": "Schedules account deletion after a 30-day grace period. This is a consequential account action; the user can cancel it during the grace period.",
+        "operationId": "UsersController_requestDeletion",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Deletion request accepted with the scheduled deletion date."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Request account deletion",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/me/cancel-deletion": {
+      "post": {
+        "description": "Restores the current account to active status and clears its pending deletion request.",
+        "operationId": "UsersController_cancelDeletion",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Pending deletion cancelled."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Cancel a pending account deletion",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/config/options": {
+      "get": {
+        "description": "Returns versioned UI option values. Condition and consultation choices are provisional and must be confirmed by product/clinical review.",
+        "operationId": "ConfigController_getOptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Versioned mobile configuration option catalog."
+          }
+        },
+        "summary": "Get mobile enum and localization options",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/consents": {
+      "get": {
+        "description": "Returns the latest recorded choice per purpose plus the append-only grant/revocation event history for the authenticated user.",
+        "operationId": "ConsentController_getConsents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Consent history; no records means no consent has been recorded."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get consent status and immutable history",
+        "tags": [
+          "Consents"
+        ]
+      },
+      "post": {
+        "description": "Appends a grant or revocation event. Previous consent evidence is never overwritten. A recorded grant is not legal advice or proof that a purpose is lawful.",
+        "operationId": "ConsentController_recordConsent",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "purpose",
+                  "policyVersion",
+                  "granted",
+                  "source"
+                ],
+                "properties": {
+                  "purpose": {
+                    "type": "string",
+                    "enum": [
+                      "terms_of_service_acknowledgement",
+                      "privacy_notice_acknowledgement",
+                      "health_data_processing",
+                      "care_communications",
+                      "health_sharing",
+                      "location_sharing",
+                      "marketing"
+                    ]
+                  },
+                  "policyVersion": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "granted": {
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "onboarding",
+                      "settings",
+                      "feature_action"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Consent event appended."
+          },
+          "400": {
+            "description": "Invalid consent purpose, source, policy version, or decision."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Record a purpose-specific consent decision",
+        "tags": [
+          "Consents"
         ]
       }
     },
     "/cycles/current": {
       "get": {
-        "summary": "Get current active cycle and day of cycle",
+        "description": "Returns the current active cycle or `data: null` when no period has been logged. Dates use YYYY-MM-DD.",
+        "operationId": "CyclesController_getCurrentCycle",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Current cycle or null when none is active."
+          }
+        },
         "security": [
           {
-            "bearerAuth": []
+            "accessToken": []
           }
+        ],
+        "summary": "Get the active menstrual cycle",
+        "tags": [
+          "Cycles"
+        ]
+      }
+    },
+    "/cycles/history": {
+      "get": {
+        "description": "Returns this user’s recorded cycles, average observed cycle interval, data sufficiency, and a cursor for the next page. Not a contraceptive method.",
+        "operationId": "CyclesController_getCycleHistory",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Cycle history and summary."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List cycle history",
+        "tags": [
+          "Cycles"
+        ]
+      }
+    },
+    "/cycles/history/{id}": {
+      "get": {
+        "description": "Returns the authenticated user’s cycle with associated daily logs and recorded flow pattern.",
+        "operationId": "CyclesController_getCycleHistoryDetail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character cycle identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cycle detail and flow pattern."
+          },
+          "404": {
+            "description": "Cycle not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get cycle history detail",
+        "tags": [
+          "Cycles"
+        ]
+      }
+    },
+    "/cycles/{id}": {
+      "patch": {
+        "description": "Updates the authenticated user’s period start/end dates or private note. Dates are calendar dates. Periods cannot overlap or be reordered across adjacent records.",
+        "operationId": "CyclesController_updateCycle",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character cycle identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "startDate": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "endDate": {
+                    "type": "string",
+                    "format": "date",
+                    "nullable": true
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cycle updated."
+          },
+          "400": {
+            "description": "The update creates an invalid or overlapping period."
+          },
+          "404": {
+            "description": "Cycle not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Edit a recorded period",
+        "tags": [
+          "Cycles"
         ]
       }
     },
     "/cycles/start-period": {
       "post": {
-        "summary": "Start period and calculate cycle predictions",
+        "description": "Starts a cycle for the supplied calendar date, or today when omitted. Repeating the same date is idempotent; any previous active cycle is completed.",
+        "operationId": "CyclesController_startPeriod",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Period start date. Defaults to today.",
+                    "example": "2026-10-19"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Cycle logged, with cycle prediction when available."
+          }
+        },
         "security": [
           {
-            "bearerAuth": []
+            "accessToken": []
           }
+        ],
+        "summary": "Log the start of a period",
+        "tags": [
+          "Cycles"
+        ]
+      }
+    },
+    "/cycles/end-period": {
+      "post": {
+        "description": "Ends the active period on the supplied date, or today when omitted.",
+        "operationId": "CyclesController_endPeriod",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Period end date. Defaults to today.",
+                    "example": "2026-10-23"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Active cycle updated with period end information."
+          },
+          "404": {
+            "description": "No active cycle exists."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Log the end of a period",
+        "tags": [
+          "Cycles"
         ]
       }
     },
     "/daily-logs/{date}": {
       "get": {
-        "summary": "Get daily log for specific date",
+        "description": "Returns the log for a calendar date. If no log exists, returns a default empty log for that date.",
+        "operationId": "DailyLogsController_getDailyLog",
+        "parameters": [
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "description": "Calendar date in YYYY-MM-DD format.",
+            "schema": {
+              "example": "2026-10-19",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daily log or default empty log."
+          }
+        },
         "security": [
           {
-            "bearerAuth": []
+            "accessToken": []
           }
+        ],
+        "summary": "Get a daily health log",
+        "tags": [
+          "Daily logs"
         ]
       },
       "put": {
-        "summary": "Upsert daily log",
+        "description": "Upserts the authenticated user’s log for the date. Omitted mood and symptom lists default to empty arrays; provide the complete desired value for each included field. The response includes a version for subsequent conditional edits.",
+        "operationId": "DailyLogsController_upsertDailyLog",
+        "parameters": [
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "description": "Calendar date in YYYY-MM-DD format.",
+            "schema": {
+              "example": "2026-10-19",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "bleeding": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "level": {
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "spotting",
+                          "light",
+                          "medium",
+                          "heavy"
+                        ]
+                      },
+                      "clots": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "pain": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "level": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10
+                      },
+                      "locations": {
+                        "type": "array",
+                        "maxItems": 12,
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40
+                        }
+                      }
+                    }
+                  },
+                  "moods": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "symptoms": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved daily log."
+          }
+        },
         "security": [
           {
-            "bearerAuth": []
+            "accessToken": []
           }
+        ],
+        "summary": "Create or replace a daily health log",
+        "tags": [
+          "Daily logs"
+        ]
+      },
+      "patch": {
+        "description": "Changes only supplied fields and nested properties. Include the current version returned by GET/PUT; stale writes receive 409 VERSION_CONFLICT.",
+        "operationId": "DailyLogsController_patchDailyLog",
+        "parameters": [
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "description": "Calendar date in YYYY-MM-DD format.",
+            "schema": {
+              "example": "2026-10-19",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "version"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "bleeding": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "level": {
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "spotting",
+                          "light",
+                          "medium",
+                          "heavy"
+                        ]
+                      },
+                      "clots": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "pain": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "level": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10
+                      },
+                      "locations": {
+                        "type": "array",
+                        "maxItems": 12,
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40
+                        }
+                      }
+                    }
+                  },
+                  "moods": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "symptoms": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "sexualActivity": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "occurred": {
+                        "type": "boolean"
+                      },
+                      "protection": {
+                        "type": "string",
+                        "maxLength": 40
+                      }
+                    }
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Daily log updated."
+          },
+          "404": {
+            "description": "Daily log not found for this account."
+          },
+          "409": {
+            "description": "The supplied version is stale."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Partially update a daily health log",
+        "tags": [
+          "Daily logs"
+        ]
+      },
+      "delete": {
+        "description": "Deletes only the authenticated user’s log when the supplied version matches the current record.",
+        "operationId": "DailyLogsController_deleteDailyLog",
+        "parameters": [
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "description": "Calendar date in YYYY-MM-DD format.",
+            "schema": {
+              "example": "2026-10-19",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daily log deleted."
+          },
+          "404": {
+            "description": "Daily log not found for this account."
+          },
+          "409": {
+            "description": "The supplied version is stale."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Delete a daily health log",
+        "tags": [
+          "Daily logs"
         ]
       }
     },
     "/pregnancies/current": {
       "get": {
-        "summary": "Get active pregnancy gestational week & due date",
+        "description": "Returns the current pregnancy with estimated gestational age and milestone, or `data: null` when no active pregnancy exists.",
+        "operationId": "PregnancyController_getCurrentPregnancy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Active pregnancy or null."
+          }
+        },
         "security": [
           {
-            "bearerAuth": []
+            "accessToken": []
           }
+        ],
+        "summary": "Get the active pregnancy",
+        "tags": [
+          "Pregnancy"
+        ]
+      }
+    },
+    "/pregnancies/history": {
+      "get": {
+        "description": "Returns the authenticated user’s pregnancy records, newest first, using cursor pagination.",
+        "operationId": "PregnancyController_getPregnancyHistory",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Pregnancy history and next cursor."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List pregnancy history",
+        "tags": [
+          "Pregnancy"
+        ]
+      }
+    },
+    "/pregnancies/logs/{date}": {
+      "get": {
+        "description": "Returns the authenticated user’s saved pregnancy log or a default empty log for the date.",
+        "operationId": "PregnancyController_getPregnancyLog",
+        "parameters": [
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "description": "Local calendar date in YYYY-MM-DD format.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved check-in or default empty check-in."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get the pregnancy check-in for a date",
+        "tags": [
+          "Pregnancy"
+        ]
+      }
+    },
+    "/pregnancies": {
+      "post": {
+        "description": "Provide either lastMenstrualPeriod or estimatedDueDate. Only one active pregnancy is allowed per account. Dates use YYYY-MM-DD.",
+        "operationId": "PregnancyController_createPregnancy",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "lastMenstrualPeriod": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2026-08-01"
+                  },
+                  "estimatedDueDate": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2027-05-08"
+                  },
+                  "calculationSource": {
+                    "type": "string",
+                    "enum": [
+                      "last_menstrual_period",
+                      "ultrasound",
+                      "medical_professional",
+                      "user_entered"
+                    ],
+                    "default": "last_menstrual_period"
+                  },
+                  "multiplePregnancy": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "description": "At least one of lastMenstrualPeriod or estimatedDueDate is required."
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pregnancy profile created."
+          },
+          "400": {
+            "description": "Neither date provided, or an active pregnancy already exists."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Create a pregnancy profile",
+        "tags": [
+          "Pregnancy"
+        ]
+      }
+    },
+    "/pregnancies/{id}": {
+      "patch": {
+        "description": "Owner-scoped update. An owner-entered due date is recorded as an estimate and is not marked clinician-confirmed.",
+        "operationId": "PregnancyController_updatePregnancy",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character pregnancy identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "lastMenstrualPeriod": {
+                    "type": "string",
+                    "format": "date",
+                    "nullable": true
+                  },
+                  "estimatedDueDate": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "calculationSource": {
+                    "type": "string",
+                    "enum": [
+                      "last_menstrual_period",
+                      "ultrasound",
+                      "user_entered"
+                    ]
+                  },
+                  "dateConfidence": {
+                    "type": "string",
+                    "enum": [
+                      "certain",
+                      "approximate",
+                      "unknown"
+                    ]
+                  },
+                  "multiplePregnancy": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pregnancy updated with dating provenance."
+          },
+          "404": {
+            "description": "Pregnancy not found for this account."
+          },
+          "409": {
+            "description": "Pregnancy is no longer active."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Update active pregnancy dating and profile fields",
+        "tags": [
+          "Pregnancy"
+        ]
+      }
+    },
+    "/pregnancies/{id}/timeline": {
+      "get": {
+        "description": "Returns owner-scoped recorded pregnancy events and due-date estimate. No unreviewed medical advice is generated.",
+        "operationId": "PregnancyController_getTimeline",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character pregnancy identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pregnancy timeline."
+          },
+          "404": {
+            "description": "Pregnancy not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get pregnancy timeline",
+        "tags": [
+          "Pregnancy"
+        ]
+      }
+    },
+    "/pregnancies/{id}/kicks": {
+      "post": {
+        "description": "Owner-scoped. Tracking is blocked before 28 gestational weeks; this is a logging feature, not reassurance or medical advice.",
+        "operationId": "PregnancyController_recordKickSession",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character pregnancy identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "startedAt",
+                  "completedAt",
+                  "count"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "startedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "completedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Kick-count session recorded."
+          },
+          "422": {
+            "description": "Kick counting is not enabled before 28 weeks."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Record a fetal movement count session",
+        "tags": [
+          "Pregnancy"
+        ]
+      },
+      "get": {
+        "description": "Returns the authenticated user’s recorded sessions.",
+        "operationId": "PregnancyController_getKickSessions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character pregnancy identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Kick-count sessions."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List fetal movement count sessions",
+        "tags": [
+          "Pregnancy"
+        ]
+      }
+    },
+    "/pregnancies/{id}/wellness/{date}": {
+      "patch": {
+        "description": "Updates only supplied water or vitamin values for a local calendar date; does not overwrite symptom fields.",
+        "operationId": "PregnancyController_updateWellness",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character pregnancy identifier.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "description": "Local calendar date in YYYY-MM-DD format.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "water": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 30
+                  },
+                  "vitamins": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 60
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Wellness fields saved."
+          },
+          "404": {
+            "description": "Active pregnancy not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Update pregnancy wellness counts",
+        "tags": [
+          "Pregnancy"
+        ]
+      }
+    },
+    "/pregnancies/{id}/end": {
+      "post": {
+        "description": "Records the outcome and ends the pregnancy. Valid reasons are completed, loss, terminated, or archived.",
+        "operationId": "PregnancyController_endPregnancy",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character pregnancy identifier.",
+            "schema": {
+              "example": "66a0b6f3e5f21c8e7a112233",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "completed",
+                      "loss",
+                      "terminated",
+                      "archived"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pregnancy profile ended."
+          },
+          "404": {
+            "description": "Pregnancy not found for this account."
+          },
+          "409": {
+            "description": "Pregnancy has already ended."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "End or archive a pregnancy profile",
+        "tags": [
+          "Pregnancy"
+        ]
+      }
+    },
+    "/pregnancies/{id}/logs/{date}": {
+      "put": {
+        "description": "Upserts the authenticated user’s structured pregnancy check-in for a local date. Free-text notes are encrypted at rest. Selected high-risk symptom labels return an urgent safety notice; this API is not an emergency service.",
+        "operationId": "PregnancyController_logSymptom",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character pregnancy identifier.",
+            "schema": {
+              "example": "66a0b6f3e5f21c8e7a112233",
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "description": "Calendar date in YYYY-MM-DD format.",
+            "schema": {
+              "example": "2026-10-19",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "nausea": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "mild",
+                      "moderate",
+                      "severe"
+                    ]
+                  },
+                  "symptoms": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 60
+                    },
+                    "default": []
+                  },
+                  "mood": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "energy": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "water": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 30
+                  },
+                  "vitamins": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "nutrition": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "selfCare": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "nullable": true
+                  },
+                  "fetalMovement": {
+                    "type": "string",
+                    "enum": [
+                      "normal",
+                      "reduced",
+                      "absent",
+                      "not_assessed"
+                    ],
+                    "default": "not_assessed"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pregnancy check-in saved; may include an urgent safetyNotice."
+          },
+          "404": {
+            "description": "Pregnancy not found for this account."
+          },
+          "503": {
+            "description": "Sensitive-note encryption is not configured."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Log pregnancy check-in",
+        "tags": [
+          "Pregnancy"
         ]
       }
     },
     "/directory/search": {
       "get": {
-        "summary": "Search 31 verified emergency & healthcare records"
+        "description": "Searches verified directory resources by text, category, and country. Results are paginated; use countryCode=ALL to search across countries.",
+        "operationId": "DirectoryController_search",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Results per page (default 20; maximum 50).",
+            "schema": {
+              "example": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "1-based page number (default 1; maximum 1000).",
+            "schema": {
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "category",
+            "required": false,
+            "in": "query",
+            "description": "Category filter.",
+            "schema": {
+              "example": "Emergency"
+            }
+          },
+          {
+            "name": "countryCode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "NG",
+                "GH",
+                "GB",
+                "US",
+                "ALL"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Search text matched against organization name, category, and service summary.",
+            "schema": {
+              "example": "maternity hospital"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching directory records; pagination totals are in meta."
+          }
+        },
+        "summary": "Search the health and emergency directory",
+        "tags": [
+          "Directory"
+        ]
       }
     },
     "/directory/nearby": {
       "get": {
-        "summary": "Geospatial 2dsphere nearby emergency search"
-      }
-    },
-    "/health-vault/upload-intent": {
-      "post": {
-        "summary": "Generate Cloudinary server-side upload signature",
-        "security": [
+        "description": "Returns resources near WGS84 coordinates. Longitude is -180..180, latitude is -90..90, and distance is in meters.",
+        "operationId": "DirectoryController_getNearby",
+        "parameters": [
           {
-            "bearerAuth": []
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Maximum results, 1–50 (default 20).",
+            "schema": {
+              "example": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "maxDistanceMeters",
+            "required": false,
+            "in": "query",
+            "description": "Search radius, 100–200000 meters (default 50000).",
+            "schema": {
+              "example": 25000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "lat",
+            "required": true,
+            "in": "query",
+            "description": "Latitude in decimal degrees (WGS84).",
+            "schema": {
+              "example": 6.5244,
+              "type": "number"
+            }
+          },
+          {
+            "name": "lng",
+            "required": true,
+            "in": "query",
+            "description": "Longitude in decimal degrees (WGS84).",
+            "schema": {
+              "example": 3.3792,
+              "type": "number"
+            }
           }
+        ],
+        "responses": {
+          "200": {
+            "description": "Nearby directory records ordered by proximity.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "data": [
+                    {
+                      "record_id": "NG-LAG-001",
+                      "organisation_name": "Example Maternity Centre",
+                      "top_category": "Maternity care",
+                      "countryCode": "NG",
+                      "city": "Lagos",
+                      "phone": "+234 800 000 0000",
+                      "service_summary": "Maternity and emergency obstetric care",
+                      "verification_status": "Source verified"
+                    }
+                  ],
+                  "meta": {
+                    "total": 1,
+                    "requestId": "req_1729339200000"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Find nearby health and emergency services",
+        "tags": [
+          "Directory"
         ]
       }
     },
-    "/health-vault/documents/{id}": {
+    "/directory/services/{serviceId}": {
       "get": {
-        "summary": "Get 5-minute signed download URL with access log",
+        "description": "Looks up a resource by its public directory record_id. A missing record is returned as data: null.",
+        "operationId": "DirectoryController_getServiceById",
+        "parameters": [
+          {
+            "name": "serviceId",
+            "required": true,
+            "in": "path",
+            "description": "Directory record identifier.",
+            "schema": {
+              "example": "NG-LAG-001",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Directory record or null when it does not exist."
+          }
+        },
+        "summary": "Get a directory resource",
+        "tags": [
+          "Directory"
+        ]
+      }
+    },
+    "/webhooks/twilio/whatsapp/inbound": {
+      "post": {
+        "description": "Provider-to-server callback. Twilio signs the exact public request URL and form parameters; configure the public webhook URL and preserve form-encoded payloads. Not a mobile-client operation.",
+        "operationId": "NotificationsController_handleTwilioInbound",
+        "parameters": [
+          {
+            "name": "x-twilio-signature",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Twilio-Signature",
+            "in": "header",
+            "description": "Twilio request signature, validated against the configured account auth token.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Inbound provider message accepted."
+          },
+          "403": {
+            "description": "Missing or invalid Twilio signature."
+          }
+        },
+        "summary": "Twilio WhatsApp inbound webhook",
+        "tags": [
+          "Notifications and webhooks"
+        ]
+      }
+    },
+    "/webhooks/twilio/whatsapp/status": {
+      "post": {
+        "description": "Provider-to-server status callback. Configure Twilio to send MessageSid and MessageStatus form fields. Not a mobile-client operation.",
+        "operationId": "NotificationsController_handleTwilioStatus",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Provider status accepted and mapped to the internal delivery state."
+          }
+        },
+        "summary": "Twilio WhatsApp delivery-status webhook",
+        "tags": [
+          "Notifications and webhooks"
+        ]
+      }
+    },
+    "/internal/cron/process-notifications": {
+      "get": {
+        "description": "Internal scheduler operation that atomically claims and processes up to 20 due notifications. Supply the configured secret in the X-Cron-Secret header; query-string secrets are supported for compatibility but discouraged because URLs may be logged. Not a mobile-client operation.",
+        "operationId": "NotificationsController_processNotificationOutbox",
+        "parameters": [
+          {
+            "name": "cronSecret",
+            "required": false,
+            "in": "query",
+            "description": "Legacy secret transport. Prefer X-Cron-Secret header.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-cron-secret",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Cron-Secret",
+            "in": "header",
+            "description": "Value configured by the operator as CRON_SECRET.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Processing result, including claimedCount and processedAt."
+          }
+        },
+        "summary": "Process pending notification outbox (internal)",
+        "tags": [
+          "Notifications and webhooks"
+        ]
+      }
+    },
+    "/safety/pin": {
+      "post": {
+        "description": "Sets a 4–8 digit PIN. When a PIN already exists, currentPin is required. PINs are stored as one-way hashes and never returned.",
+        "operationId": "SafetyController_setSafetyPin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "pin"
+                ],
+                "properties": {
+                  "pin": {
+                    "type": "string",
+                    "pattern": "^\\d{4,8}$",
+                    "format": "password",
+                    "example": "4826"
+                  },
+                  "currentPin": {
+                    "type": "string",
+                    "pattern": "^\\d{4,8}$",
+                    "format": "password",
+                    "description": "Required when replacing an existing PIN."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Safety PIN created or updated."
+          },
+          "401": {
+            "description": "Current PIN is incorrect."
+          }
+        },
         "security": [
           {
-            "bearerAuth": []
+            "accessToken": []
           }
+        ],
+        "summary": "Create or update the Safety PIN",
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
+    "/safety/pin/change": {
+      "post": {
+        "description": "Requires the current PIN and the new 4–8 digit PIN.",
+        "operationId": "SafetyController_changeSafetyPin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "currentPin",
+                  "newPin"
+                ],
+                "properties": {
+                  "currentPin": {
+                    "type": "string",
+                    "pattern": "^\\d{4,8}$",
+                    "format": "password"
+                  },
+                  "newPin": {
+                    "type": "string",
+                    "pattern": "^\\d{4,8}$",
+                    "format": "password"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Safety PIN changed."
+          },
+          "401": {
+            "description": "Current PIN is incorrect."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Change the Safety PIN",
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
+    "/safety/pin/status": {
+      "get": {
+        "description": "Reports whether a PIN exists and whether verification is temporarily locked. Never returns the PIN or its hash.",
+        "operationId": "SafetyController_pinStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "PIN configured and lockout status."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get Safety PIN status",
+        "tags": [
+          "Safety"
         ]
       }
     },
     "/safety/sos/trigger": {
       "post": {
-        "summary": "Trigger Web SOS panic alert",
+        "description": "Creates an SOS incident for the authenticated user. Set isTestMode=true to simulate a drill. A live request can notify trusted-circle guardians; this endpoint does not replace local emergency services.",
+        "operationId": "SafetyController_triggerSos",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "isTestMode": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "When true, guardian alerts are simulated."
+                  },
+                  "gps": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "description": "Optional client-supplied location string."
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "SOS incident created or an existing active incident returned.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "data": {
+                    "incident": {
+                      "id": "66a0b6f3e5f21c8e7a112233",
+                      "status": "active",
+                      "isTestMode": true
+                    },
+                    "message": "SOS test drill started. Guardian alerts are simulated in test mode."
+                  },
+                  "meta": {
+                    "requestId": "req_1729339200000"
+                  }
+                }
+              }
+            }
+          }
+        },
         "security": [
           {
-            "bearerAuth": []
+            "accessToken": []
           }
+        ],
+        "summary": "Trigger an SOS incident",
+        "tags": [
+          "Safety"
         ]
       }
     },
     "/safety/sos/cancel": {
       "post": {
-        "summary": "Cancel active SOS with Safety PIN",
+        "description": "Requires the account Safety PIN. Incorrect PIN attempts are throttled; the active incident remains live if verification fails.",
+        "operationId": "SafetyController_cancelSos",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "pin"
+                ],
+                "properties": {
+                  "pin": {
+                    "type": "string",
+                    "pattern": "^\\d{4,8}$",
+                    "format": "password"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Incident cancelled after PIN verification."
+          },
+          "401": {
+            "description": "Incorrect Safety PIN."
+          },
+          "404": {
+            "description": "No active SOS incident exists."
+          },
+          "429": {
+            "description": "PIN verification is temporarily locked after repeated failures."
+          }
+        },
         "security": [
           {
-            "bearerAuth": []
+            "accessToken": []
           }
+        ],
+        "summary": "Cancel the active SOS incident",
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
+    "/safety/incidents": {
+      "get": {
+        "description": "Returns up to 100 incidents belonging to the authenticated user, newest first.",
+        "operationId": "SafetyController_getIncidents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The user’s recent safety incidents."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List recent SOS incidents",
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
+    "/health-vault/upload-intent": {
+      "post": {
+        "description": "Returns Cloudinary upload parameters; the mobile client uploads the file directly to uploadUrl using the returned apiKey, signature, timestamp, folder, and publicId. The API secret is never exposed. Requires configured storage credentials.",
+        "operationId": "HealthVaultController_generateUploadIntent",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Short-lived upload signature and exact signed parameters."
+          },
+          "503": {
+            "description": "Document storage is not configured."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Create a signed document-upload intent",
+        "tags": [
+          "Health vault"
+        ]
+      }
+    },
+    "/health-vault/documents": {
+      "get": {
+        "description": "Returns the authenticated user’s non-deleted document metadata, newest first.",
+        "operationId": "HealthVaultController_getDocuments",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Health-vault document list."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List health-vault documents",
+        "tags": [
+          "Health vault"
+        ]
+      },
+      "post": {
+        "description": "Call after uploading a file with a successful upload intent. Submit the Cloudinary public ID returned/generated for that upload; this endpoint stores metadata and does not upload the file itself.",
+        "operationId": "HealthVaultController_saveDocument",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "title",
+                  "cloudinaryPublicId"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "example": "October blood test"
+                  },
+                  "documentType": {
+                    "type": "string",
+                    "enum": [
+                      "laboratory_result",
+                      "prescription",
+                      "ultrasound",
+                      "scan",
+                      "referral",
+                      "vaccination",
+                      "medical_note",
+                      "other"
+                    ],
+                    "default": "medical_note"
+                  },
+                  "cloudinaryPublicId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "accessLevel": {
+                    "type": "string",
+                    "enum": [
+                      "private",
+                      "shared_with_trusted_circle",
+                      "shared_with_professional"
+                    ],
+                    "default": "private"
+                  },
+                  "dateOfRecord": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "healthcareProviderName": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "tags": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    },
+                    "default": []
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Document metadata saved."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Save uploaded document metadata",
+        "tags": [
+          "Health vault"
+        ]
+      }
+    },
+    "/health-vault/documents/{id}": {
+      "get": {
+        "description": "Returns an owner-only signed URL that expires after five minutes. Do not persist or share the URL; request a new one when needed.",
+        "operationId": "HealthVaultController_getSignedDownloadUrl",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character document identifier.",
+            "schema": {
+              "example": "66a0b6f3e5f21c8e7a112233",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Short-lived signed download URL."
+          },
+          "403": {
+            "description": "Document belongs to another user."
+          },
+          "404": {
+            "description": "Document does not exist."
+          },
+          "503": {
+            "description": "Document storage is not configured."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Create a signed document-download URL",
+        "tags": [
+          "Health vault"
+        ]
+      },
+      "delete": {
+        "description": "Soft-deletes the authenticated user’s document metadata. A deleted document can no longer be downloaded.",
+        "operationId": "HealthVaultController_deleteDocument",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character document identifier.",
+            "schema": {
+              "example": "66a0b6f3e5f21c8e7a112233",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document marked deleted."
+          },
+          "403": {
+            "description": "Document belongs to another user."
+          },
+          "404": {
+            "description": "Document does not exist."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Delete a health-vault document",
+        "tags": [
+          "Health vault"
         ]
       }
     },
     "/admin/metrics": {
       "get": {
-        "summary": "Admin global metrics & MongoDB aggregations",
+        "description": "Returns aggregate user, pregnancy, emergency-resource, and country metrics. Requires a super_admin or platform_admin role.",
+        "operationId": "AdminController_getMetrics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
         "security": [
           {
-            "bearerAuth": []
+            "accessToken": []
           }
+        ],
+        "summary": "Get administrative platform metrics",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/users": {
+      "get": {
+        "description": "Returns a paginated account listing. Requires a super_admin or platform_admin role.",
+        "operationId": "AdminController_listUsers",
+        "parameters": [
+          {
+            "name": "page",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List user accounts (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/users/{id}/status": {
+      "put": {
+        "description": "Changes a user’s account status. Requires super_admin or platform_admin; only a super_admin may modify another super_admin account.",
+        "operationId": "AdminController_setUserStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Change an account status (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/directory": {
+      "put": {
+        "description": "Upserts a health-directory record. Requires super_admin, platform_admin, or emergency_manager role.",
+        "operationId": "AdminController_upsertDirectory",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Create or update a directory record (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/audit-logs": {
+      "get": {
+        "description": "Returns the latest audit records. Requires super_admin or compliance_officer role.",
+        "operationId": "AdminController_getAuditLogs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List audit logs (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/waitlist": {
+      "post": {
+        "description": "Public, rate-limited signup (10 requests per minute per IP). Duplicate emails receive the same response shape as new signups to prevent account enumeration.",
+        "operationId": "WaitlistController_join",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 320,
+                    "example": "maya@example.com"
+                  },
+                  "firstName": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "source": {
+                    "type": "string",
+                    "maxLength": 60,
+                    "default": "web"
+                  },
+                  "market": {
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "referral": {
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Signup accepted; response indicates whether the email was already on the list."
+          },
+          "429": {
+            "description": "Rate limit exceeded."
+          }
+        },
+        "summary": "Join the early-access waitlist",
+        "tags": [
+          "Waitlist"
+        ]
+      },
+      "get": {
+        "description": "Returns aggregate signup count only; no personal information is exposed.",
+        "operationId": "WaitlistController_stats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Aggregate waitlist count."
+          }
+        },
+        "summary": "Get public waitlist totals",
+        "tags": [
+          "Waitlist"
+        ]
+      }
+    },
+    "/waitlist/entries": {
+      "get": {
+        "description": "Privileged operational endpoint for paginated waitlist entries. Requires a bearer token with super_admin or platform_admin role; not intended for mobile clients.",
+        "operationId": "WaitlistController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "1-based page number (default 1).",
+            "schema": {
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Page size (default 50; maximum 200).",
+            "schema": {
+              "example": 50,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated waitlist entries."
+          },
+          "403": {
+            "description": "Administrative role required."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List waitlist entries (admin)",
+        "tags": [
+          "Waitlist"
+        ]
+      }
+    },
+    "/waitlist/preview": {
+      "get": {
+        "description": "Development preview returning HTML by default or JSON with format=json. In production requires the private X-List-Key header. Use the role-protected /waitlist/entries API for normal admin access; this route is not for mobile clients.",
+        "operationId": "WaitlistController_preview",
+        "parameters": [
+          {
+            "name": "format",
+            "required": false,
+            "in": "query",
+            "description": "Return JSON instead of the default HTML preview.",
+            "schema": {
+              "enum": [
+                "json"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-List-Key",
+            "in": "header",
+            "description": "Required in production; value is configured by the operator.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Waitlist preview in requested format."
+          },
+          "404": {
+            "description": "Preview is not available to this caller."
+          }
+        },
+        "summary": "Waitlist preview (operator-only)",
+        "tags": [
+          "Waitlist"
         ]
       }
     },
     "/health": {
       "get": {
-        "summary": "System readiness check"
+        "description": "Lightweight liveness probe. A successful response confirms the HTTP service is running; it does not guarantee downstream dependencies are healthy.",
+        "operationId": "HealthController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Service liveness and server timestamp.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "data": {
+                    "status": "ok",
+                    "service": "obiren-api",
+                    "version": "1.0.0",
+                    "timestamp": "2026-10-19T12:00:00.000Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Check API liveness",
+        "tags": [
+          "Health"
+        ]
       }
     }
   },
+  "info": {
+    "title": "Obiren API",
+    "description": "## Overview\nVersioned REST API for the Obiren mobile and web clients. All routes below are relative to `/api/v1`.\n\n## Mobile authentication flow\n1. Create an account with `POST /auth/register`, then verify the email address with `POST /auth/verify-email`.\n2. Sign in with `POST /auth/login` and `platform: ios` or `android`. Store the short-lived access token securely.\n3. Send protected requests with `Authorization: Bearer <accessToken>`. Access tokens expire after 15 minutes.\n4. Renew with `POST /auth/refresh` using the refresh token in the JSON body (mobile clients) or the `obiren_refresh` cookie (browser clients). Refresh tokens rotate; replace the stored token after each successful refresh. Lifetime: 30 days.\n5. Revoke the session with `POST /auth/logout` when signing out.\n\n## Conventions\n- Request and response bodies use JSON unless an endpoint explicitly says otherwise. Unknown request fields are rejected.\n- Calendar dates use `YYYY-MM-DD`; timestamps are ISO 8601.\n- Successful responses generally use `{ success, data, meta }`; `meta.requestId` can be used for support and troubleshooting. Some simple endpoints return a smaller success object.\n- Errors use an appropriate HTTP status. Validation errors include `message` and `statusCode`; domain errors may additionally include a stable `error.code`.\n- Protected operations require the access-token bearer scheme. Refresh-token cookies are `HttpOnly` and are intended for browser clients; native clients should send the refresh token in the request body.\n- `Admin`, `Notifications and webhooks`, and internal cron operations are operational integrations, not ordinary mobile-client endpoints.",
+    "version": "1.0.0",
+    "contact": {}
+  },
+  "tags": [
+    {
+      "name": "Authentication",
+      "description": "Account registration, sign-in, token rotation, and email/password recovery."
+    },
+    {
+      "name": "Users",
+      "description": "The authenticated user profile and personal-data lifecycle."
+    },
+    {
+      "name": "Cycles",
+      "description": "Authenticated menstrual-cycle tracking and cycle history. Predictions are estimates, not contraception advice."
+    },
+    {
+      "name": "Daily logs",
+      "description": "Date-keyed daily cycle symptoms and observations."
+    },
+    {
+      "name": "Pregnancy",
+      "description": "Authenticated pregnancy profile, gestational progress, and symptom logging."
+    },
+    {
+      "name": "Directory",
+      "description": "Public search for health and emergency services; results can be filtered or located nearby."
+    },
+    {
+      "name": "Safety",
+      "description": "Safety PIN controls and SOS incident operations. Triggering a live SOS can notify trusted contacts."
+    },
+    {
+      "name": "Health vault",
+      "description": "Private health-document metadata and short-lived signed upload/download flows."
+    },
+    {
+      "name": "Health",
+      "description": "Service liveness endpoint."
+    },
+    {
+      "name": "Waitlist",
+      "description": "Public early-access signup and restricted operational views."
+    },
+    {
+      "name": "Admin",
+      "description": "Privileged administrative operations; requires an administrative role in addition to a bearer token."
+    },
+    {
+      "name": "Notifications and webhooks",
+      "description": "Provider callbacks and internal notification processing; not intended for mobile clients."
+    }
+  ],
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "API v1 (same origin)"
+    }
+  ],
   "components": {
     "securitySchemes": {
-      "bearerAuth": {
-        "type": "http",
+      "accessToken": {
         "scheme": "bearer",
-        "bearerFormat": "JWT"
+        "bearerFormat": "JWT",
+        "type": "http"
+      },
+      "refreshCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "obiren_refresh"
       }
-    }
+    },
+    "schemas": {}
   }
 }
