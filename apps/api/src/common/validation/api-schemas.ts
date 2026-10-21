@@ -476,6 +476,44 @@ export const CreateAvailabilitySchema = z.object({ startsAt: z.string().datetime
   .refine((v) => new Date(v.endsAt).getTime() - new Date(v.startsAt).getTime() <= 8 * 60 * 60 * 1000, 'Slot duration cannot exceed eight hours');
 export const HoldSlotSchema = z.object({ slotId: MongoIdParam }).strict();
 
+// ---------------- Specialists / bookings / payments ----------------
+export const SpecialistQuerySchema = z
+  .object({
+    countryCode: z.enum(['NG', 'GH', 'GB', 'US']).optional(),
+    specialty: z.string().trim().min(1).max(80).optional(),
+    language: z.string().trim().min(2).max(20).optional(),
+    sessionType: z.enum(['clinic', 'audio', 'video', 'text']).optional(),
+    cursor: objectId.optional(),
+    limit: z.coerce.number().int().min(1).max(50).default(20),
+  })
+  .strict();
+
+export const SpecialistSlotsQuerySchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+    sessionType: z.enum(['clinic', 'audio', 'video', 'text']).optional(),
+  })
+  .strict()
+  .refine((value) => value.from <= value.to, 'from must be on or before to')
+  .refine((value) => value.to.getTime() - value.from.getTime() <= 31 * 86400000, 'Slot range cannot exceed 31 days');
+
+export const BookingListQuerySchema = z
+  .object({
+    cursor: objectId.optional(),
+    limit: z.coerce.number().int().min(1).max(50).default(20),
+    status: z.enum(['held', 'pending_payment', 'confirmed', 'cancelled', 'completed', 'expired']).optional(),
+  })
+  .strict();
+
+export const CancelBookingSchema = z
+  .object({ reason: z.string().trim().min(1).max(300).optional() })
+  .strict();
+
+export const ClinicianBookingQuerySchema = z
+  .object({ cursor: objectId.optional(), limit: z.coerce.number().int().min(1).max(50).default(20) })
+  .strict();
+
 export const GuardianCreateSchema = z.object({ name: z.string().trim().min(1).max(120), phoneE164: z.string().regex(/^\+[1-9]\d{7,14}$/), scopes: z.array(z.enum(['sos_alert', 'check_in'])).min(1).max(2) }).strict();
 export const GuardianIdParamSchema = MongoIdParam;
 export const QuietCheckInSchema = z.object({ checkInAt: z.string().datetime({ offset: true }), expiresAt: z.string().datetime({ offset: true }) }).strict().refine((v) => new Date(v.expiresAt) > new Date(v.checkInAt) && new Date(v.expiresAt).getTime() - new Date(v.checkInAt).getTime() <= 24 * 60 * 60 * 1000, 'Quiet check-in expiry must be within 24 hours');

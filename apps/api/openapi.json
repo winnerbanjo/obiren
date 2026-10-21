@@ -822,6 +822,113 @@
         ]
       }
     },
+    "/me": {
+      "get": {
+        "description": "Alias of `GET /users/me`. The account is derived from the access token; no user identifier is accepted from the client.",
+        "operationId": "AccountAliasesController_getMe",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Account and profile summary."
+          },
+          "401": {
+            "description": "Missing, expired, or invalid access token."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get the current user profile",
+        "tags": [
+          "Users"
+        ]
+      },
+      "patch": {
+        "description": "Alias of `PATCH /users/me`. Partial update: include only fields to change. Dates use YYYY-MM-DD; unknown fields are rejected.",
+        "operationId": "AccountAliasesController_patchMe",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Profile updated."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Update the current user profile",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/onboarding": {
+      "get": {
+        "description": "Alias of `GET /users/onboarding`. Resumable, owner-scoped onboarding state.",
+        "operationId": "AccountAliasesController_getOnboarding",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Onboarding draft or an empty first-step draft."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get the current user’s onboarding draft",
+        "tags": [
+          "Users"
+        ]
+      },
+      "patch": {
+        "description": "Alias of `PATCH /users/onboarding`. Canonical steps are numbered 1 through 8; the draft can be resumed or rewound.",
+        "operationId": "AccountAliasesController_patchOnboarding",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Onboarding draft saved."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Save onboarding progress",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/onboarding/complete": {
+      "post": {
+        "description": "Alias of `POST /users/onboarding/complete`. Completes onboarding only after all eight steps and the required objective are saved. The server sets onboardingStatus; it is not client-editable.",
+        "operationId": "AccountAliasesController_completeOnboarding",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Onboarding completed and profile preferences committed."
+          },
+          "422": {
+            "description": "Onboarding draft is incomplete or already in an invalid state."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Complete onboarding",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
     "/config/options": {
       "get": {
         "description": "Returns versioned UI option values. Condition and consultation choices are provisional and must be confirmed by product/clinical review.",
@@ -1205,6 +1312,16 @@
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "cycle",
+                      "pregnancy",
+                      "postpartum",
+                      "general"
+                    ],
+                    "description": "Tracking experience for this entry."
+                  },
                   "bleeding": {
                     "type": "object",
                     "additionalProperties": false,
@@ -1223,6 +1340,16 @@
                         "type": "boolean"
                       }
                     }
+                  },
+                  "bloodColor": {
+                    "type": "string",
+                    "enum": [
+                      "pink",
+                      "light_red",
+                      "red",
+                      "dark_red",
+                      "brown"
+                    ]
                   },
                   "pain": {
                     "type": "object",
@@ -1257,6 +1384,52 @@
                     "items": {
                       "type": "string",
                       "maxLength": 40
+                    }
+                  },
+                  "energy": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5
+                  },
+                  "cravings": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "sleep": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "hours": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 24
+                      },
+                      "quality": {
+                        "type": "string",
+                        "enum": [
+                          "poor",
+                          "fair",
+                          "good",
+                          "great"
+                        ]
+                      }
+                    }
+                  },
+                  "sexualActivity": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "occurred": {
+                        "type": "boolean"
+                      },
+                      "protection": {
+                        "type": "string",
+                        "maxLength": 40
+                      }
                     }
                   },
                   "notes": {
@@ -1313,6 +1486,15 @@
                     "type": "integer",
                     "minimum": 1
                   },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "cycle",
+                      "pregnancy",
+                      "postpartum",
+                      "general"
+                    ]
+                  },
                   "bleeding": {
                     "type": "object",
                     "additionalProperties": false,
@@ -1332,6 +1514,17 @@
                       }
                     }
                   },
+                  "bloodColor": {
+                    "type": "string",
+                    "enum": [
+                      "pink",
+                      "light_red",
+                      "red",
+                      "dark_red",
+                      "brown"
+                    ],
+                    "nullable": true
+                  },
                   "pain": {
                     "type": "object",
                     "additionalProperties": false,
@@ -1348,6 +1541,41 @@
                           "type": "string",
                           "maxLength": 40
                         }
+                      }
+                    }
+                  },
+                  "energy": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "nullable": true
+                  },
+                  "cravings": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 40
+                    }
+                  },
+                  "sleep": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "nullable": true,
+                    "properties": {
+                      "hours": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 24
+                      },
+                      "quality": {
+                        "type": "string",
+                        "enum": [
+                          "poor",
+                          "fair",
+                          "good",
+                          "great"
+                        ]
                       }
                     }
                   },
@@ -1448,6 +1676,142 @@
         ]
       }
     },
+    "/periods": {
+      "get": {
+        "description": "Returns the authenticated user’s recorded periods that overlap the inclusive range, oldest first, with the average recorded period length. Dates are YYYY-MM-DD. No prediction or contraceptive claim is returned.",
+        "operationId": "PeriodsController_listPeriods",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Recorded periods and duration summary."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List recorded periods in a date range",
+        "tags": [
+          "Periods"
+        ]
+      },
+      "post": {
+        "description": "Records a period start date (defaults to today in the account timezone) and optional end date. Repeating the same start date is idempotent; a start date before the latest recorded period is rejected rather than rewriting history.",
+        "operationId": "PeriodsController_createPeriod",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "startDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Period start date. Defaults to today in the account timezone."
+                  },
+                  "endDate": {
+                    "type": "string",
+                    "format": "date",
+                    "nullable": true,
+                    "description": "Optional last bleeding day; at most 31 days after the start."
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Period recorded, or the existing record for that start date."
+          },
+          "400": {
+            "description": "Dates are invalid, overlap the next period, or fall before the latest recorded period."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Record a period",
+        "tags": [
+          "Periods"
+        ]
+      }
+    },
+    "/periods/{id}": {
+      "patch": {
+        "description": "Owner-scoped update of the period start/end dates or private note. Periods cannot overlap or be reordered across adjacent records.",
+        "operationId": "PeriodsController_updatePeriod",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character period identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "startDate": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "endDate": {
+                    "type": "string",
+                    "format": "date",
+                    "nullable": true
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Period updated."
+          },
+          "400": {
+            "description": "The update creates an invalid or overlapping period."
+          },
+          "404": {
+            "description": "Period not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Edit a recorded period",
+        "tags": [
+          "Periods"
+        ]
+      }
+    },
     "/pregnancies/current": {
       "get": {
         "description": "Returns the current pregnancy with estimated gestational age and milestone, or `data: null` when no active pregnancy exists.",
@@ -1464,6 +1828,27 @@
           }
         ],
         "summary": "Get the active pregnancy",
+        "tags": [
+          "Pregnancy"
+        ]
+      }
+    },
+    "/pregnancies/active": {
+      "get": {
+        "description": "Alias of `GET /pregnancies/current`. Returns the current pregnancy with trimester, gestational age and milestone, or `data: null` when no active pregnancy exists.",
+        "operationId": "PregnancyController_getActivePregnancy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Active pregnancy or null."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get the active pregnancy (PRD alias)",
         "tags": [
           "Pregnancy"
         ]
@@ -2046,6 +2431,148 @@
           }
         ],
         "summary": "Log pregnancy check-in",
+        "tags": [
+          "Pregnancy"
+        ]
+      }
+    },
+    "/pregnancy-logs/{date}": {
+      "get": {
+        "description": "Returns the active pregnancy check-in for a local calendar date, or a default empty check-in. Free-text notes are decrypted only for the owner.",
+        "operationId": "PregnancyLogsController_getLog",
+        "parameters": [
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "description": "Local calendar date in YYYY-MM-DD format.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved check-in or default empty check-in."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get the pregnancy check-in for a date",
+        "tags": [
+          "Pregnancy"
+        ]
+      },
+      "put": {
+        "description": "Upserts the structured check-in for the active pregnancy on a local calendar date. Free-text notes are encrypted at rest; selected high-risk symptom labels return an urgent safety notice. This API is not an emergency service.",
+        "operationId": "PregnancyLogsController_putLog",
+        "parameters": [
+          {
+            "name": "date",
+            "required": true,
+            "in": "path",
+            "description": "Local calendar date in YYYY-MM-DD format.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "nausea": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "mild",
+                      "moderate",
+                      "severe"
+                    ]
+                  },
+                  "symptoms": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 60
+                    }
+                  },
+                  "mood": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "energy": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "water": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 30
+                  },
+                  "vitamins": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "nutrition": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "selfCare": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "fetalMovement": {
+                    "type": "string",
+                    "enum": [
+                      "normal",
+                      "reduced",
+                      "absent",
+                      "not_assessed"
+                    ]
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Check-in saved; may include an urgent safetyNotice."
+          },
+          "404": {
+            "description": "No active pregnancy for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Log a pregnancy check-in for a date",
         "tags": [
           "Pregnancy"
         ]
@@ -3641,12 +4168,23 @@
     },
     "/home": {
       "get": {
-        "description": "Aggregates persisted current-cycle, pregnancy, and recent-log state. Dates and predictions are estimates, not medical advice.",
+        "description": "Aggregates persisted current-cycle, pregnancy, and recent-log state for a local calendar date. Free-text notes are never returned. Predictions are estimates, not medical or contraceptive advice.",
         "operationId": "HomeController_getHome",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "date",
+            "required": false,
+            "in": "query",
+            "description": "Local calendar date in YYYY-MM-DD. Defaults to today in the account timezone.",
+            "schema": {}
+          }
+        ],
         "responses": {
           "200": {
             "description": "Persisted home summary for the bearer-token owner."
+          },
+          "400": {
+            "description": "The supplied date is not a valid calendar date."
           }
         },
         "security": [
@@ -3654,7 +4192,7 @@
             "accessToken": []
           }
         ],
-        "summary": "Get authenticated-user home summary",
+        "summary": "Get the authenticated-user home summary",
         "tags": [
           "Home"
         ]
@@ -3879,6 +4417,406 @@
         "summary": "Cancel a temporary hold",
         "tags": [
           "Care"
+        ]
+      }
+    },
+    "/specialists": {
+      "get": {
+        "description": "Cursor-paginated catalog of active, verified specialists with their priced session types. Unverified or inactive practitioners are never returned.",
+        "operationId": "SpecialistsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Verified specialist catalog and next cursor."
+          }
+        },
+        "summary": "List verified specialists",
+        "tags": [
+          "Specialists"
+        ]
+      }
+    },
+    "/specialists/{id}": {
+      "get": {
+        "description": "Returns one active, verified specialist. Unverified or inactive profiles are reported as not found.",
+        "operationId": "SpecialistsController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character specialist identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Specialist profile."
+          },
+          "404": {
+            "description": "No verified specialist with that identifier."
+          }
+        },
+        "summary": "Get a specialist profile",
+        "tags": [
+          "Specialists"
+        ]
+      }
+    },
+    "/specialists/{id}/slots": {
+      "get": {
+        "description": "Returns bookable future slots for one verified specialist, optionally filtered by session type. Expired holds count as available.",
+        "operationId": "SpecialistsController_slots",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character specialist identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Specialist and their available slots."
+          },
+          "404": {
+            "description": "No verified specialist with that identifier."
+          }
+        },
+        "summary": "List a specialist’s available slots",
+        "tags": [
+          "Specialists"
+        ]
+      }
+    },
+    "/bookings": {
+      "get": {
+        "description": "Cursor-paginated bookings owned by the authenticated account, newest first.",
+        "operationId": "BookingsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Bookings and next cursor."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List the caller’s bookings",
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/bookings/hold": {
+      "post": {
+        "description": "Atomically reserves one slot for 10 minutes and records a `held` booking with the server-side price. A hold is not a confirmed appointment; an unpriced session type is refused before inventory is reserved.",
+        "operationId": "BookingsController_hold",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "slotId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "slotId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{24}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Held booking with amount, currency and hold expiry."
+          },
+          "404": {
+            "description": "Slot not found."
+          },
+          "409": {
+            "description": "Slot is already held or booked."
+          },
+          "503": {
+            "description": "No approved price exists for this session type."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Hold a slot and quote the server-calculated price",
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/bookings/{id}": {
+      "get": {
+        "description": "Owner-scoped booking with its latest payment state. Other accounts receive 404.",
+        "operationId": "BookingsController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character booking identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Booking and payment state."
+          },
+          "404": {
+            "description": "Booking not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get one booking",
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/bookings/{id}/payment-intent": {
+      "post": {
+        "description": "Re-reads the approved price server-side, then initializes a Paystack transaction. The booking stays `pending_payment` until a signed, server-verified webhook confirms payment. Checkout is disabled (503) without approved policy and credentials.",
+        "operationId": "BookingsController_paymentIntent",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character booking identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Payment intent with the provider checkout URL and reference."
+          },
+          "409": {
+            "description": "Booking is not payable, the hold expired, or the price changed."
+          },
+          "503": {
+            "description": "Checkout is disabled or the provider is unavailable; no payment was taken."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Start a provider checkout for a held booking",
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/bookings/{id}/cancel": {
+      "post": {
+        "description": "Owner-scoped cancellation of a held, unpaid or confirmed future booking. No refund is issued automatically: a paid booking is marked `pending_policy` until the approved refund policy exists.",
+        "operationId": "BookingsController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character booking identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Booking cancelled with the explicit refund status."
+          },
+          "404": {
+            "description": "Booking not found for this account."
+          },
+          "409": {
+            "description": "Booking cannot be cancelled in its current state."
+          },
+          "422": {
+            "description": "The session has already started or passed."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Cancel a booking",
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/clinician/bookings": {
+      "get": {
+        "description": "Returns bookings for the caller’s own clinician profile only. Requires the clinician role and an existing clinician profile.",
+        "operationId": "ClinicianBookingsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Clinician bookings and next cursor."
+          },
+          "403": {
+            "description": "No clinician profile for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List bookings for the signed-in clinician",
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/payments/{id}": {
+      "get": {
+        "description": "Owner-scoped payment record, including the provider reference and verification time. No raw card data is ever stored.",
+        "operationId": "PaymentsController_getPayment",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character payment identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Payment record."
+          },
+          "404": {
+            "description": "Payment not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get one payment",
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/receipts/{bookingId}": {
+      "get": {
+        "description": "Deterministic receipt for a confirmed booking whose payment was verified by the provider. Unpaid bookings return 422.",
+        "operationId": "PaymentsController_getReceipt",
+        "parameters": [
+          {
+            "name": "bookingId",
+            "required": true,
+            "in": "path",
+            "description": "24-character booking identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Receipt."
+          },
+          "404": {
+            "description": "Booking not found for this account."
+          },
+          "422": {
+            "description": "The booking is not confirmed or has no verified payment."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get a receipt for a paid booking",
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/webhooks/paystack": {
+      "post": {
+        "description": "Provider-to-server callback. The `x-paystack-signature` HMAC is verified against the raw request body, events are de-duplicated by id, and the transaction is re-verified with Paystack before any booking is confirmed. Amount and currency must match what the API quoted. Not a mobile-client operation.",
+        "operationId": "PaystackWebhookController_handle",
+        "parameters": [
+          {
+            "name": "x-paystack-signature",
+            "required": true,
+            "in": "header",
+            "description": "HMAC-SHA512 of the raw body keyed with the Paystack secret key.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event acknowledged with an explicit processing status."
+          },
+          "401": {
+            "description": "Missing or invalid signature."
+          },
+          "503": {
+            "description": "Payments are disabled or the provider is unreachable; the provider should retry."
+          }
+        },
+        "summary": "Paystack payment webhook",
+        "tags": [
+          "Notifications and webhooks"
         ]
       }
     },
@@ -4411,7 +5349,7 @@
   },
   "info": {
     "title": "Obiren API",
-    "description": "## Overview\nVersioned REST API for the Obiren mobile and web clients. All routes below are relative to `/api/v1`.\n\n## Mobile authentication flow\n1. Create an account with `POST /auth/register`, then verify the email address with `POST /auth/verify-email`.\n2. Sign in with `POST /auth/login` and `platform: ios` or `android`. Store the short-lived access token securely.\n3. Send protected requests with `Authorization: Bearer <accessToken>`. Access tokens expire after 15 minutes.\n4. Renew with `POST /auth/refresh` using the refresh token in the JSON body (mobile clients) or the `obiren_refresh` cookie (browser clients). Refresh tokens rotate; replace the stored token after each successful refresh. Lifetime: 30 days.\n5. Revoke the session with `POST /auth/logout` when signing out.\n\n## Conventions\n- Request and response bodies use JSON unless an endpoint explicitly says otherwise. Unknown request fields are rejected.\n- Calendar dates use `YYYY-MM-DD`; timestamps are ISO 8601.\n- Successful responses generally use `{ success, data, meta }`; `meta.requestId` can be used for support and troubleshooting. Some simple endpoints return a smaller success object.\n- Errors use an appropriate HTTP status. Validation errors include `message` and `statusCode`; domain errors may additionally include a stable `error.code`.\n- Protected operations require the access-token bearer scheme. Refresh-token cookies are `HttpOnly` and are intended for browser clients; native clients should send the refresh token in the request body.\n- `Admin`, `Notifications and webhooks`, and internal cron operations are operational integrations, not ordinary mobile-client endpoints.",
+    "description": "## Overview\nVersioned REST API for the Obiren mobile and web clients. All routes below are relative to `/api/v1`; `/v1` is accepted as a prefix alias.\n\n## Mobile authentication flow\n1. Create an account with `POST /auth/register`, then verify the email address with `POST /auth/verify-email`.\n2. Sign in with `POST /auth/login` and `platform: ios` or `android`. Store the short-lived access token securely.\n3. Send protected requests with `Authorization: Bearer <accessToken>`. Access tokens expire after 15 minutes.\n4. Renew with `POST /auth/refresh` using the refresh token in the JSON body (mobile clients) or the `obiren_refresh` cookie (browser clients). Refresh tokens rotate; replace the stored token after each successful refresh. Lifetime: 30 days.\n5. Revoke the session with `POST /auth/logout` when signing out.\n\n## Conventions\n- Request and response bodies use JSON unless an endpoint explicitly says otherwise. Unknown request fields are rejected.\n- Calendar dates use `YYYY-MM-DD`; timestamps are ISO 8601.\n- Every success response uses `{ data, meta?, requestId }`. `meta` is present only when there is pagination or extra context.\n- Every error response uses `{ error: { code, message, details? }, requestId }` with one of the documented error codes.\n- Send `X-Request-Id` to correlate a request; the value is echoed and repeated in the response body.\n- Transactional POSTs (booking holds, payment intents, guardian invites, SOS) require an `Idempotency-Key` header; replaying the same key with the same payload returns the original result.\n- Protected operations require the access-token bearer scheme. Refresh-token cookies are `HttpOnly` and are intended for browser clients; native clients should send the refresh token in the request body.\n- `Admin`, `Notifications and webhooks`, and internal cron operations are operational integrations, not ordinary mobile-client endpoints.",
     "version": "1.0.0",
     "contact": {}
   },
@@ -4469,6 +5407,10 @@
     {
       "url": "/api/v1",
       "description": "API v1 (same origin)"
+    },
+    {
+      "url": "/v1",
+      "description": "API v1 prefix alias (same origin)"
     }
   ],
   "components": {

@@ -34,27 +34,29 @@
 
 **Priority:** P0 · **Status:** Backend slice implemented; clinical review and equipment-dependent kick guidance remain
 
-- [x] Extend existing cycle routes and prediction service; do not recreate `/cycles/current`, `/cycles/history`, or period-start behavior.
+- [x] Extend existing cycle routes and prediction service; do not recreate `/cycles/current`, `/cycles/history`, or period-start behavior. `/periods` is a contract-compatible view over the same cycle records.
 - [x] Implement owner-scoped period edit and history detail, cursor-paginated history, duplicate/order/overlap validation, timezone-aware cycle day, confidence output, and non-contraceptive disclaimer.
 - [x] Update the shared typed API client and existing web period tracker to consume the history response envelope.
 - [x] Add versioned migration `003_cycle_period_query_index` for cycle-history queries.
 - [x] Verify full API e2e suites (9 suites, 68 tests), full monorepo build, and the new index migrations on ephemeral MongoDB.
 - [x] Extend existing `/daily-logs/:date` with partial updates and delete using optimistic versioning.
 - [x] Extend current pregnancy endpoints with EDD provenance/override, active journey/timeline, comprehensive pregnancy logs, daily wellness, and carefully gated kick counting.
-- [x] Add user home aggregation from persisted data, not design placeholders.
+- [x] Add user home aggregation from persisted data, not design placeholders, including the PRD `?date=` day view with deterministic cards, streak and data-sufficiency insights.
 - [ ] Clinician review of gestational milestones, kick-count gating (blocked before 28 weeks), and urgent-symptom copy.
 
 **Exit criteria:** Home, calendar, history, logging and pregnancy screens can render from API state; two-user ownership tests pass; cycle dates use user timezone and prediction safety language is medically reviewed.
 
 ## Milestone 3 — Care and payments (Sprint 3)
 
-**Priority:** P0 · **Status:** Catalog, availability, holds, and audited verification implemented; payments and bookings intentionally disabled
+**Priority:** P0 · **Status:** Catalog, availability, holds, bookings, Paystack checkout and webhook confirmation implemented; refunds, promo codes and approved pricing remain gated
 
 - [x] Create verified specialist catalog and clinician verification administration; filter unverified/inactive practitioners from user search.
 - [x] Build specialist availability/slot inventory and atomic expiring booking holds. Never double-book concurrent clients.
-- [ ] Integrate Paystack with server-calculated amount/currency, signed webhook verification, server-side transaction verification, idempotency/deduplication and reconciliation. Checkout and webhook processing currently fail closed; only constant-time signature rejection is implemented.
-- [ ] Define cancellation/refund policy, clinic vs audio/video/text session types, pricing, and entitlements with product before enabling checkout.
-- [ ] Add confirmed booking endpoints and entitlement checks once pricing, refunds, and gateway verification are approved. Temporary holds are not bookings.
+- [x] Integrate Paystack with server-calculated amount/currency, signed webhook verification, server-side transaction verification, idempotency/deduplication and reconciliation. Checkout and webhook processing fail closed unless `PAYMENT_ENABLED` and an approved `PAYMENT_POLICY_VERSION` are configured.
+- [x] Add `/specialists` catalog parity, specialist-scoped slots, the held → pending_payment → confirmed booking state machine, cancellation with slot release, and deterministic receipts. Confirmation occurs only after a signed webhook whose server-side verification matches the quoted amount and currency.
+- [x] Extend `/daily-logs` and `/home` with the PRD field set, local-date day view, and `/periods` CRUD over existing cycle records.
+- [ ] Define cancellation/refund policy, clinic vs audio/video/text session types, pricing, entitlements and promo codes with product before enabling checkout. Refunds are marked `pending_policy`, never simulated.
+- [ ] Add clinician-side booking operations and entitlement checks once pricing and refunds are approved.
 
 **Exit criteria:** Concurrent hold and webhook replay/forgery/amount-mismatch/outage tests pass in sandbox; confirmation occurs only after verified gateway success; refund and operational runbooks are approved.
 

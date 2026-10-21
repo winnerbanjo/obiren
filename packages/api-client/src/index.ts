@@ -55,11 +55,13 @@ async function rawRequest<T>(
   method: string,
   path: string,
   body?: unknown,
-  opts: { auth?: boolean; retryOn401?: boolean } = { auth: true, retryOn401: true },
+  opts: { auth?: boolean; retryOn401?: boolean; idempotencyKey?: string } = { auth: true, retryOn401: true },
 ): Promise<ApiEnvelope<T>> {
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (opts.auth !== false && accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  // A retry after a 401 reuses the same key so a transactional POST is not repeated.
+  if (opts.idempotencyKey) headers['Idempotency-Key'] = opts.idempotencyKey;
 
   const res = await fetch(`${API_BASE}${path}`, {
     method,
@@ -122,9 +124,22 @@ export async function tryRefresh(): Promise<boolean> {
   return refreshInFlight;
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const envelope = await rawRequest<T>(method, path, body);
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  opts?: { idempotencyKey?: string },
+): Promise<T> {
+  const envelope = await rawRequest<T>(method, path, body, { auth: true, retryOn401: true, ...opts });
   return envelope.data as T;
+}
+
+/** Client-side idempotency key for transactional POSTs (holds, checkouts). */
+export function newIdempotencyKey(prefix = 'web'): string {
+  const random = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  return `${prefix}-${random}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -380,13 +395,24 @@ export interface HomeSummary {
   cycle: CycleData | null;
   pregnancy: PregnancyData | null;
   recentLogs: DailyLogData[];
+  date?: string;
+  timeZone?: string;
+  todayLog?: DailyLogData | null;
+  pulse?: { date: string; cycleDay: number | null; loggedToday: boolean; loggedDayStreak: number; lastLoggedDate: string | null };
+  cards?: Array<{ id: string; type: string; title: string; body: string; action: { method: string; path: string } }>;
+  insights?: Array<{ code: string; message: string }>;
+  disclaimer?: string;
 }
 
 export const homeApi = {
-  getSummary: () => request<HomeSummary>('GET', '/home'),
+  /** `date` is a local YYYY-MM-DD calendar date; defaults to today in the account timezone. */
+  getSummary: (date?: string) => request<HomeSummary>('GET', date ? `/home?date=${encodeURIComponent(date)}` : '/home'),
   getCalendarLogs: (from: string, to: string) => {
     const params = new URLSearchParams({ from, to });
-    return request<{ from: string; to: string; logs: DailyLogData[] }>('GET', `/daily-logs?${params.toString()}`);
+    return request<{ from: string; to: string; logs: DailyLogData[]; summary?: { loggedDayCount: number; periodDayCount: number; spanDays: number } }>(
+      'GET',
+      `/daily-logs?${params.toString()}`,
+    );
   },
 };
 
@@ -439,13 +465,43 @@ export interface CycleHistoryData {
 export interface DailyLogData {
   date: string;
   version?: number;
+  /** Which tracking experience produced the entry. */
+  mode?: 'cycle' | 'pregnancy' | 'postpartum' | 'general';
   bleeding?: { level: string; clots?: boolean };
+  bloodColor?: 'pink' | 'light_red' | 'red' | 'dark_red' | 'brown' | null;
   pain?: { level: number; locations?: string[] };
   moods?: string[];
   symptoms?: string[];
+  /** Self-reported energy, 1 (exhausted) to 5 (energetic). */
+  energy?: number | null;
+  cravings?: string[];
+  sleep?: { hours?: number; quality?: 'poor' | 'fair' | 'good' | 'great' } | null;
   sexualActivity?: { occurred?: boolean; protection?: string };
   notes?: string;
+  isPeriodDay?: boolean;
 }
+
+export interface PeriodData {
+  id: string;
+  startDate: string;
+  endDate: string | null;
+  periodLengthDays: number;
+  cycleLengthDays: number | null;
+  status: string;
+  notes: string | null;
+}
+
+export const periodsApi = {
+  list: (from: string, to: string) =>
+    request<{ periods: PeriodData[]; summary: { recordedPeriodCount: number; averagePeriodLengthDays: number | null; averagePeriodLengthSampleSize: number; isContraceptiveAdvice: false } }>(
+      'GET',
+      `/periods?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    ),
+  create: (input: { startDate?: string; endDate?: string | null; notes?: string | null }) =>
+    request<{ period: PeriodData; created: boolean }>('POST', '/periods', input),
+  update: (id: string, updates: { startDate?: string; endDate?: string | null; notes?: string | null }) =>
+    request<{ period: PeriodData }>('PATCH', `/periods/${id}`, updates),
+};
 
 export const cyclesApi = {
   getCurrent: () => request<CycleData | null>('GET', '/cycles/current'),
@@ -478,16 +534,26 @@ export interface PregnancyData {
   lastMenstrualPeriod?: string;
   currentWeek?: number;
   currentDay?: number;
+  currentTrimester?: 1 | 2 | 3 | null;
+  daysUntilDueDate?: number;
+  dateConfidence?: 'certain' | 'approximate' | 'unknown';
   babyMilestone?: { fruitSize: string; lengthCm: number; weightGrams: number };
+  disclaimer?: string;
 }
 
 export const pregnancyApi = {
   getCurrent: () => request<PregnancyData | null>('GET', '/pregnancies/current'),
+  /** PRD alias of `getCurrent`. */
+  getActive: () => request<PregnancyData | null>('GET', '/pregnancies/active'),
   create: (input: { lastMenstrualPeriod?: string; estimatedDueDate?: string; calculationSource?: string; multiplePregnancy?: boolean }) =>
     request<PregnancyData>('POST', '/pregnancies', input),
   end: (id: string, reason: string) => request<PregnancyData>('POST', `/pregnancies/${id}/end`, { reason }),
   logSymptom: (id: string, date: string, payload: { symptoms?: string[]; notes?: string; fetalMovement?: string }) =>
     request<{ safetyNotice: unknown }>('PUT', `/pregnancies/${id}/logs/${date}`, payload),
+  /** Date-keyed check-in for the caller's active pregnancy (no id needed). */
+  getCheckIn: (date: string) => request<Record<string, unknown>>('GET', `/pregnancy-logs/${date}`),
+  logCheckIn: (date: string, payload: { symptoms?: string[]; nausea?: string; water?: number; vitamins?: string[]; fetalMovement?: string; notes?: string | null }) =>
+    request<{ safetyNotice: unknown }>('PUT', `/pregnancy-logs/${date}`, payload),
 };
 
 // ---------------------------------------------------------------------------
@@ -585,6 +651,133 @@ export const careApi = {
   holdSlot: (slotId: string) => request<BookingHoldData>('POST', '/care/holds', { slotId }),
   listHolds: () => request<Array<{ _id: string; slotId: string; status: string; expiresAt: string }>>('GET', '/care/holds'),
   cancelHold: (id: string) => request<{ holdId: string; status: string }>('DELETE', `/care/holds/${id}`),
+};
+
+// ---------------------------------------------------------------------------
+// Specialists · bookings · payments
+// ---------------------------------------------------------------------------
+
+export type SessionType = 'clinic' | 'audio' | 'video' | 'text';
+
+export interface SpecialistData {
+  id: string;
+  displayName: string;
+  profession: string | null;
+  bio: string | null;
+  specialties: string[];
+  languages: string[];
+  certifications: string[];
+  countryCode: string;
+  currency: string;
+  feeBySessionType: Partial<Record<SessionType, number>>;
+  ratingAverage: number | null;
+  ratingCount: number;
+}
+
+export interface SpecialistSlotData {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  sessionType: SessionType;
+  available: boolean;
+}
+
+export const specialistsApi = {
+  list: (query: { countryCode?: string; specialty?: string; language?: string; sessionType?: SessionType; cursor?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return request<{ specialists: SpecialistData[]; nextCursor: string | null }>('GET', `/specialists${suffix}`);
+  },
+  get: (id: string) => request<SpecialistData>('GET', `/specialists/${id}`),
+  slots: (id: string, query: { from: string; to: string; sessionType?: SessionType }) => {
+    const params = new URLSearchParams({ from: query.from, to: query.to });
+    if (query.sessionType) params.set('sessionType', query.sessionType);
+    return request<{ specialist: SpecialistData; slots: SpecialistSlotData[] }>('GET', `/specialists/${id}/slots?${params.toString()}`);
+  },
+};
+
+export interface BookingData {
+  id: string;
+  status: 'held' | 'pending_payment' | 'confirmed' | 'cancelled' | 'completed' | 'expired';
+  sessionType: SessionType;
+  clinicianId: string;
+  slotId: string;
+  startsAt: string;
+  endsAt: string;
+  timeZone?: string;
+  amountMinor: number;
+  currency: string;
+  reference: string | null;
+  expiresAt: string | null;
+  confirmedAt: string | null;
+  cancelledAt: string | null;
+  refundStatus: 'none' | 'not_required' | 'pending_policy' | 'refunded';
+  cancellationReason: string | null;
+}
+
+export interface PaymentData {
+  id: string;
+  bookingId: string;
+  gateway: 'paystack';
+  reference: string;
+  status: 'initialized' | 'succeeded' | 'failed' | 'abandoned';
+  amountMinor: number;
+  currency: string;
+  authorizationUrl: string | null;
+  accessCode: string | null;
+  verifiedAt: string | null;
+  failureReason: string | null;
+}
+
+/**
+ * Booking flow: hold a slot, start a provider checkout, then wait for the
+ * provider-verified webhook. `status` only becomes `confirmed` server-side.
+ */
+export const bookingsApi = {
+  list: (query: { cursor?: string; limit?: number; status?: BookingData['status'] } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return request<{ bookings: BookingData[]; nextCursor: string | null }>('GET', `/bookings${suffix}`);
+  },
+  hold: (slotId: string) =>
+    request<{ booking: BookingData; holdExpiresAt: string; checkoutEnabled: boolean; message: string }>(
+      'POST',
+      '/bookings/hold',
+      { slotId },
+      { idempotencyKey: newIdempotencyKey('hold') },
+    ),
+  get: (id: string) => request<{ booking: BookingData; payment: PaymentData | null }>('GET', `/bookings/${id}`),
+  startPayment: (id: string) =>
+    request<{ payment: PaymentData; reuse: boolean; amountMinor: number; currency: string }>(
+      'POST',
+      `/bookings/${id}/payment-intent`,
+      {},
+      { idempotencyKey: newIdempotencyKey('intent') },
+    ),
+  cancel: (id: string, reason?: string) =>
+    request<{ booking: BookingData; refund: { status: string; message: string } }>(
+      'POST',
+      `/bookings/${id}/cancel`,
+      reason ? { reason } : {},
+    ),
+  getPayment: (paymentId: string) => request<PaymentData>('GET', `/payments/${paymentId}`),
+  getReceipt: (bookingId: string) =>
+    request<{
+      receiptNo: string;
+      bookingId: string;
+      paymentId: string;
+      reference: string;
+      amountMinor: number;
+      currency: string;
+      sessionType: SessionType;
+      startsAt: string;
+      endsAt: string;
+      paidAt: string;
+      refundStatus: string;
+      provider: string;
+    }>('GET', `/receipts/${bookingId}`),
 };
 
 // ---------------------------------------------------------------------------

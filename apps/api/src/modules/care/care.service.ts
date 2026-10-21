@@ -14,6 +14,123 @@ export class CareService {
   ) {}
   private meta() { return { requestId: `req_${Date.now()}` }; }
 
+  private static readonly CURRENCY_BY_COUNTRY: Record<string, string> = {
+    NG: 'NGN',
+    GH: 'GHS',
+    GB: 'GBP',
+    US: 'USD',
+  };
+
+  private currencyFor(countryCode: string): string {
+    return CareService.CURRENCY_BY_COUNTRY[countryCode] || 'NGN';
+  }
+
+  /** Public shape of a verified specialist, including priced session types. */
+  private presentSpecialist(clinician: any) {
+    return {
+      id: clinician._id.toString(),
+      displayName: clinician.displayName,
+      profession: clinician.profession ?? null,
+      bio: clinician.bio ?? null,
+      specialties: clinician.specialties || [],
+      languages: clinician.languages || [],
+      certifications: clinician.certifications || [],
+      countryCode: clinician.countryCode,
+      currency: this.currencyFor(clinician.countryCode),
+      feeBySessionType: clinician.feeBySessionType || {},
+      verificationStatus: clinician.verificationStatus,
+      ratingAverage: clinician.ratingAverage ?? null,
+      ratingCount: clinician.ratingCount ?? 0,
+    };
+  }
+
+  /** Cursor-paginated verified specialist catalog for the PRD `/specialists` contract. */
+  async listSpecialists(filter: {
+    countryCode?: string;
+    specialty?: string;
+    language?: string;
+    sessionType?: string;
+    cursor?: string;
+    limit: number;
+  }) {
+    const query: Record<string, unknown> = { active: true, verificationStatus: 'verified' };
+    if (filter.countryCode) query.countryCode = filter.countryCode;
+    if (filter.specialty) query.specialties = filter.specialty;
+    if (filter.language) query.languages = filter.language;
+    if (filter.sessionType) query[`feeBySessionType.${filter.sessionType}`] = { $gt: 0 };
+    if (filter.cursor) query._id = { $lt: new Types.ObjectId(filter.cursor) };
+
+    const rows = await this.clinicianModel.find(query).sort({ _id: -1 }).limit(filter.limit + 1).lean().exec();
+    const hasNext = rows.length > filter.limit;
+    const specialists = rows.slice(0, filter.limit).map((row) => this.presentSpecialist(row));
+    return {
+      success: true,
+      data: { specialists, nextCursor: hasNext ? specialists[specialists.length - 1].id : null },
+      meta: this.meta(),
+    };
+  }
+
+  async getSpecialist(id: string) {
+    const clinician = await this.clinicianModel
+      .findOne({ _id: new Types.ObjectId(id), active: true, verificationStatus: 'verified' })
+      .lean()
+      .exec();
+    if (!clinician) throw new NotFoundException('Specialist not found');
+    return { success: true, data: this.presentSpecialist(clinician), meta: this.meta() };
+  }
+
+  async listSpecialistSlots(id: string, filter: { from: Date; to: Date; sessionType?: string }) {
+    const clinician = await this.clinicianModel
+      .findOne({ _id: new Types.ObjectId(id), active: true, verificationStatus: 'verified' })
+      .lean()
+      .exec();
+    if (!clinician) throw new NotFoundException('Specialist not found');
+
+    const slots = await this.slotModel
+      .find({
+        clinicianId: clinician._id,
+        startsAt: { $gte: filter.from, $lte: filter.to },
+        ...(filter.sessionType ? { sessionType: filter.sessionType } : {}),
+        $or: [{ status: 'open' }, { status: 'held', holdExpiresAt: { $lte: new Date() } }],
+      })
+      .sort({ startsAt: 1 })
+      .limit(200)
+      .lean()
+      .exec();
+
+    return {
+      success: true,
+      data: {
+        specialist: this.presentSpecialist(clinician),
+        slots: slots.map((slot) => ({
+          id: slot._id.toString(),
+          startsAt: slot.startsAt,
+          endsAt: slot.endsAt,
+          sessionType: slot.sessionType,
+          available: true,
+        })),
+      },
+      meta: this.meta(),
+    };
+  }
+
+  /**
+   * Server-side price lookup for a slot's session type. A missing approved
+   * price is a hard stop: checkout must never guess an amount.
+   */
+  async priceFor(clinicianId: Types.ObjectId | string, sessionType: string): Promise<{ amountMinor: number; currency: string }> {
+    const clinician = await this.clinicianModel.findOne({ _id: clinicianId, active: true, verificationStatus: 'verified' }).lean().exec();
+    if (!clinician) throw new NotFoundException('Specialist not found');
+    const fees = (clinician.feeBySessionType || {}) as Record<string, number | undefined>;
+    const amountMinor = fees[sessionType];
+    if (!Number.isInteger(amountMinor) || (amountMinor as number) <= 0) {
+      throw new ServiceUnavailableException(
+        'Scheduling for this session type is unavailable until an approved price is configured. No payment was attempted.',
+      );
+    }
+    return { amountMinor: amountMinor as number, currency: this.currencyFor(clinician.countryCode) };
+  }
+
   async listClinicians(filter: { countryCode?: string; specialty?: string; language?: string }) {
     const query: Record<string, unknown> = { active: true, verificationStatus: 'verified' };
     if (filter.countryCode) query.countryCode = filter.countryCode;

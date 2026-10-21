@@ -206,6 +206,12 @@ describe('Periods, enriched daily logs and date-scoped home (e2e)', () => {
 
     const empty = await request(server()).get('/api/v1/home').set(headers).expect(200);
     expect(empty.body.data.date).toBe(todayLagos());
+
+    // The `/v1` prefix alias serves the same new routes.
+    const aliased = await request(server()).get('/v1/home').set(headers).expect(200);
+    expect(aliased.body.data.date).toBe(todayLagos());
+    const aliasedPeriods = await request(server()).get('/v1/periods?from=2026-01-01&to=2026-12-31').set(headers).expect(200);
+    expect(aliasedPeriods.body.data.periods).toEqual([]);
     expect(empty.body.data.cycle).toBeNull();
     expect(empty.body.data.insights.map((insight: any) => insight.code)).toContain('NO_CYCLE_RECORDED');
     expect(empty.body.data.disclaimer).toContain('not a contraceptive method');

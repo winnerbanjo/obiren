@@ -39,6 +39,7 @@ export interface ValidatedEnv {
   healthDataEncryptionKeyId: string;
   paymentEnabled: boolean;
   paymentPolicyVersion?: string;
+  paystack: { secretKey?: string; apiBase: string; currency: string; publicKey?: string; callbackUrl?: string };
   cloudinary: { cloudName?: string; apiKey?: string; apiSecret?: string };
   twilio: { accountSid?: string; authToken?: string; whatsappFrom?: string };
   email: { resendApiKey?: string; fromEmail: string; fromName: string };
@@ -131,6 +132,16 @@ export function validateEnv(env: Record<string, string | undefined> = process.en
   if (paymentEnabled && !env.PAYSTACK_SECRET_KEY) {
     productionErrors.push('PAYSTACK_SECRET_KEY is required when payments are enabled');
   }
+  // The API base and currency are configurable so sandbox/staging runs can be
+  // pointed at a Paystack sandbox or a local sandbox stub. Amounts are always
+  // calculated server-side in the minor unit of this currency.
+  const paystack = {
+    secretKey: env.PAYSTACK_SECRET_KEY || undefined,
+    apiBase: (env.PAYSTACK_API_BASE || 'https://api.paystack.co').replace(/\/+$/, ''),
+    currency: (env.PAYSTACK_CURRENCY || 'NGN').toUpperCase(),
+    publicKey: env.PAYSTACK_PUBLIC_KEY || undefined,
+    callbackUrl: env.PAYSTACK_CALLBACK_URL || undefined,
+  };
 
   // --- Health-data encryption ---
   const healthDataEncryptionKey = env.HEALTH_DATA_ENCRYPTION_KEY || undefined;
@@ -212,6 +223,7 @@ export function validateEnv(env: Record<string, string | undefined> = process.en
     healthDataEncryptionKeyId: env.HEALTH_DATA_ENCRYPTION_KEY_ID || 'default',
     paymentEnabled,
     paymentPolicyVersion,
+    paystack,
     cloudinary,
     twilio,
     email: { resendApiKey, fromEmail: emailFrom, fromName: env.EMAIL_FROM_NAME || 'Obiren' },

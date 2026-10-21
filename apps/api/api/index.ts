@@ -19,6 +19,8 @@ async function bootstrap(): Promise<any> {
 
   const app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
     bufferLogs: true,
+    // Required for provider webhook signature verification over the raw body.
+    rawBody: true,
   });
 
   // THE SAME security/bootstrap configuration as src/main.ts.

@@ -314,6 +314,30 @@ export async function runVersionedMigrations(dbUri?: string): Promise<{ success:
       }
     }
 
+    const mig009Id = '009_bookings_payments_indexes';
+    const mig009Name = 'Add booking, payment and webhook replay-protection indexes';
+    const mig009Checksum = crypto.createHash('sha256').update(mig009Id + mig009Name).digest('hex');
+    const existing009 = await migrationsCollection.findOne({ migrationId: mig009Id, status: 'COMPLETED' });
+    if (!existing009) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig009Id },
+        { $set: { name: mig009Name, checksum: mig009Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('bookings').createIndex({ holdId: 1 }, { unique: true, name: 'uniq_booking_hold' });
+      await db.collection('bookings').createIndex({ reference: 1 }, { unique: true, sparse: true, name: 'uniq_booking_reference' });
+      await db.collection('bookings').createIndex({ userId: 1, createdAt: -1 }, { name: 'idx_booking_user_created' });
+      await db.collection('bookings').createIndex({ clinicianId: 1, startsAt: -1 }, { name: 'idx_booking_clinician_start' });
+      await db.collection('bookings').createIndex({ status: 1, expiresAt: 1 }, { name: 'idx_booking_status_expiry' });
+      await db.collection('payments').createIndex({ reference: 1 }, { unique: true, name: 'uniq_payment_reference' });
+      await db.collection('payments').createIndex({ bookingId: 1, createdAt: -1 }, { name: 'idx_payment_booking_created' });
+      await db.collection('payments').createIndex({ gateway: 1, status: 1 }, { name: 'idx_payment_gateway_status' });
+      await db.collection('payment_webhook_events').createIndex({ eventId: 1 }, { unique: true, name: 'uniq_payment_event_id' });
+      await db.collection('payment_webhook_events').createIndex({ reference: 1, createdAt: -1 }, { name: 'idx_payment_event_reference' });
+      await migrationsCollection.updateOne({ migrationId: mig009Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig009Id);
+    }
+
     const mig003Id = '003_cycle_period_query_index';
     const mig003Name = 'Add cycle history date/status compound index';
     const mig003Checksum = crypto.createHash('sha256').update(mig003Id + mig003Name).digest('hex');

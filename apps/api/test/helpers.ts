@@ -16,7 +16,9 @@ export async function createTestApp(): Promise<INestApplication> {
     imports: [AppModule],
   }).compile();
 
-  const app = moduleRef.createNestApplication({ logger: false });
+  // rawBody mirrors the production bootstrap so provider webhook signatures
+  // can be verified against the exact bytes the client sent.
+  const app = moduleRef.createNestApplication({ logger: false, rawBody: true });
   configureApp(app);
   await app.init();
   return app;
