@@ -4,6 +4,7 @@ export type Action =
   | "READ_SELF_HEALTH_DATA"
   | "WRITE_SELF_HEALTH_DATA"
   | "SHARE_SAFETY_INCIDENT"
+  | "READ_GUARDIAN_SCOPED_SAFETY_DATA"
   | "READ_SHARED_HEALTH_DATA"
   | "MANAGE_CONTENT"
   | "REVIEW_MEDICAL_CONTENT"
@@ -33,10 +34,21 @@ export function can(action: Action, ctx: PermissionContext): boolean {
 
     case "READ_SHARED_HEALTH_DATA":
       if (targetOwnerId === userId) return true;
-      if (roles.includes("HEALTHCARE_PROFESSIONAL") && isExplicitConsentGranted) {
+      // Clinicians read only data a patient explicitly shared with them.
+      if (
+        (roles.includes("CLINICIAN") || roles.includes("HEALTHCARE_PROFESSIONAL")) &&
+        isExplicitConsentGranted
+      ) {
         return true;
       }
       return false;
+
+    case "READ_GUARDIAN_SCOPED_SAFETY_DATA":
+      // A guardian only sees the SOS scope the owner granted; never health data.
+      return (
+        (roles.includes("GUARDIAN") || roles.includes("TRUSTED_CONTACT")) &&
+        isExplicitConsentGranted === true
+      );
 
     case "SHARE_SAFETY_INCIDENT":
       return roles.includes("USER");
