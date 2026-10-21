@@ -160,6 +160,30 @@ export class UsersService {
     };
   }
 
+  /** Owner export returns decrypted private notes; ciphertext never leaves the API. */
+  private exportDailyLogs(logs: Array<Record<string, any>>) {
+    return logs.map((log) => {
+      const copy: Record<string, any> = { ...log };
+      if (copy.notesEncrypted && copy.notesIv && copy.notesAuthTag) {
+        try {
+          copy.notes = decryptHealthNote({
+            ciphertext: copy.notesEncrypted,
+            iv: copy.notesIv,
+            authTag: copy.notesAuthTag,
+            keyId: copy.notesKeyId || 'default',
+          });
+        } catch {
+          copy.notes = '[content could not be decrypted with the current key]';
+        }
+      }
+      delete copy.notesEncrypted;
+      delete copy.notesIv;
+      delete copy.notesAuthTag;
+      delete copy.notesKeyId;
+      return copy;
+    });
+  }
+
   async exportUserData(userId: string) {
     const id = new Types.ObjectId(userId);
     const [user, profile, onboarding, cycles, dailyLogs, pregnancies, pregnancyLogs, consents, notifications, vaultDocuments, safetyIncidents, guardians, sessions, consultations, devices] = await Promise.all([
@@ -193,7 +217,7 @@ export class UsersService {
       return { id: message._id.toString(), consultationId: message.consultationId.toString(), senderUserId: message.senderUserId.toString(), body, status: message.status, createdAt: (message as any).createdAt };
     });
     const job = await this.privacyJobModel.create({ userId: id, type: 'export', status: 'completed', requestedAt: new Date(), completedAt: new Date(), expiresAt: new Date(Date.now() + 7 * 86400000) });
-    return { success: true, data: { exportVersion: '1.2', status: 'ready', jobId: job._id.toString(), user, profile, onboarding, cycles, dailyLogs, pregnancies, pregnancyLogs, consents, notifications, vaultDocuments, safetyIncidents, guardians, sessions, consultations, consultationMessages, devices, exportedAt: new Date().toISOString(), expiresAt: job.expiresAt }, meta: { requestId: `req_${Date.now()}` } };
+    return { success: true, data: { exportVersion: '1.3', status: 'ready', jobId: job._id.toString(), user, profile, onboarding, cycles, dailyLogs: this.exportDailyLogs(dailyLogs as Array<Record<string, any>>), pregnancies, pregnancyLogs, consents, notifications, vaultDocuments, safetyIncidents, guardians, sessions, consultations, consultationMessages, devices, exportedAt: new Date().toISOString(), expiresAt: job.expiresAt }, meta: { requestId: `req_${Date.now()}` } };
   }
 
   async requestAccountDeletion(userId: string) {

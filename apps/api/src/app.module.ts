@@ -1,8 +1,14 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { MongooseModule } from '@nestjs/mongoose';
-import { ThrottlerModule } from '@nestjs/throttler';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { env } from './config/env.validation';
+import { ApiEnvelopeInterceptor } from './common/http/api-envelope.interceptor';
+import { ApiExceptionFilter } from './common/http/api-exception.filter';
+import { IdempotencyModule } from './common/idempotency/idempotency.module';
+import { IdempotencyInterceptor } from './common/idempotency/idempotency.interceptor';
+import { ThrottlingModule } from './common/throttling/throttling.module';
+import { MailModule } from './modules/mail/mail.module';
 
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -22,11 +28,11 @@ import { CommunicationsModule } from './modules/communications/communications.mo
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    // Rate Limiting Protection (PRD Section 10.6)
-    ThrottlerModule.forRoot([{
-      ttl: 60000, // 1 minute
-      limit: 30, // 30 requests per minute per IP
-    }]),
+    // Global rate limiting (Redis-backed when configured) and abuse limits on
+    // credential and SOS endpoints.
+    ThrottlingModule,
+    MailModule,
+    IdempotencyModule,
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -53,6 +59,13 @@ import { CommunicationsModule } from './modules/communications/communications.mo
     HomeModule,
     CareModule,
     CommunicationsModule,
+  ],
+  providers: [
+    // Envelope runs outermost so idempotency stores service-level payloads and
+    // replays receive a fresh requestId.
+    { provide: APP_INTERCEPTOR, useClass: ApiEnvelopeInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
+    { provide: APP_FILTER, useClass: ApiExceptionFilter },
   ],
 })
 export class AppModule {}

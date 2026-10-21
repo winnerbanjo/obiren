@@ -1,16 +1,15 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getConnectionToken } from '@nestjs/mongoose';
 import type { Db } from 'mongodb';
-import helmet from 'helmet';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { env } from '../src/config/env.validation';
-import { MongoExceptionFilter } from '../src/common/filters/mongo-exception.filter';
+import { configureApp } from '../src/common/bootstrap';
 
 /**
- * Boots a REAL Nest application (same AppModule + security config as
- * production) against the in-memory MongoDB for genuine end-to-end tests.
+ * Boots a REAL Nest application (same AppModule + production bootstrap:
+ * request IDs, error envelope, idempotency, throttling) against the
+ * in-memory MongoDB for genuine end-to-end tests.
  */
 export async function createTestApp(): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({
@@ -18,21 +17,7 @@ export async function createTestApp(): Promise<INestApplication> {
   }).compile();
 
   const app = moduleRef.createNestApplication({ logger: false });
-  app.use(helmet());
-  app.setGlobalPrefix('api/v1');
-  app.enableCors({
-    origin: env().corsOrigins,
-    credentials: true,
-  });
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: { enableImplicitConversion: true },
-    }),
-  );
-  app.useGlobalFilters(new MongoExceptionFilter());
+  configureApp(app);
   await app.init();
   return app;
 }
@@ -111,6 +96,11 @@ export async function registerAndLogin(app: INestApplication, overrides: Partial
 
 export function authHeader(token: string) {
   return { Authorization: `Bearer ${token}` };
+}
+
+/** Unique idempotency header for transactional test requests. */
+export function idempotencyHeader(prefix = 'test') {
+  return { 'Idempotency-Key': `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` };
 }
 
 /** The Db instance used by the app under test (@nestjs/mongoose owns the connection). */

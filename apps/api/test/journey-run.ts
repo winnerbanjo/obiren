@@ -82,7 +82,7 @@ async function main() {
   // 10. Safety PIN + SOS round trip
   const pin = await server.post('/api/v1/safety/pin').set(auth2).send({ pin: '9876' });
   check('9. safety pin create', pin.status === 201 || pin.status === 200, `${pin.status}`);
-  const sos = await server.post('/api/v1/safety/sos/trigger').set(auth2).send({ isTestMode: true });
+  const sos = await server.post('/api/v1/safety/sos/trigger').set({ ...auth2, 'Idempotency-Key': `journey-sos-${Date.now()}` }).send({ isTestMode: true });
   check('9b. sos trigger', sos.status === 201 || sos.status === 200, `${sos.status}`);
   const badCancel = await server.post('/api/v1/safety/sos/cancel').set(auth2).send({ pin: '1111' });
   check('9c. wrong pin rejected', badCancel.status === 401, `${badCancel.status}`);

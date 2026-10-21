@@ -10,7 +10,9 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "lint": "eslint",
-    "generate:openapi": "ts-node scripts/generate-openapi.ts"
+    "generate:openapi": "ts-node scripts/generate-openapi.ts",
+    "migrate": "ts-node src/database/migrations/database-migrations.ts",
+    "backfill:daily-log-notes": "ts-node scripts/backfill-daily-log-notes.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -28,7 +30,6 @@
     "@obiren/types": "*",
     "@obiren/validation": "*",
     "argon2": "^0.41.1",
-    "bcryptjs": "^2.4.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "cloudinary": "^2.5.1",
@@ -37,11 +38,12 @@
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
     "helmet": "^8.0.0",
-    "joi": "^17.13.3",
+    "ioredis": "^6.0.0",
     "mongoose": "^8.9.5",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
+    "resend": "^6.34.1",
     "rxjs": "^7.8.1",
     "ts-node": "^10.9.2",
     "twilio": "^5.4.3",
@@ -49,7 +51,6 @@
   },
   "devDependencies": {
     "@nestjs/testing": "^11.2.6",
-    "@types/bcryptjs": "^2.4.6",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/js-yaml": "^4.0.9",

@@ -28,7 +28,8 @@ describe('Authentication (e2e)', () => {
       });
 
     expect(res.status).toBe(201);
-    expect(res.body.success).toBe(true);
+    expect(typeof res.body.requestId).toBe('string');
+    expect(res.headers['x-request-id']).toBe(res.body.requestId);
     expect(res.body.data.email).toBe(email.toLowerCase());
     expect(res.body.data.status).toBe('pending_verification');
     // Dev convenience: verification token exposed outside production only.

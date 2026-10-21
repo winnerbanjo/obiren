@@ -36,7 +36,7 @@ export class HomeController {
     const [cycleResponse, pregnancyResponse, recentLogs] = await Promise.all([
       this.cyclesService.getCurrentCycle(req.user.sub),
       this.pregnancyService.getCurrentPregnancy(req.user.sub),
-      this.dailyLogModel.find({ userId }).sort({ date: -1 }).limit(7).select('-notes -userId').lean().exec(),
+      this.dailyLogModel.find({ userId }).sort({ date: -1 }).limit(7).select('-notes -notesEncrypted -notesIv -notesAuthTag -notesKeyId -userId').lean().exec(),
     ]);
     return {
       success: true,
@@ -58,7 +58,7 @@ export class HomeController {
     const logs = await this.dailyLogModel.find({
       userId: new Types.ObjectId(req.user.sub),
       date: { $gte: query.from, $lte: query.to },
-    }).sort({ date: 1 }).select('-notes -userId').lean().exec();
+    }).sort({ date: 1 }).select('-notes -notesEncrypted -notesIv -notesAuthTag -notesKeyId -userId').lean().exec();
     return {
       success: true,
       data: { from: query.from, to: query.to, logs },

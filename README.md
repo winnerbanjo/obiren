@@ -47,8 +47,15 @@ obiren/
 - **Validation:** every body, query, and route parameter is validated with Zod
   (`ZodValidationPipe` + `apps/api/src/common/validation/api-schemas.ts`);
   unknown fields are rejected.
-- **Rate limiting:** global 30 req/min/IP via `@nestjs/throttler`; the public
-  waitlist endpoint is limited to 10 req/min.
+- **Rate limiting:** `ThrottlerGuard` is registered globally via `APP_GUARD`.
+  The default limit is 120 req/min/IP (`THROTTLE_LIMIT`), backed by Redis when
+  `REDIS_URL` is set and by an in-process counter otherwise. Credential and
+  abuse-sensitive POSTs (`login`, `register`, `forgot-password`,
+  `reset-password`, `resend-verification`, `refresh`, guardian invites/resend
+  and SOS) get the stricter `THROTTLE_AUTH_LIMIT` (default 10 per 15 minutes),
+  additive to the global limit. The public waitlist signup is limited to 10
+  req/min. Blocked requests return `429` with `error.code = RATE_LIMITED` and
+  a `Retry-After` header.
 
 ### `apps/web` — User application
 Marketing landing page + authenticated app shell. Authentication is real:
@@ -95,10 +102,14 @@ list. Highlights:
 | `JWT_ACCESS_SECRET` | ✅ | ≥32 chars, must differ from refresh secret |
 | `JWT_REFRESH_SECRET` | ✅ | ≥32 chars |
 | `CORS_ORIGINS` | ✅ | Comma-separated allow-list |
-| `CRON_SECRET` | ✅ | Protects `/api/v1/internal/cron/*` |
+| `REDIS_URL` | ✅ | Distributed rate limiting (in-memory fallback only when unset) |
+| `CRON_SECRET` | ✅ | Protects `/api/v1/internal/cron/*` (denied when unset) |
+| `HEALTH_DATA_ENCRYPTION_KEY` | ✅ | 32-byte AES-256-GCM key for private health notes |
+| `RESEND_API_KEY` | ✅ | Verification and password-reset email delivery |
+| `EMAIL_FROM` | ✅ | Verified Resend sender address |
 | `CLOUDINARY_*` | recommended | Health Vault upload/download (503 without it) |
-| `TWILIO_*` | recommended | WhatsApp/SMS dispatch (simulated without it) |
-| `MAILTRAP_TOKEN` | recommended | Verification/reset email delivery |
+| `TWILIO_*` | recommended | WhatsApp dispatch and webhook signature checks (never faked) |
+| `PAYSTACK_SECRET_KEY` | when payments enabled | Payments stay disabled without an approved policy version |
 
 **Fail-fast rule:** in production the API refuses to start if any ✅ variable
 is missing or malformed. There are no secret fallbacks in any environment.

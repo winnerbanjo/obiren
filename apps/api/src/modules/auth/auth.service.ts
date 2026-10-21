@@ -7,6 +7,8 @@ import * as crypto from 'crypto';
 import { env } from '../../config/env.validation';
 import { User, UserDocument, UserProfile, UserProfileDocument } from '../../database/schemas/user.schema';
 import { Session, SessionDocument } from '../../database/schemas/session.schema';
+import { MailService } from '../mail/mail.service';
+import { shouldExposeDevTokens } from '../../common/auth/token-exposure';
 
 const ACCESS_TTL_SECONDS = 15 * 60;
 const REFRESH_TTL_DAYS = 30;
@@ -22,6 +24,7 @@ export class AuthService {
     @InjectModel(UserProfile.name) private userProfileModel: Model<UserProfileDocument>,
     @InjectModel(Session.name) private sessionModel: Model<SessionDocument>,
     private jwtService: JwtService,
+    private readonly mail: MailService,
   ) {}
 
   // ---------------- helpers ----------------
@@ -78,6 +81,7 @@ export class AuthService {
     });
 
     const verificationToken = await this.issueEmailVerificationToken(user);
+    await this.mail.trySend('verification', () => this.mail.sendVerificationEmail(user.email, verificationToken));
 
     return {
       success: true,
@@ -85,9 +89,9 @@ export class AuthService {
         userId: (user._id as Types.ObjectId).toString(),
         email: user.email,
         status: user.status,
-        // In production the token is delivered by email. It is surfaced here so
-        // the flow is testable until an email provider is wired (see README).
-        ...(env().nodeEnv === 'production' ? {} : { verificationToken }),
+        // Production delivers the token only by email. Non-production echoes it
+        // for local development and automated tests.
+        ...(shouldExposeDevTokens(env().nodeEnv) ? { verificationToken } : {}),
         message: 'Account created. Check your email to verify your address.',
       },
       meta: this.meta(),
@@ -260,7 +264,8 @@ export class AuthService {
     const user = await this.userModel.findOne({ emailNormalized: email });
     // Generic response: never reveal whether the account exists.
     if (user && !user.emailVerifiedAt && user.status === 'pending_verification') {
-      await this.issueEmailVerificationToken(user);
+      const token = await this.issueEmailVerificationToken(user);
+      await this.mail.trySend('verification', () => this.mail.sendVerificationEmail(user.email, token));
     }
     return {
       success: true,
@@ -305,9 +310,7 @@ export class AuthService {
       user.passwordResetTokenHash = this.hashToken(raw);
       user.passwordResetExpiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
       await user.save();
-      if (env().nodeEnv !== 'production') {
-        this.logger.log(`[dev-only] password reset token for ${email}: ${raw}`);
-      }
+      await this.mail.trySend('password-reset', () => this.mail.sendPasswordResetEmail(user.email, raw));
     }
     // Generic response: prevents email enumeration.
     return {

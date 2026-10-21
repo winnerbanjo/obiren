@@ -5,6 +5,7 @@ import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { TriggerSosSchema, CancelSosSchema, SetSafetyPinSchema, ChangeSafetyPinSchema, GuardianCreateSchema, GuardianAcceptSchema, MongoIdParam, QuietCheckInSchema, LocationSessionSchema, LocationUpdateSchema } from '../../common/validation/api-schemas';
+import { Idempotent } from '../../common/idempotency/idempotent.decorator';
 
 @ApiTags('Safety')
 @ApiBearerAuth('accessToken')
@@ -19,6 +20,7 @@ export class SafetyController {
   async listGuardians(@Req() req: any) { return this.safetyService.listGuardians(req.user.sub); }
 
   @Post('guardians')
+  @Idempotent()
   @ApiBody({ schema: { type: 'object', required: ['name', 'phoneE164', 'scopes'], additionalProperties: false, properties: { name: { type: 'string', minLength: 1, maxLength: 120 }, phoneE164: { type: 'string', pattern: '^\\\\+[1-9]\\\\d{7,14}$' }, scopes: { type: 'array', minItems: 1, maxItems: 2, items: { type: 'string', enum: ['sos_alert', 'check_in'] } } } } })
   @ApiOperation({ summary: 'Add a pending trusted contact', description: 'Creates an invitation record. No invitation is sent and no identity verification is claimed until an approved delivery and verification flow is configured.' })
   @ApiResponse({ status: 201, description: 'Pending guardian contact; external invitation delivery is disabled.' })
@@ -82,6 +84,7 @@ export class SafetyController {
   }
 
   @Post('sos/trigger')
+  @Idempotent()
   @ApiOperation({ summary: 'Trigger an SOS incident', description: 'Creates an SOS incident for the authenticated user. Set isTestMode=true to simulate a drill. Records a user-requested incident. No guardian delivery or emergency-services dispatch is claimed; this endpoint does not replace local emergency services.' })
   @ApiBody({ schema: { type: 'object', additionalProperties: false, properties: { isTestMode: { type: 'boolean', default: false, description: 'When true, guardian alerts are simulated.' }, gps: { type: 'string', maxLength: 120, description: 'Optional client-supplied location string.' }, notes: { type: 'string', maxLength: 1000 } } } })
   @ApiResponse({ status: 201, description: 'SOS incident created or an existing active incident returned.', content: { 'application/json': { example: { success: true, data: { incident: { id: '66a0b6f3e5f21c8e7a112233', status: 'active', isTestMode: true }, message: 'SOS test drill started. Guardian alerts are simulated in test mode.' }, meta: { requestId: 'req_1729339200000' } } } } })

@@ -1,5 +1,4 @@
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import mongoose from 'mongoose';
 
 let mongod: MongoMemoryServer | null = null;
 
@@ -12,10 +11,16 @@ module.exports = async () => {
   process.env.CORS_ORIGINS = 'http://localhost:3000,http://localhost:3001';
   process.env.HEALTH_DATA_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
   process.env.HEALTH_DATA_ENCRYPTION_KEY_ID = 'test-key';
-  (global as any).__MONGOD__ = mongod;
-};
+  process.env.WEB_APP_URL = 'http://localhost:3001';
+  // Rate-limit enforcement itself is covered by a dedicated spec with low
+  // limits; the shared e2e database must not throttle ordinary flows.
+  process.env.THROTTLE_TTL_MS = '60000';
+  process.env.THROTTLE_LIMIT = '100000';
+  process.env.THROTTLE_AUTH_TTL_MS = '60000';
+  process.env.THROTTLE_AUTH_LIMIT = '100000';
+  process.env.IDEMPOTENCY_TTL_SECONDS = '3600';
+  delete process.env.RESEND_API_KEY;
+  delete process.env.REDIS_URL;
 
-module.exports.teardown = async () => {
-  await mongoose.disconnect().catch(() => undefined);
-  if (mongod) await mongod.stop().catch(() => undefined);
+  (globalThis as unknown as { __MONGOD__?: MongoMemoryServer }).__MONGOD__ = mongod;
 };

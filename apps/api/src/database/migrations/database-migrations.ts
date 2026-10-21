@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import * as crypto from 'crypto';
+import { backfillDailyLogNotes } from './backfill-daily-log-notes';
 
 /**
  * mongodb-memory-server is an optional devDependency used only when running
@@ -271,6 +272,46 @@ export async function runVersionedMigrations(dbUri?: string): Promise<{ success:
       await db.collection('safety_delivery_attempts').createIndex({ ownerUserId: 1, createdAt: -1 }, { name: 'idx_delivery_attempt_owner' });
       await migrationsCollection.updateOne({ migrationId: mig006Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
       appliedMigrations.push(mig006Id);
+    }
+
+    const mig007Id = '007_idempotency_records';
+    const mig007Name = 'Create persisted idempotency records with TTL and unique request scope';
+    const mig007Checksum = crypto.createHash('sha256').update(mig007Id + mig007Name).digest('hex');
+    const existing007 = await migrationsCollection.findOne({ migrationId: mig007Id, status: 'COMPLETED' });
+    if (!existing007) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig007Id },
+        { $set: { name: mig007Name, checksum: mig007Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('idempotency_records').createIndex(
+        { userId: 1, route: 1, key: 1 },
+        { unique: true, name: 'uniq_idempotency_user_route_key' },
+      );
+      await db.collection('idempotency_records').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl_idempotency_expiry' });
+      await migrationsCollection.updateOne({ migrationId: mig007Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig007Id);
+    }
+
+    const mig008Id = '008_daily_log_note_encryption';
+    const mig008Name = 'Encrypt legacy plaintext daily-log notes (idempotent)';
+    const mig008Checksum = crypto.createHash('sha256').update(mig008Id + mig008Name).digest('hex');
+    const existing008 = await migrationsCollection.findOne({ migrationId: mig008Id, status: 'COMPLETED' });
+    if (!existing008) {
+      if (!process.env.HEALTH_DATA_ENCRYPTION_KEY) {
+        // Do not mark complete: rerun with the key available so no plaintext note is left behind.
+        console.warn(`⚠️ Migration [${mig008Id}] skipped: HEALTH_DATA_ENCRYPTION_KEY is not configured. Re-run migrations after setting it.`);
+      } else {
+        await migrationsCollection.updateOne(
+          { migrationId: mig008Id },
+          { $set: { name: mig008Name, checksum: mig008Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+          { upsert: true },
+        );
+        const backfill = await backfillDailyLogNotes(db, { dryRun: false });
+        console.log(`   encrypted ${backfill.encrypted} daily-log note(s) from ${backfill.scanned} scanned.`);
+        await migrationsCollection.updateOne({ migrationId: mig008Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+        appliedMigrations.push(mig008Id);
+      }
     }
 
     const mig003Id = '003_cycle_period_query_index';

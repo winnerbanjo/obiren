@@ -3,6 +3,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser = require('cookie-parser');
 import { env } from '../config/env.validation';
+import { requestIdMiddleware } from './http/request-id.middleware';
 
 /**
  * Single source of truth for API bootstrap/security configuration.
@@ -12,6 +13,20 @@ import { env } from '../config/env.validation';
  */
 export function configureApp(app: INestApplication): void {
   const config = env();
+
+  // Every response and error carries a request identifier.
+  app.use(requestIdMiddleware);
+
+  // `/v1/...` is a supported alias of the canonical `/api/v1/...` prefix.
+  // The rewrite preserves the query string and leaves `originalUrl` untouched
+  // so provider signature verification still sees the URL the caller used.
+  app.use((req, _res, next) => {
+    const url = req.originalUrl || '/';
+    if (url === '/v1' || url.startsWith('/v1/') || url.startsWith('/v1?')) {
+      req.url = `/api/v1${url.slice(3)}`;
+    }
+    next();
+  });
 
   // Keep Helmet's default CSP everywhere, relaxing only script execution on
   // Swagger UI routes because Swagger UI includes its generated inline loader.
@@ -44,14 +59,21 @@ export function configureApp(app: INestApplication): void {
     origin: config.corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Cron-Secret', 'X-Twilio-Signature'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Idempotency-Key',
+      'X-Request-Id',
+      'X-Cron-Secret',
+      'X-Twilio-Signature',
+    ],
   });
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Obiren API')
     .setDescription([
       '## Overview',
-      'Versioned REST API for the Obiren mobile and web clients. All routes below are relative to `/api/v1`.',
+      'Versioned REST API for the Obiren mobile and web clients. All routes below are relative to `/api/v1`; `/v1` is accepted as a prefix alias.',
       '',
       '## Mobile authentication flow',
       '1. Create an account with `POST /auth/register`, then verify the email address with `POST /auth/verify-email`.',
@@ -63,14 +85,17 @@ export function configureApp(app: INestApplication): void {
       '## Conventions',
       '- Request and response bodies use JSON unless an endpoint explicitly says otherwise. Unknown request fields are rejected.',
       '- Calendar dates use `YYYY-MM-DD`; timestamps are ISO 8601.',
-      '- Successful responses generally use `{ success, data, meta }`; `meta.requestId` can be used for support and troubleshooting. Some simple endpoints return a smaller success object.',
-      '- Errors use an appropriate HTTP status. Validation errors include `message` and `statusCode`; domain errors may additionally include a stable `error.code`.',
+      '- Every success response uses `{ data, meta?, requestId }`. `meta` is present only when there is pagination or extra context.',
+      '- Every error response uses `{ error: { code, message, details? }, requestId }` with one of the documented error codes.',
+      '- Send `X-Request-Id` to correlate a request; the value is echoed and repeated in the response body.',
+      '- Transactional POSTs (booking holds, payment intents, guardian invites, SOS) require an `Idempotency-Key` header; replaying the same key with the same payload returns the original result.',
       '- Protected operations require the access-token bearer scheme. Refresh-token cookies are `HttpOnly` and are intended for browser clients; native clients should send the refresh token in the request body.',
       '- `Admin`, `Notifications and webhooks`, and internal cron operations are operational integrations, not ordinary mobile-client endpoints.',
     ].join('\n'))
     .setVersion('1.0.0')
     .setOpenAPIVersion('3.1.0')
     .addServer('/api/v1', 'API v1 (same origin)')
+    .addServer('/v1', 'API v1 prefix alias (same origin)')
     .addTag('Authentication', 'Account registration, sign-in, token rotation, and email/password recovery.')
     .addTag('Users', 'The authenticated user profile and personal-data lifecycle.')
     .addTag('Cycles', 'Authenticated menstrual-cycle tracking and cycle history. Predictions are estimates, not contraception advice.')

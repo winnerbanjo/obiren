@@ -2,7 +2,7 @@ import * as request from 'supertest';
 import * as crypto from 'crypto';
 import { INestApplication } from '@nestjs/common';
 import mongoose from 'mongoose';
-import { authHeader, createTestApp, getDb, registerAndLogin, setUserRole } from './helpers';
+import { authHeader, createTestApp, getDb, idempotencyHeader, registerAndLogin, setUserRole } from './helpers';
 
 describe('Care, communications, guardians and privacy jobs (e2e)', () => {
   let app: INestApplication;
@@ -26,8 +26,8 @@ describe('Care, communications, guardians and privacy jobs (e2e)', () => {
     expect(available.body.data).toHaveLength(1);
 
     const responses = await Promise.all([
-      request(app.getHttpServer()).post('/api/v1/care/holds').set(authHeader(first.accessToken!)).send({ slotId: slot.insertedId.toString() }),
-      request(app.getHttpServer()).post('/api/v1/care/holds').set(authHeader(second.accessToken!)).send({ slotId: slot.insertedId.toString() }),
+      request(app.getHttpServer()).post('/api/v1/care/holds').set(authHeader(first.accessToken!)).set(idempotencyHeader('hold-first')).send({ slotId: slot.insertedId.toString() }),
+      request(app.getHttpServer()).post('/api/v1/care/holds').set(authHeader(second.accessToken!)).set(idempotencyHeader('hold-second')).send({ slotId: slot.insertedId.toString() }),
     ]);
     expect(responses.filter((response) => response.status === 201)).toHaveLength(1);
     expect(responses.filter((response) => response.status === 409)).toHaveLength(1);
@@ -105,13 +105,13 @@ describe('Care, communications, guardians and privacy jobs (e2e)', () => {
   it('adds pending guardians without exposing invite tokens, revokes owner-only, and does not claim dispatch', async () => {
     const { user: owner } = await registerAndLogin(app);
     const { user: other } = await registerAndLogin(app);
-    const created = await request(app.getHttpServer()).post('/api/v1/safety/guardians').set(authHeader(owner.accessToken!)).send({ name: 'Trusted friend', phoneE164: '+2348012345678', scopes: ['sos_alert'] }).expect(201);
+    const created = await request(app.getHttpServer()).post('/api/v1/safety/guardians').set(authHeader(owner.accessToken!)).set(idempotencyHeader('guardian')).send({ name: 'Trusted friend', phoneE164: '+2348012345678', scopes: ['sos_alert'] }).expect(201);
     expect(created.body.data.status).toBe('pending');
     expect(created.body.data).not.toHaveProperty('token');
     const contactId = created.body.data.contact._id;
     await request(app.getHttpServer()).delete(`/api/v1/safety/guardians/${contactId}`).set(authHeader(other.accessToken!)).expect(404);
     await request(app.getHttpServer()).delete(`/api/v1/safety/guardians/${contactId}`).set(authHeader(owner.accessToken!)).expect(200);
-    const trigger = await request(app.getHttpServer()).post('/api/v1/safety/sos/trigger').set(authHeader(owner.accessToken!)).send({ isTestMode: false }).expect(201);
+    const trigger = await request(app.getHttpServer()).post('/api/v1/safety/sos/trigger').set(authHeader(owner.accessToken!)).set(idempotencyHeader('sos')).send({ isTestMode: false }).expect(201);
     expect(trigger.body.data.incident.dispatchStatus).toBe('not_requested');
     expect(trigger.body.data.message).toContain('No emergency dispatch');
   });

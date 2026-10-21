@@ -7,11 +7,20 @@
  * - No passwords, refresh tokens, or privileged state in localStorage.
  */
 
+/** PRD envelope: { data, meta?, requestId } | { error, requestId }. */
 export interface ApiEnvelope<T> {
-  success: boolean;
   data?: T;
-  error?: { code?: string; message?: string; fields?: Record<string, string> };
   meta?: Record<string, any>;
+  requestId?: string;
+  error?: {
+    code?: string;
+    message?: string;
+    details?: { fields?: Record<string, string>; issues?: unknown[] } | unknown;
+    /** Legacy pre-v1 field; retained for tolerated responses. */
+    fields?: Record<string, string>;
+  };
+  /** Legacy field from older API builds; not part of the PRD contract. */
+  success?: boolean;
 }
 
 export class ApiError extends Error {
@@ -74,15 +83,16 @@ async function rawRequest<T>(
   }
 
   if (!res.ok) {
+    const details = json?.error?.details as { fields?: Record<string, string> } | undefined;
     throw new ApiError(
       res.status,
       json?.error?.code || (res.status === 401 ? 'AUTH_REQUIRED' : 'REQUEST_FAILED'),
       json?.error?.message || `Request failed (${res.status})`,
-      json?.error?.fields,
+      details?.fields ?? json?.error?.fields,
     );
   }
 
-  return json ?? { success: true };
+  return json ?? {};
 }
 
 /** Attempt one refresh round-trip. Concurrent callers share the promise. */

@@ -1,7 +1,7 @@
 import * as request from 'supertest';
 import { INestApplication } from '@nestjs/common';
 import mongoose from 'mongoose';
-import { authHeader, createTestApp, getDb, registerAndLogin, setUserRole } from './helpers';
+import { authHeader, createTestApp, getDb, idempotencyHeader, registerAndLogin, setUserRole } from './helpers';
 
 /**
  * Milestones 3-5 security slice: clinician verification, consultation
@@ -198,7 +198,7 @@ describe('Consultations, devices and SOS delivery evidence (e2e)', () => {
     expect(reply.body.data.isOwnMessage).toBe(true);
 
     const exportBody = await request(server()).get('/api/v1/users/me/export').set(authHeader(patient.accessToken!)).expect(200);
-    expect(exportBody.body.data.exportVersion).toBe('1.2');
+    expect(exportBody.body.data.exportVersion).toBe('1.3');
     expect(exportBody.body.data.consultationMessages.map((message: any) => message.body)).toEqual(
       expect.arrayContaining(['private symptom detail', 'clinic reply']),
     );
@@ -270,6 +270,7 @@ describe('Consultations, devices and SOS delivery evidence (e2e)', () => {
     const created = await request(server())
       .post('/api/v1/safety/guardians')
       .set(authHeader(owner.accessToken!))
+      .set(idempotencyHeader('guardian-owner'))
       .send({ name: 'Trusted friend', phoneE164: '+2348012345678', scopes: ['sos_alert'] })
       .expect(201);
 
@@ -282,6 +283,7 @@ describe('Consultations, devices and SOS delivery evidence (e2e)', () => {
     const trigger = await request(server())
       .post('/api/v1/safety/sos/trigger')
       .set(authHeader(owner.accessToken!))
+      .set(idempotencyHeader('sos-owner'))
       .send({ isTestMode: false })
       .expect(201);
     expect(trigger.body.data.incident.dispatchStatus).toBe('failed');
@@ -309,6 +311,7 @@ describe('Consultations, devices and SOS delivery evidence (e2e)', () => {
     const drillGuardian = await request(server())
       .post('/api/v1/safety/guardians')
       .set(authHeader(drillUser.accessToken!))
+      .set(idempotencyHeader('guardian-drill'))
       .send({ name: 'Drill contact', phoneE164: '+2348098765432', scopes: ['sos_alert'] })
       .expect(201);
     await getDb(app).collection('guardian_contacts').updateOne(
@@ -318,6 +321,7 @@ describe('Consultations, devices and SOS delivery evidence (e2e)', () => {
     const drill = await request(server())
       .post('/api/v1/safety/sos/trigger')
       .set(authHeader(drillUser.accessToken!))
+      .set(idempotencyHeader('sos-drill'))
       .send({ isTestMode: true })
       .expect(201);
     expect(drill.body.data.incident.dispatchStatus).toBe('simulated');

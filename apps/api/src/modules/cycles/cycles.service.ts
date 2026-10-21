@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { calculateCyclePrediction } from '@obiren/health-engine';
 import { Cycle, CycleDocument, DailyLog, DailyLogDocument } from '../../database/schemas/cycle.schema';
+import { decryptHealthNote, encryptHealthNote } from '../../common/crypto/health-data-crypto';
 
 @Injectable()
 export class CyclesService {
@@ -291,6 +292,47 @@ export class CyclesService {
     };
   }
 
+  /**
+   * Encrypts a private note for storage and removes any plaintext field from
+   * the same write. Called for both upsert and partial update.
+   */
+  private applyPrivateNote(note: unknown, set: Record<string, unknown>, unset: Record<string, ''>) {
+    if (note === null || note === '') {
+      for (const field of ['notes', 'notesEncrypted', 'notesIv', 'notesAuthTag', 'notesKeyId']) unset[field] = '';
+      return;
+    }
+    if (typeof note !== 'string') return;
+    if (!note.trim()) {
+      for (const field of ['notes', 'notesEncrypted', 'notesIv', 'notesAuthTag', 'notesKeyId']) unset[field] = '';
+      return;
+    }
+    const encrypted = encryptHealthNote(note);
+    set.notesEncrypted = encrypted.ciphertext;
+    set.notesIv = encrypted.iv;
+    set.notesAuthTag = encrypted.authTag;
+    set.notesKeyId = encrypted.keyId;
+    unset.notes = '';
+  }
+
+  /** Decrypts an owner's note for the response and strips ciphertext fields. */
+  private presentDailyLog<T extends Record<string, any>>(log: T | null): T | null {
+    if (!log) return null;
+    const data: Record<string, any> = { ...log };
+    if (data.notesEncrypted && data.notesIv && data.notesAuthTag) {
+      data.notes = decryptHealthNote({
+        ciphertext: data.notesEncrypted,
+        iv: data.notesIv,
+        authTag: data.notesAuthTag,
+        keyId: data.notesKeyId || 'default',
+      });
+    }
+    delete data.notesEncrypted;
+    delete data.notesIv;
+    delete data.notesAuthTag;
+    delete data.notesKeyId;
+    return data as T;
+  }
+
   async getDailyLog(userId: string, date: string) {
     const log = await this.dailyLogModel.findOne({
       userId: new Types.ObjectId(userId),
@@ -299,26 +341,34 @@ export class CyclesService {
 
     return {
       success: true,
-      data: log || { date, bleeding: { level: 'none' }, moods: [], symptoms: [] },
+      data: this.presentDailyLog(log ? (log.toObject() as Record<string, any>) : null) || { date, bleeding: { level: 'none' }, moods: [], symptoms: [] },
       meta: { requestId: `req_${Date.now()}` },
     };
   }
 
   async upsertDailyLog(userId: string, date: string, payload: Record<string, unknown>) {
     const userObjectId = new Types.ObjectId(userId);
+    const { notes, ...rest } = payload as Record<string, unknown> & { notes?: unknown };
+    const setFields: Record<string, unknown> = { ...rest };
+    const unsetFields: Record<string, ''> = {};
+    if (notes !== undefined) this.applyPrivateNote(notes, setFields, unsetFields);
+
+    const update: Record<string, any> = {
+      $set: setFields,
+      $setOnInsert: { userId: userObjectId, date },
+      $inc: { version: 1 },
+    };
+    if (Object.keys(unsetFields).length) update.$unset = unsetFields;
+
     const log = await this.dailyLogModel.findOneAndUpdate(
       { userId: userObjectId, date },
-      {
-        $set: payload,
-        $setOnInsert: { userId: userObjectId, date },
-        $inc: { version: 1 },
-      },
+      update,
       { new: true, upsert: true, setDefaultsOnInsert: true },
     );
 
     return {
       success: true,
-      data: log,
+      data: this.presentDailyLog(log ? (log.toObject() as Record<string, any>) : null),
       meta: { requestId: `req_${Date.now()}` },
     };
   }
@@ -329,8 +379,8 @@ export class CyclesService {
     const unsetFields: Record<string, ''> = {};
     for (const [key, value] of Object.entries(updates)) {
       if (key === 'version') continue;
-      if (key === 'notes' && value === null) {
-        unsetFields.notes = '';
+      if (key === 'notes') {
+        this.applyPrivateNote(value, setFields, unsetFields);
       } else if (value && typeof value === 'object' && !Array.isArray(value)) {
         for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
           setFields[`${key}.${nestedKey}`] = nestedValue;
@@ -356,7 +406,7 @@ export class CyclesService {
       });
     }
 
-    return { success: true, data: log, meta: { requestId: `req_${Date.now()}` } };
+    return { success: true, data: this.presentDailyLog(log.toObject() as Record<string, any>), meta: { requestId: `req_${Date.now()}` } };
   }
 
   async deleteDailyLog(userId: string, date: string, version: number) {

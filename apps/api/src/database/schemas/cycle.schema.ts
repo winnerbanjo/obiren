@@ -102,8 +102,19 @@ export class DailyLog {
     protection?: string;
   };
 
+  // Private free-text notes are encrypted at rest (AES-256-GCM). The legacy
+  // plaintext `notes` field is removed by migration 008; it is never written.
   @Prop({ type: String })
-  notes?: string;
+  notesEncrypted?: string;
+
+  @Prop({ type: String })
+  notesIv?: string;
+
+  @Prop({ type: String })
+  notesAuthTag?: string;
+
+  @Prop({ type: String })
+  notesKeyId?: string;
 
   @Prop({ type: Number, default: 1, min: 1 })
   version: number;

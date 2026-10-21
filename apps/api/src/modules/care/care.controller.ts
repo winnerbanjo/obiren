@@ -4,8 +4,10 @@ import { CareService } from './care.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { ROLES } from '../../common/auth/roles';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AvailabilityQuerySchema, CareCatalogQuerySchema, CreateAvailabilitySchema, HoldSlotSchema, MongoIdParam } from '../../common/validation/api-schemas';
+import { Idempotent } from '../../common/idempotency/idempotent.decorator';
 
 @ApiTags('Care')
 @Controller('care')
@@ -25,7 +27,7 @@ export class CareController {
   @Post('availability')
   @ApiBearerAuth('accessToken')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('clinician')
+  @Roles(ROLES.CLINICIAN)
   @ApiOperation({ summary: 'Publish a clinician availability slot', description: 'Only a verified clinician may publish future availability. No price or booking entitlement is created.' })
   @ApiBody({ schema: { type: 'object', required: ['startsAt', 'endsAt', 'sessionType'], additionalProperties: false, properties: { startsAt: { type: 'string', format: 'date-time' }, endsAt: { type: 'string', format: 'date-time' }, sessionType: { type: 'string', enum: ['clinic', 'audio', 'video', 'text'] } } } })
   @ApiResponse({ status: 201, description: 'Availability slot published.' })
@@ -40,6 +42,7 @@ export class CareController {
   async listMyHolds(@Req() req: any) { return this.careService.listMyHolds(req.user.sub); }
 
   @Post('holds')
+  @Idempotent()
   @ApiBearerAuth('accessToken')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Create a temporary slot hold', description: 'Atomically holds one slot for 10 minutes. This is not a booking, payment, or confirmed appointment.' })
