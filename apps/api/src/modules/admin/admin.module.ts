@@ -9,6 +9,7 @@ import { DirectoryService, DirectoryServiceSchema } from '../../database/schemas
 import { Clinician, ClinicianSchema } from '../../database/schemas/care.schema';
 import { Consultation, ConsultationSchema } from '../../database/schemas/communications.schema';
 import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
+import { SafetyModule } from '../safety/safety.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
       { name: Consultation.name, schema: ConsultationSchema },
     ]),
     JwtAuthModule,
+    SafetyModule,
   ],
   controllers: [AdminController],
   providers: [AdminService],

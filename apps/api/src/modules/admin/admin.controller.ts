@@ -1,18 +1,22 @@
 import { Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
+import { SafetyResourcesService } from '../safety/safety-resources.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { AdminClinicianListQuerySchema, AdminClinicianVerificationSchema, AdminConsultationCreateSchema, DirectoryUpsertSchema, UserStatusSchema, MongoIdParam } from '../../common/validation/api-schemas';
+import { AdminClinicianListQuerySchema, AdminClinicianVerificationSchema, AdminConsultationCreateSchema, DirectoryUpsertSchema, UserStatusSchema, MongoIdParam, EmergencyResourceAdminQuerySchema, EmergencyResourceIdParam, EmergencyResourceReviewSchema } from '../../common/validation/api-schemas';
 
 @ApiTags('Admin')
 @ApiBearerAuth('accessToken')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly safetyResourcesService: SafetyResourcesService,
+  ) {}
 
   @Roles('super_admin', 'platform_admin')
   @Get('metrics')
@@ -44,6 +48,31 @@ export class AdminController {
   @ApiOperation({ summary: 'Create or update a directory record (admin)', description: 'Upserts a health-directory record. Requires super_admin, platform_admin, or emergency_manager role.' })
   async upsertDirectory(@Req() req: any, @Body(new ZodValidationPipe(DirectoryUpsertSchema)) body) {
     return this.adminService.upsertDirectoryRecord(req.user, body);
+  }
+
+  @Roles('super_admin', 'platform_admin', 'emergency_manager')
+  @Get('safety/resources')
+  @ApiOperation({ summary: 'List emergency resources with freshness state (admin)', description: 'Returns every published emergency resource with its recorded verification status, last check, next review due date and freshness. Use the freshness filter to find resources that are due, overdue or never reviewed.' })
+  @ApiResponse({ status: 200, description: 'Published resources with recorded review state and freshness counts.' })
+  async listEmergencyResources(@Req() req: any, @Query(new ZodValidationPipe(EmergencyResourceAdminQuerySchema)) query) {
+    return this.safetyResourcesService.listForAdmin(req.user, query);
+  }
+
+  @Roles('super_admin', 'platform_admin', 'emergency_manager')
+  @Put('safety/resources/:recordId/review')
+  @ApiOperation({ summary: 'Record an emergency-resource review (admin)', description: 'Records who checked a published emergency resource, when, and the resulting verification status. Marking a resource operationally_confirmed requires an evidence reference; the review also sets the next review due date and is audited.' })
+  @ApiParam({ name: 'recordId', description: 'Published emergency-resource identifier.', example: 'NG-001' })
+  @ApiBody({ schema: { type: 'object', required: ['verificationStatus'], additionalProperties: false, properties: { verificationStatus: { type: 'string', enum: ['source_verified', 'directory_source_verified', 'operationally_confirmed', 'unverified'] }, evidenceRef: { type: 'string', maxLength: 300, description: 'Required to mark a resource operationally confirmed.' }, note: { type: 'string', maxLength: 500 }, nextReviewDueAt: { type: 'string', format: 'date-time', description: 'Defaults to 180 days from now and must be in the future.' } } } })
+  @ApiResponse({ status: 200, description: 'Review recorded and audited; freshness recalculated.' })
+  @ApiResponse({ status: 400, description: 'Missing evidence reference or a review date in the past.' })
+  @ApiResponse({ status: 403, description: 'Caller lacks an administrative role.' })
+  @ApiResponse({ status: 404, description: 'No published resource has that identifier.' })
+  async reviewEmergencyResource(
+    @Req() req: any,
+    @Param('recordId', new ZodValidationPipe(EmergencyResourceIdParam)) recordId: string,
+    @Body(new ZodValidationPipe(EmergencyResourceReviewSchema)) body,
+  ) {
+    return this.safetyResourcesService.recordReview(req.user, recordId, body);
   }
 
   @Roles('super_admin', 'platform_admin')

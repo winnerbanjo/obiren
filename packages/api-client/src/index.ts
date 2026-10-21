@@ -580,7 +580,61 @@ export interface SosIncident {
   gpsCoordinates?: string;
 }
 
+export type EmergencyResourceFreshness = 'current' | 'due_soon' | 'overdue' | 'unreviewed';
+export type EmergencyVerificationStatus =
+  | 'source_verified'
+  | 'directory_source_verified'
+  | 'operationally_confirmed'
+  | 'unverified';
+
+export interface EmergencyResourceData {
+  recordId: string;
+  organisationName: string;
+  category: string;
+  serviceCategory: string;
+  country: string;
+  countryCode: string;
+  region: string;
+  city: string;
+  phone: string;
+  whatsappOrText: string;
+  email: string;
+  serviceSummary: string;
+  hours: string;
+  cost: string;
+  organisationType: string;
+  sourceUrl: string;
+  verification: {
+    status: EmergencyVerificationStatus;
+    baselineStatus: EmergencyVerificationStatus;
+    operationallyConfirmed: boolean;
+    operationalConfirmationRequired: boolean;
+    lastCheckedAt: string | null;
+    nextReviewDueAt: string | null;
+    freshness: EmergencyResourceFreshness;
+  };
+}
+
+export interface EmergencyResourceSet {
+  countryCode: string;
+  country: string;
+  datasetVersion: string;
+  emergencyNumbers: { medical: string; police: string; fire: string; domesticViolence?: string };
+  disclaimer: string;
+  dispatchSupported: false;
+  reviewPolicy: { intervalDays: number; dueSoonDays: number; note: string };
+  resources: EmergencyResourceData[];
+}
+
 export const safetyApi = {
+  resources: (params: { countryCode?: string; category?: string; q?: string; limit?: number } = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') qs.set(key, String(value));
+    });
+    const query = qs.toString();
+    return request<EmergencyResourceSet>('GET', `/safety/resources${query ? `?${query}` : ''}`);
+  },
   pinStatus: () => request<{ hasSafetyPin: boolean; locked: boolean }>('GET', '/safety/pin/status'),
   setPin: (pin: string, currentPin?: string) =>
     request<{ message: string }>('POST', '/safety/pin', currentPin ? { pin, currentPin } : { pin }),
@@ -891,6 +945,16 @@ export const adminApi = {
   },
   verifyClinician: (id: string, input: { verificationStatus: 'pending' | 'verified' | 'rejected'; evidenceRef?: string; note?: string; active?: boolean }) =>
     request<any>('PUT', `/admin/clinicians/${id}/verification`, input),
+  listEmergencyResources: (query: { countryCode?: string; freshness?: EmergencyResourceFreshness; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return request<{ resources: Array<Record<string, unknown>> }>('GET', `/admin/safety/resources${suffix}`);
+  },
+  reviewEmergencyResource: (
+    recordId: string,
+    input: { verificationStatus: EmergencyVerificationStatus; evidenceRef?: string; note?: string; nextReviewDueAt?: string },
+  ) => request<Record<string, unknown>>('PUT', `/admin/safety/resources/${recordId}/review`, input),
   createConsultation: (input: { patientUserId: string; clinicianId: string }) =>
     request<{ id: string; status: string; participantCount: number; bookingConfirmed: false; message: string }>('POST', '/admin/consultations', input),
 };

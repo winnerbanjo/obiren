@@ -1,6 +1,27 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.VERIFIED_EMERGENCY_DATASET = void 0;
+exports.VERIFIED_EMERGENCY_DATASET = exports.EMERGENCY_RESOURCE_DUE_SOON_DAYS = exports.EMERGENCY_RESOURCE_REVIEW_INTERVAL_DAYS = exports.EMERGENCY_DIRECTORY_DATASET_VERSION = void 0;
+exports.normalizeEmergencyVerificationStatus = normalizeEmergencyVerificationStatus;
+exports.EMERGENCY_DIRECTORY_DATASET_VERSION = "emergency-directory-v1.0.0";
+/** Staff re-check cadence for published emergency resources, in days. */
+exports.EMERGENCY_RESOURCE_REVIEW_INTERVAL_DAYS = 180;
+/** A resource is "due soon" when its next review falls inside this window. */
+exports.EMERGENCY_RESOURCE_DUE_SOON_DAYS = 30;
+/**
+ * Baseline status implied by the compiled dataset. "Source verified" means an
+ * editor read the provider's published page; it does not mean the number was
+ * called or that the provider confirmed current availability.
+ */
+function normalizeEmergencyVerificationStatus(status) {
+    switch (status.trim().toLowerCase()) {
+        case "source verified":
+            return "source_verified";
+        case "directory source verified":
+            return "directory_source_verified";
+        default:
+            return "unverified";
+    }
+}
 exports.VERIFIED_EMERGENCY_DATASET = [
     {
         record_id: "NG-001",

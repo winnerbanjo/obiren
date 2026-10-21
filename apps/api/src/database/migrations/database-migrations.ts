@@ -339,6 +339,26 @@ export async function runVersionedMigrations(dbUri?: string): Promise<{ success:
       appliedMigrations.push(mig009Id);
     }
 
+    const mig010Id = '010_emergency_resource_review_indexes';
+    const mig010Name = 'Create unique emergency-resource review and freshness indexes';
+    const mig010Checksum = crypto.createHash('sha256').update(mig010Id + mig010Name).digest('hex');
+    const existing010 = await migrationsCollection.findOne({ migrationId: mig010Id, status: 'COMPLETED' });
+    if (!existing010) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig010Id },
+        { $set: { name: mig010Name, checksum: mig010Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('emergency_resource_reviews').createIndex({ recordId: 1 }, { unique: true, name: 'uniq_emergency_review_record' });
+      await db.collection('emergency_resource_reviews').createIndex({ nextReviewDueAt: 1 }, { name: 'idx_emergency_review_due' });
+      await db.collection('emergency_resource_reviews').createIndex(
+        { verificationStatus: 1, nextReviewDueAt: 1 },
+        { name: 'idx_emergency_review_status_due' },
+      );
+      await migrationsCollection.updateOne({ migrationId: mig010Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig010Id);
+    }
+
     const mig003Id = '003_cycle_period_query_index';
     const mig003Name = 'Add cycle history date/status compound index';
     const mig003Checksum = crypto.createHash('sha256').update(mig003Id + mig003Name).digest('hex');

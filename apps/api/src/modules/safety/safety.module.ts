@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { SafetyController } from './safety.controller';
+import { SafetyResourcesController } from './safety-resources.controller';
 import { SafetyService } from './safety.service';
+import { SafetyResourcesService } from './safety-resources.service';
 import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
 import { GuardianContact, GuardianContactSchema, GuardianInvite, GuardianInviteSchema, LocationSession, LocationSessionSchema, SafetyDeliveryAttempt, SafetyDeliveryAttemptSchema, SafetyIncident, SafetyIncidentSchema } from '../../database/schemas/safety.schema';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -9,6 +11,7 @@ import { SafetyPin, SafetyPinSchema } from '../../database/schemas/safety-pin.sc
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { AuditLog, AuditLogSchema } from '../../database/schemas/audit-log.schema';
 import { UserProfile, UserProfileSchema } from '../../database/schemas/user.schema';
+import { EmergencyResourceReview, EmergencyResourceReviewSchema } from '../../database/schemas/emergency-resource-review.schema';
 
 @Module({
   imports: [
@@ -22,11 +25,13 @@ import { UserProfile, UserProfileSchema } from '../../database/schemas/user.sche
       { name: User.name, schema: UserSchema },
       { name: UserProfile.name, schema: UserProfileSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
+      { name: EmergencyResourceReview.name, schema: EmergencyResourceReviewSchema },
     ]),
     JwtAuthModule,
     NotificationsModule,
   ],
-  controllers: [SafetyController],
-  providers: [SafetyService],
+  controllers: [SafetyController, SafetyResourcesController],
+  providers: [SafetyService, SafetyResourcesService],
+  exports: [SafetyResourcesService],
 })
 export class SafetyModule {}

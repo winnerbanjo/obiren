@@ -521,6 +521,53 @@ export const LocationSessionSchema = z.object({ expiresAt: z.string().datetime({
 export const LocationUpdateSchema = z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180), recordedAt: z.string().datetime({ offset: true }) }).strict();
 export const GuardianAcceptSchema = z.object({ token: z.string().min(32).max(256) }).strict();
 
+// ---------------- Published emergency resources ----------------
+
+/** Public emergency-resource read; defaults to Nigeria, the launch market. */
+export const EmergencyResourceQuerySchema = z
+  .object({
+    countryCode: z.enum(['NG', 'GH', 'GB', 'US']).optional(),
+    category: z.string().trim().min(1).max(80).optional(),
+    q: z.string().trim().min(1).max(120).optional(),
+    limit: z.coerce.number().int().min(1).max(50).default(50),
+  })
+  .strict();
+
+/** Operational list of published resources with their recorded freshness. */
+export const EmergencyResourceAdminQuerySchema = z
+  .object({
+    countryCode: z.enum(['NG', 'GH', 'GB', 'US']).optional(),
+    freshness: z.enum(['current', 'due_soon', 'overdue', 'unreviewed']).optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(100),
+  })
+  .strict();
+
+/**
+ * A review records that a named staff member checked a published resource.
+ * Operational confirmation requires stored evidence; nothing is confirmed by
+ * simply posting a status.
+ */
+export const EmergencyResourceReviewSchema = z
+  .object({
+    verificationStatus: z.enum(['source_verified', 'directory_source_verified', 'operationally_confirmed', 'unverified']),
+    evidenceRef: z.string().trim().min(1).max(300).optional(),
+    note: z.string().trim().max(500).optional(),
+    nextReviewDueAt: z.string().datetime({ offset: true }).optional(),
+  })
+  .strict()
+  .refine(
+    (value) => value.verificationStatus !== 'operationally_confirmed' || Boolean(value.evidenceRef),
+    'An evidence reference is required before a resource can be marked operationally confirmed',
+  )
+  .refine(
+    (value) => !value.nextReviewDueAt || new Date(value.nextReviewDueAt).getTime() > Date.now(),
+    'nextReviewDueAt must be in the future',
+  );
+
+export const EmergencyResourceIdParam = z
+  .string()
+  .regex(/^[A-Z]{2}-\d{3}$/, 'Invalid emergency resource identifier');
+
 // ---------------- Communications / health sharing ----------------
 export const HealthShareCreateSchema = z
   .object({

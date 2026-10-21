@@ -19,6 +19,44 @@ export interface VerifiedEmergencyRecord {
   source_url: string;
 }
 
+/**
+ * Verification levels a published emergency-directory record can carry.
+ * `source_verified` / `directory_source_verified` describe how the record was
+ * compiled; `operationally_confirmed` is only ever set from a recorded staff
+ * review that reached the provider itself.
+ */
+export type EmergencyVerificationStatus =
+  | "source_verified"
+  | "directory_source_verified"
+  | "operationally_confirmed"
+  | "unverified";
+
+export const EMERGENCY_DIRECTORY_DATASET_VERSION = "emergency-directory-v1.0.0";
+
+/** Staff re-check cadence for published emergency resources, in days. */
+export const EMERGENCY_RESOURCE_REVIEW_INTERVAL_DAYS = 180;
+
+/** A resource is "due soon" when its next review falls inside this window. */
+export const EMERGENCY_RESOURCE_DUE_SOON_DAYS = 30;
+
+/**
+ * Baseline status implied by the compiled dataset. "Source verified" means an
+ * editor read the provider's published page; it does not mean the number was
+ * called or that the provider confirmed current availability.
+ */
+export function normalizeEmergencyVerificationStatus(
+  status: string,
+): EmergencyVerificationStatus {
+  switch (status.trim().toLowerCase()) {
+    case "source verified":
+      return "source_verified";
+    case "directory source verified":
+      return "directory_source_verified";
+    default:
+      return "unverified";
+  }
+}
+
 export const VERIFIED_EMERGENCY_DATASET: VerifiedEmergencyRecord[] = [
   {
     record_id: "NG-001",

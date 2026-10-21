@@ -124,6 +124,8 @@ are enforced **at the database level**, not just in code:
 - `daily_logs`: compound unique index `(userId, date)`.
 - `sessions`: unique `refreshTokenHash` + TTL index on `expiresAt`.
 - `safety_pins`: unique per user; stores **only** an argon2id hash.
+- `emergency_resource_reviews`: unique per published resource; records staff
+  verification state, last check and next review date (freshness is never implied).
 - `waitlist_entries`: unique `normalizedEmail`.
 
 `apps/api/src/database/migrations/database-migrations.ts` is a versioned
@@ -160,12 +162,14 @@ Base path `/api/v1`:
 - `cycles/*` — current, history, start-period, end-period
 - `daily-logs/:date` — get/upsert (validated `YYYY-MM-DD`)
 - `pregnancies` — create (one-active rule), current, `:id/end`, `:id/logs/:date`
-- `safety/*` — pin (create/change/status), sos/trigger, sos/cancel (PIN), incidents
+- `safety/*` — resources (public verified emergency directory with freshness),
+  pin (create/change/status), sos/trigger, sos/cancel (PIN), incidents
 - `health-vault/*` — upload-intent, documents CRUD, signed download (5-min)
 - `directory/*` — search (text + filters + pagination), nearby (2dsphere `$near`), service by id
 - `notifications/*` — Twilio inbound/status webhooks (signature-validated), internal cron
 - `waitlist` — public signup (rate-limited, anti-enumeration), stats; admin listing
-- `admin/*` — metrics, users list/status, directory upsert, audit logs (role-guarded)
+- `admin/*` — metrics, users list/status, directory upsert, emergency-resource
+  reviews (audited, evidence-backed), audit logs (role-guarded)
 - `health` — liveness probe
 
 Regenerate `apps/api/openapi.json` via `npm run api:build` artifacts script

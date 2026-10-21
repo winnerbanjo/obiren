@@ -74,12 +74,13 @@
 
 ## Milestone 5 — Safety, privacy and account controls (Sprint 5)
 
-**Priority:** P1 · **Status:** Guardians, SOS delivery evidence, location sessions and privacy jobs implemented; operational and support gates remain
+**Priority:** P1 · **Status:** Guardians, SOS delivery evidence, location sessions, emergency-resource freshness records and privacy jobs implemented; operational and support gates remain
 
 - [x] Extend existing SOS/PIN/incidents routes rather than creating parallel safety endpoints.
 - [x] Guardian lifecycle: E.164 invites, one-time hashed token, explicit acceptance, up to five contacts, scopes, revoke and audit trail. Identity confirmation still requires an approved challenge channel, so acceptance does not verify identity.
 - [x] SOS delivery attempts with a partial/failure lifecycle that never claims delivery; quiet check-ins and short-TTL location sessions gated by explicit consent with immediate revoke.
-- [ ] Validated, localized emergency/domestic violence resources with freshness/verification records. SOS must not imply guaranteed rescue or government dispatch.
+- [x] Localized emergency/domestic-violence resources served from the published dataset with explicit verification and freshness records: `GET /safety/resources` is public (no token, no account data), each record carries `source_verified`/`directory_source_verified`/`operationally_confirmed` state plus `lastCheckedAt`/`nextReviewDueAt`/`freshness`, and staff reviews are recorded through audited, evidence-backed `emergency_manager` administration. An unreviewed or overdue resource is labelled as such; nothing claims rescue or government dispatch.
+- [ ] Operationally confirm every published number with the provider before launch. The dataset is source-checked only; several records still carry an editorial follow-up note and must not be presented as operationally confirmed.
 - [x] Extend export/deletion routes with job records, owner-cancellable deletion, consultation-message export, and documented retention limits. Erasure execution is operator-managed pending retention approval.
 - [ ] Support FAQ/ticket APIs with no unnecessary health-data exposure.
 
