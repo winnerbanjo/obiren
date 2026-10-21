@@ -43,6 +43,8 @@ export class PregnancyService {
         dateConfidence: active.dateConfidence, timeZone: active.timeZone,
         lastMenstrualPeriod: lmp?.toISOString().slice(0, 10) ?? null,
         currentWeek: gestation?.currentWeek ?? null, currentDay: gestation?.currentDay ?? null,
+        currentTrimester: gestation ? (gestation.currentWeek <= 13 ? 1 : gestation.currentWeek <= 27 ? 2 : 3) : null,
+        daysUntilDueDate: Math.round((dueDate.getTime() - Date.now()) / 86400000),
         babyMilestone: gestation ? { fruitSize: gestation.fruitSize, lengthCm: gestation.lengthCm, weightGrams: gestation.weightGrams } : null,
         nextMilestones: active.timelineEvents || [],
         disclaimer: 'Pregnancy dates and milestones are estimates, not a diagnosis or substitute for clinician advice.',
@@ -124,6 +126,13 @@ export class PregnancyService {
     }
     delete responseLog.notesEncrypted; delete responseLog.notesIv; delete responseLog.notesAuthTag; delete responseLog.notesKeyId;
     return { success: true, data: { pregnancyId: id, loggedAt: date, log: responseLog, safetyNotice }, meta: { requestId: `req_${Date.now()}` } };
+  }
+
+  /** Resolves the caller's active pregnancy id for the PRD date-keyed log routes. */
+  async requireActivePregnancyId(userId: string): Promise<string> {
+    const active = await this.pregnancyModel.findOne({ userId: new Types.ObjectId(userId), status: 'active' }).select('_id').lean().exec();
+    if (!active) throw new NotFoundException('No active pregnancy record for this account');
+    return active._id.toString();
   }
 
   async getPregnancyLog(userId: string, date: string) {

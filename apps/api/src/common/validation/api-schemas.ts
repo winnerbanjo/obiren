@@ -130,6 +130,41 @@ export const UpdateCycleSchema = z
   .strict()
   .refine((value) => Object.keys(value).length > 0, 'Provide at least one cycle field to update');
 
+const periodRangeIsValid = (value: { startDate?: string; endDate?: string | null }) =>
+  !value.startDate || !value.endDate ||
+  (value.endDate >= value.startDate &&
+    (Date.parse(`${value.endDate}T00:00:00Z`) - Date.parse(`${value.startDate}T00:00:00Z`)) / 86400000 <= 30);
+
+/** PRD `/periods` create contract. `startDate` defaults to today in the user timezone. */
+export const CreatePeriodSchema = z
+  .object({
+    startDate: isoDate.optional(),
+    endDate: isoDate.nullable().optional(),
+    notes: z.string().trim().max(1000).nullable().optional(),
+  })
+  .strict()
+  .refine(periodRangeIsValid, 'endDate must be on or after startDate and a period cannot exceed 31 days');
+
+/** PRD `/periods/:id` update contract; at least one editable field is required. */
+export const UpdatePeriodSchema = z
+  .object({
+    startDate: isoDate.optional(),
+    endDate: isoDate.nullable().optional(),
+    notes: z.string().trim().max(1000).nullable().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, 'Provide at least one period field to update')
+  .refine(periodRangeIsValid, 'endDate must be on or after startDate and a period cannot exceed 31 days');
+
+export const PeriodRangeQuerySchema = z
+  .object({ from: isoDate, to: isoDate })
+  .strict()
+  .refine((value) => value.from <= value.to, 'from must be on or before to')
+  .refine(
+    (value) => (Date.parse(`${value.to}T00:00:00Z`) - Date.parse(`${value.from}T00:00:00Z`)) / 86400000 <= 366,
+    'Period range cannot exceed 367 days',
+  );
+
 export const CycleHistoryQuerySchema = z
   .object({
     from: isoDate.optional(),
@@ -161,13 +196,28 @@ const dailyLogSexualActivitySchema = z
   })
   .strict();
 
+const dailyLogSleepSchema = z
+  .object({
+    hours: z.number().min(0).max(24).optional(),
+    quality: z.enum(['poor', 'fair', 'good', 'great']).optional(),
+  })
+  .strict();
+const dailyLogMode = z.enum(['cycle', 'pregnancy', 'postpartum', 'general']);
+const dailyLogBloodColor = z.enum(['pink', 'light_red', 'red', 'dark_red', 'brown']);
+
+/** PRD daily-log field set. All fields are optional so a log can record any subset. */
 export const DailyLogUpsertSchema = z
   .object({
+    mode: dailyLogMode.optional(),
     bleeding: z.object({ level: z.enum(['none', 'spotting', 'light', 'medium', 'heavy']), clots: z.boolean().optional() }).strict().optional().refine((value) => !value || Object.keys(value).length > 0),
+    bloodColor: dailyLogBloodColor.optional(),
     pain: z.object({ level: z.number().int().min(0).max(10), locations: z.array(z.string().max(40)).max(12).optional() }).strict().optional().refine((value) => !value || Object.keys(value).length > 0),
     sexualActivity: dailyLogSexualActivitySchema.refine((value) => !value || Object.keys(value).length > 0).optional(),
     moods: z.array(z.string().max(40)).max(20).default([]),
     symptoms: z.array(z.string().max(40)).max(30).default([]),
+    energy: z.number().int().min(1).max(5).optional(),
+    cravings: z.array(z.string().max(40)).max(20).default([]),
+    sleep: dailyLogSleepSchema.refine((value) => Object.keys(value).length > 0).optional(),
     notes: z.string().max(2000).optional(),
   })
   .strict();
@@ -175,11 +225,16 @@ export const DailyLogUpsertSchema = z
 export const DailyLogPatchSchema = z
   .object({
     version: z.number().int().min(1),
+    mode: dailyLogMode.optional(),
     bleeding: dailyLogBleedingSchema.refine((value) => Object.keys(value).length > 0).optional(),
+    bloodColor: dailyLogBloodColor.nullable().optional(),
     pain: dailyLogPainSchema.refine((value) => Object.keys(value).length > 0).optional(),
     moods: z.array(z.string().max(40)).max(20).optional(),
     symptoms: z.array(z.string().max(40)).max(30).optional(),
     sexualActivity: dailyLogSexualActivitySchema.refine((value) => Object.keys(value).length > 0).optional(),
+    energy: z.number().int().min(1).max(5).nullable().optional(),
+    cravings: z.array(z.string().max(40)).max(20).optional(),
+    sleep: dailyLogSleepSchema.refine((value) => Object.keys(value).length > 0).nullable().optional(),
     notes: z.string().max(2000).nullable().optional(),
   })
   .strict()
@@ -190,6 +245,9 @@ export const DailyLogVersionQuerySchema = z.object({ version: z.coerce.number().
 export const DailyLogDateParam = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'date route parameter must be YYYY-MM-DD');
+
+/** `/home?date=` accepts an optional local calendar date; defaults to today. */
+export const HomeQuerySchema = z.object({ date: isoDate.optional() }).strict();
 
 // ---------------- Pregnancy ----------------
 

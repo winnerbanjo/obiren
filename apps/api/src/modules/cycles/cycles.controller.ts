@@ -13,6 +13,9 @@ import {
   CycleHistoryQuerySchema,
   CycleIdParam,
   UpdateCycleSchema,
+  CreatePeriodSchema,
+  UpdatePeriodSchema,
+  PeriodRangeQuerySchema,
 } from '../../common/validation/api-schemas';
 
 @ApiTags('Cycles')
@@ -78,6 +81,51 @@ export class CyclesController {
   }
 }
 
+@ApiTags('Periods')
+@ApiBearerAuth('accessToken')
+@UseGuards(JwtAuthGuard)
+@Controller('periods')
+export class PeriodsController {
+  constructor(private readonly cyclesService: CyclesService) {}
+
+  @Get()
+  @ApiOperation({
+    summary: 'List recorded periods in a date range',
+    description: 'Returns the authenticated user’s recorded periods that overlap the inclusive range, oldest first, with the average recorded period length. Dates are YYYY-MM-DD. No prediction or contraceptive claim is returned.',
+  })
+  @ApiResponse({ status: 200, description: 'Recorded periods and duration summary.' })
+  async listPeriods(@Req() req: any, @Query(new ZodValidationPipe(PeriodRangeQuerySchema)) query: { from: string; to: string }) {
+    return this.cyclesService.listPeriods(req.user.sub, query.from, query.to);
+  }
+
+  @Post()
+  @ApiOperation({
+    summary: 'Record a period',
+    description: 'Records a period start date (defaults to today in the account timezone) and optional end date. Repeating the same start date is idempotent; a start date before the latest recorded period is rejected rather than rewriting history.',
+  })
+  @ApiBody({ schema: { type: 'object', additionalProperties: false, properties: { startDate: { type: 'string', format: 'date', description: 'Period start date. Defaults to today in the account timezone.' }, endDate: { type: 'string', format: 'date', nullable: true, description: 'Optional last bleeding day; at most 31 days after the start.' }, notes: { type: 'string', maxLength: 1000, nullable: true } } } })
+  @ApiResponse({ status: 201, description: 'Period recorded, or the existing record for that start date.' })
+  @ApiResponse({ status: 400, description: 'Dates are invalid, overlap the next period, or fall before the latest recorded period.' })
+  async createPeriod(@Req() req: any, @Body(new ZodValidationPipe(CreatePeriodSchema)) body) {
+    return this.cyclesService.createPeriod(req.user.sub, body);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Edit a recorded period', description: 'Owner-scoped update of the period start/end dates or private note. Periods cannot overlap or be reordered across adjacent records.' })
+  @ApiParam({ name: 'id', description: '24-character period identifier.' })
+  @ApiBody({ schema: { type: 'object', additionalProperties: false, properties: { startDate: { type: 'string', format: 'date' }, endDate: { type: 'string', format: 'date', nullable: true }, notes: { type: 'string', maxLength: 1000, nullable: true } } } })
+  @ApiResponse({ status: 200, description: 'Period updated.' })
+  @ApiResponse({ status: 400, description: 'The update creates an invalid or overlapping period.' })
+  @ApiResponse({ status: 404, description: 'Period not found for this account.' })
+  async updatePeriod(
+    @Req() req: any,
+    @Param('id', new ZodValidationPipe(CycleIdParam)) id: string,
+    @Body(new ZodValidationPipe(UpdatePeriodSchema)) body,
+  ) {
+    return this.cyclesService.updatePeriod(req.user.sub, id, body);
+  }
+}
+
 @ApiTags('Daily logs')
 @ApiBearerAuth('accessToken')
 @UseGuards(JwtAuthGuard)
@@ -99,7 +147,7 @@ export class DailyLogsController {
   @Put(':date')
   @ApiOperation({ summary: 'Create or replace a daily health log', description: 'Upserts the authenticated user’s log for the date. Omitted mood and symptom lists default to empty arrays; provide the complete desired value for each included field. The response includes a version for subsequent conditional edits.' })
   @ApiParam({ name: 'date', description: 'Calendar date in YYYY-MM-DD format.', example: '2026-10-19' })
-  @ApiBody({ schema: { type: 'object', additionalProperties: false, properties: { bleeding: { type: 'object', additionalProperties: false, properties: { level: { type: 'string', enum: ['none', 'spotting', 'light', 'medium', 'heavy'] }, clots: { type: 'boolean' } } }, pain: { type: 'object', additionalProperties: false, properties: { level: { type: 'integer', minimum: 0, maximum: 10 }, locations: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 40 } } } }, moods: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 40 } }, symptoms: { type: 'array', maxItems: 30, items: { type: 'string', maxLength: 40 } }, notes: { type: 'string', maxLength: 2000 } } } })
+  @ApiBody({ schema: { type: 'object', additionalProperties: false, properties: { mode: { type: 'string', enum: ['cycle', 'pregnancy', 'postpartum', 'general'], description: 'Tracking experience for this entry.' }, bleeding: { type: 'object', additionalProperties: false, properties: { level: { type: 'string', enum: ['none', 'spotting', 'light', 'medium', 'heavy'] }, clots: { type: 'boolean' } } }, bloodColor: { type: 'string', enum: ['pink', 'light_red', 'red', 'dark_red', 'brown'] }, pain: { type: 'object', additionalProperties: false, properties: { level: { type: 'integer', minimum: 0, maximum: 10 }, locations: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 40 } } } }, moods: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 40 } }, symptoms: { type: 'array', maxItems: 30, items: { type: 'string', maxLength: 40 } }, energy: { type: 'integer', minimum: 1, maximum: 5 }, cravings: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 40 } }, sleep: { type: 'object', additionalProperties: false, properties: { hours: { type: 'number', minimum: 0, maximum: 24 }, quality: { type: 'string', enum: ['poor', 'fair', 'good', 'great'] } } }, sexualActivity: { type: 'object', additionalProperties: false, properties: { occurred: { type: 'boolean' }, protection: { type: 'string', maxLength: 40 } } }, notes: { type: 'string', maxLength: 2000 } } } })
   @ApiResponse({ status: 200, description: 'Saved daily log.' })
   async upsertDailyLog(
     @Req() req: any,
@@ -112,7 +160,7 @@ export class DailyLogsController {
   @Patch(':date')
   @ApiOperation({ summary: 'Partially update a daily health log', description: 'Changes only supplied fields and nested properties. Include the current version returned by GET/PUT; stale writes receive 409 VERSION_CONFLICT.' })
   @ApiParam({ name: 'date', description: 'Calendar date in YYYY-MM-DD format.', example: '2026-10-19' })
-  @ApiBody({ schema: { type: 'object', required: ['version'], additionalProperties: false, properties: { version: { type: 'integer', minimum: 1 }, bleeding: { type: 'object', additionalProperties: false, properties: { level: { type: 'string', enum: ['none', 'spotting', 'light', 'medium', 'heavy'] }, clots: { type: 'boolean' } } }, pain: { type: 'object', additionalProperties: false, properties: { level: { type: 'integer', minimum: 0, maximum: 10 }, locations: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 40 } } } }, moods: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 40 } }, symptoms: { type: 'array', maxItems: 30, items: { type: 'string', maxLength: 40 } }, sexualActivity: { type: 'object', additionalProperties: false, properties: { occurred: { type: 'boolean' }, protection: { type: 'string', maxLength: 40 } } }, notes: { type: 'string', maxLength: 2000, nullable: true } } } })
+  @ApiBody({ schema: { type: 'object', required: ['version'], additionalProperties: false, properties: { version: { type: 'integer', minimum: 1 }, mode: { type: 'string', enum: ['cycle', 'pregnancy', 'postpartum', 'general'] }, bleeding: { type: 'object', additionalProperties: false, properties: { level: { type: 'string', enum: ['none', 'spotting', 'light', 'medium', 'heavy'] }, clots: { type: 'boolean' } } }, bloodColor: { type: 'string', enum: ['pink', 'light_red', 'red', 'dark_red', 'brown'], nullable: true }, pain: { type: 'object', additionalProperties: false, properties: { level: { type: 'integer', minimum: 0, maximum: 10 }, locations: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 40 } } } }, energy: { type: 'integer', minimum: 1, maximum: 5, nullable: true }, cravings: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 40 } }, sleep: { type: 'object', additionalProperties: false, nullable: true, properties: { hours: { type: 'number', minimum: 0, maximum: 24 }, quality: { type: 'string', enum: ['poor', 'fair', 'good', 'great'] } } }, moods: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 40 } }, symptoms: { type: 'array', maxItems: 30, items: { type: 'string', maxLength: 40 } }, sexualActivity: { type: 'object', additionalProperties: false, properties: { occurred: { type: 'boolean' }, protection: { type: 'string', maxLength: 40 } } }, notes: { type: 'string', maxLength: 2000, nullable: true } } } })
   @ApiResponse({ status: 200, description: 'Daily log updated.' })
   @ApiResponse({ status: 404, description: 'Daily log not found for this account.' })
   @ApiResponse({ status: 409, description: 'The supplied version is stale.' })

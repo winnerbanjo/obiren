@@ -4,6 +4,7 @@ import { Model, Types } from 'mongoose';
 import { calculateCyclePrediction } from '@obiren/health-engine';
 import { Cycle, CycleDocument, DailyLog, DailyLogDocument } from '../../database/schemas/cycle.schema';
 import { decryptHealthNote, encryptHealthNote } from '../../common/crypto/health-data-crypto';
+import { daysBetween, todayInZone, utcMidnight } from '../../common/time/local-date';
 
 @Injectable()
 export class CyclesService {
@@ -11,6 +12,154 @@ export class CyclesService {
     @InjectModel(Cycle.name) private cycleModel: Model<CycleDocument>,
     @InjectModel(DailyLog.name) private dailyLogModel: Model<DailyLogDocument>,
   ) {}
+
+  /** The account's IANA timezone, defaulting to the platform default. */
+  async timeZoneFor(userId: string): Promise<string> {
+    const profile = await this.cycleModel.db
+      .collection('user_profiles')
+      .findOne({ userId: new Types.ObjectId(userId) }, { projection: { timeZone: 1 } });
+    return profile?.timeZone || 'Africa/Lagos';
+  }
+
+  /** Presents a stored cycle using the PRD `/periods` field names. */
+  private presentPeriod(cycle: CycleDocument | (Cycle & { _id: Types.ObjectId })) {
+    const startDate = cycle.startedAt.toISOString().slice(0, 10);
+    const endDate = cycle.periodEndedAt ? cycle.periodEndedAt.toISOString().slice(0, 10) : null;
+    return {
+      id: cycle._id.toString(),
+      startDate,
+      endDate,
+      periodLengthDays: endDate ? daysBetween(startDate, endDate) + 1 : 1,
+      cycleLengthDays: cycle.cycleLength ?? null,
+      status: cycle.status,
+      notes: cycle.notes ?? null,
+      createdAt: (cycle as any).createdAt ?? null,
+      updatedAt: (cycle as any).updatedAt ?? null,
+    };
+  }
+
+  /**
+   * PRD `GET /periods?from&to`. Returns recorded periods that overlap the
+   * inclusive range, oldest first, plus a deterministic summary of the
+   * recorded duration. No prediction or contraceptive claim is returned here.
+   */
+  async listPeriods(userId: string, from: string, to: string) {
+    const rows = await this.cycleModel
+      .find({ userId: new Types.ObjectId(userId), status: { $ne: 'deleted' }, startedAt: { $lte: utcMidnight(to) } })
+      .sort({ startedAt: 1 })
+      .limit(400)
+      .exec();
+
+    const periods = rows
+      .filter((cycle) => {
+        const endDate = cycle.periodEndedAt ? cycle.periodEndedAt.toISOString().slice(0, 10) : cycle.startedAt.toISOString().slice(0, 10);
+        return endDate >= from;
+      })
+      .map((cycle) => this.presentPeriod(cycle));
+
+    const withEnd = periods.filter((period) => period.endDate);
+    const averagePeriodLengthDays = withEnd.length
+      ? Math.round((withEnd.reduce((sum, period) => sum + period.periodLengthDays, 0) / withEnd.length) * 10) / 10
+      : null;
+
+    return {
+      success: true,
+      data: {
+        periods,
+        summary: {
+          from,
+          to,
+          recordedPeriodCount: periods.length,
+          averagePeriodLengthDays,
+          averagePeriodLengthSampleSize: withEnd.length,
+          isContraceptiveAdvice: false,
+        },
+      },
+      meta: { requestId: `req_${Date.now()}` },
+    };
+  }
+
+  /**
+   * PRD `POST /periods`. Wraps the existing period-start behavior, adds an
+   * optional end date and note, and remains idempotent for a repeated start
+   * date. A retroactive start that precedes the latest recorded period is
+   * rejected instead of silently rewriting cycle history.
+   */
+  async createPeriod(userId: string, input: { startDate?: string; endDate?: string | null; notes?: string | null }) {
+    const userObjectId = new Types.ObjectId(userId);
+    const timeZone = await this.timeZoneFor(userId);
+    const startDate = input.startDate || todayInZone(timeZone);
+    const start = utcMidnight(startDate);
+
+    const existing = await this.cycleModel.findOne({
+      userId: userObjectId,
+      startedAt: { $gte: start, $lte: new Date(start.getTime() + 86400000 - 1) },
+      status: { $ne: 'deleted' },
+    });
+
+    if (existing) {
+      if (input.endDate !== undefined && input.endDate !== null) {
+        await this.applyPeriodEnd(existing, input.endDate);
+      }
+      if (input.notes !== undefined) existing.notes = input.notes ?? undefined;
+      await existing.save();
+      return {
+        success: true,
+        data: { period: this.presentPeriod(existing), created: false, message: 'A period is already recorded for that start date.' },
+        meta: { requestId: `req_${Date.now()}` },
+      };
+    }
+
+    const created = await this.startPeriod(userId, startDate);
+    const cycle = created.data.cycle as unknown as CycleDocument;
+    if (input.endDate) await this.applyPeriodEnd(cycle, input.endDate);
+    if (input.notes !== undefined) cycle.notes = input.notes ?? undefined;
+    await cycle.save();
+
+    return {
+      success: true,
+      data: { period: this.presentPeriod(cycle), created: true, prediction: created.data.prediction },
+      meta: { requestId: `req_${Date.now()}` },
+    };
+  }
+
+  /** Validates and stores a period end date on an existing cycle. */
+  private async applyPeriodEnd(cycle: CycleDocument, endDate: string) {    if (endDate < cycle.startedAt.toISOString().slice(0, 10)) {
+      throw new BadRequestException('endDate must be on or after startDate');
+    }
+    const nextCycle = await this.cycleModel
+      .findOne({ _id: { $ne: cycle._id }, userId: cycle.userId, status: { $ne: 'deleted' }, startedAt: { $gt: cycle.startedAt } })
+      .sort({ startedAt: 1 });
+    if (nextCycle && utcMidnight(endDate) >= nextCycle.startedAt) {
+      throw new BadRequestException('Period end cannot overlap the next recorded cycle');
+    }
+    cycle.periodEndedAt = utcMidnight(endDate);
+    cycle.periodLength = daysBetween(cycle.startedAt.toISOString().slice(0, 10), endDate) + 1;
+  }
+
+  /** PRD `PATCH /periods/:id`: owner-scoped edit with the existing overlap rules. */
+  async updatePeriod(userId: string, periodId: string, updates: { startDate?: string; endDate?: string | null; notes?: string | null }) {
+    const cycle = await this.cycleModel.findOne({
+      _id: new Types.ObjectId(periodId),
+      userId: new Types.ObjectId(userId),
+      status: { $ne: 'deleted' },
+    });
+    if (!cycle) throw new NotFoundException('Period not found');
+
+    const nextStart = updates.startDate ?? cycle.startedAt.toISOString().slice(0, 10);
+    const nextEnd = updates.endDate === undefined
+      ? cycle.periodEndedAt?.toISOString().slice(0, 10) ?? null
+      : updates.endDate;
+    if (nextEnd && nextEnd < nextStart) throw new BadRequestException('endDate must be on or after startDate');
+    if (nextEnd && daysBetween(nextStart, nextEnd) > 30) throw new BadRequestException('A recorded period cannot exceed 31 days');
+
+    const updated = await this.updateCycle(userId, periodId, updates);
+    return {
+      success: true,
+      data: { period: this.presentPeriod(updated.data as unknown as CycleDocument) },
+      meta: { requestId: `req_${Date.now()}` },
+    };
+  }
 
   async getCurrentCycle(userId: string) {
     const userObjectId = new Types.ObjectId(userId);
@@ -53,6 +202,7 @@ export class CyclesService {
         id: activeCycle._id.toString(),
         userId: activeCycle.userId.toString(),
         startedAt: startLocalDate,
+        periodEndedAt: activeCycle.periodEndedAt ? dateInZone(activeCycle.periodEndedAt) : null,
         dayOfCycle,
         status: activeCycle.status,
         timeZone,
@@ -318,6 +468,8 @@ export class CyclesService {
   private presentDailyLog<T extends Record<string, any>>(log: T | null): T | null {
     if (!log) return null;
     const data: Record<string, any> = { ...log };
+    if (!data.mode) data.mode = 'cycle';
+    if (!Array.isArray(data.cravings)) data.cravings = [];
     if (data.notesEncrypted && data.notesIv && data.notesAuthTag) {
       data.notes = decryptHealthNote({
         ciphertext: data.notesEncrypted,

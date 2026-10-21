@@ -29,6 +29,13 @@ export class PregnancyController {
     return this.pregnancyService.getCurrentPregnancy(req.user.sub);
   }
 
+  @Get('active')
+  @ApiOperation({ summary: 'Get the active pregnancy (PRD alias)', description: 'Alias of `GET /pregnancies/current`. Returns the current pregnancy with trimester, gestational age and milestone, or `data: null` when no active pregnancy exists.' })
+  @ApiResponse({ status: 200, description: 'Active pregnancy or null.' })
+  async getActivePregnancy(@Req() req: any) {
+    return this.pregnancyService.getCurrentPregnancy(req.user.sub);
+  }
+
   @Get('history')
   @ApiOperation({ summary: 'List pregnancy history', description: 'Returns the authenticated user’s pregnancy records, newest first, using cursor pagination.' })
   @ApiResponse({ status: 200, description: 'Pregnancy history and next cursor.' })
@@ -132,5 +139,36 @@ export class PregnancyController {
     @Body(new ZodValidationPipe(PregnancyLogSchema)) body,
   ) {
     return this.pregnancyService.logSymptomWithSafetyEscalation(req.user.sub, id, date, body);
+  }
+}
+
+/**
+ * PRD date-keyed pregnancy check-in routes. The active pregnancy is resolved
+ * server-side so a client never has to send (or guess) a pregnancy id.
+ */
+@ApiTags('Pregnancy')
+@ApiBearerAuth('accessToken')
+@UseGuards(JwtAuthGuard)
+@Controller('pregnancy-logs')
+export class PregnancyLogsController {
+  constructor(private readonly pregnancyService: PregnancyService) {}
+
+  @Get(':date')
+  @ApiOperation({ summary: 'Get the pregnancy check-in for a date', description: 'Returns the active pregnancy check-in for a local calendar date, or a default empty check-in. Free-text notes are decrypted only for the owner.' })
+  @ApiParam({ name: 'date', description: 'Local calendar date in YYYY-MM-DD format.' })
+  @ApiResponse({ status: 200, description: 'Saved check-in or default empty check-in.' })
+  async getLog(@Req() req: any, @Param('date', new ZodValidationPipe(PregnancyLogDateParam)) date: string) {
+    return this.pregnancyService.getPregnancyLog(req.user.sub, date);
+  }
+
+  @Put(':date')
+  @ApiOperation({ summary: 'Log a pregnancy check-in for a date', description: 'Upserts the structured check-in for the active pregnancy on a local calendar date. Free-text notes are encrypted at rest; selected high-risk symptom labels return an urgent safety notice. This API is not an emergency service.' })
+  @ApiParam({ name: 'date', description: 'Local calendar date in YYYY-MM-DD format.' })
+  @ApiBody({ schema: { type: 'object', additionalProperties: false, properties: { nausea: { type: 'string', enum: ['none', 'mild', 'moderate', 'severe'] }, symptoms: { type: 'array', maxItems: 30, items: { type: 'string', minLength: 1, maxLength: 60 } }, mood: { type: 'string', maxLength: 40 }, energy: { type: 'string', maxLength: 40 }, water: { type: 'integer', minimum: 0, maximum: 30 }, vitamins: { type: 'array', maxItems: 20, items: { type: 'string' } }, nutrition: { type: 'array', maxItems: 30, items: { type: 'string' } }, selfCare: { type: 'array', maxItems: 30, items: { type: 'string' } }, fetalMovement: { type: 'string', enum: ['normal', 'reduced', 'absent', 'not_assessed'] }, notes: { type: 'string', maxLength: 2000, nullable: true } } } })
+  @ApiResponse({ status: 200, description: 'Check-in saved; may include an urgent safetyNotice.' })
+  @ApiResponse({ status: 404, description: 'No active pregnancy for this account.' })
+  async putLog(@Req() req: any, @Param('date', new ZodValidationPipe(PregnancyLogDateParam)) date: string, @Body(new ZodValidationPipe(PregnancyLogSchema)) body) {
+    const pregnancyId = await this.pregnancyService.requireActivePregnancyId(req.user.sub);
+    return this.pregnancyService.logSymptomWithSafetyEscalation(req.user.sub, pregnancyId, date, body);
   }
 }

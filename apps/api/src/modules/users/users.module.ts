@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UsersController } from './users.controller';
+import { AccountAliasesController } from './aliases.controller';
 import { ConfigController } from './config.controller';
 import { ConsentController } from './consent.controller';
 import { UsersService } from './users.service';
@@ -42,7 +43,7 @@ import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
     ]),
     JwtAuthModule,
   ],
-  controllers: [UsersController, ConfigController, ConsentController],
+  controllers: [UsersController, AccountAliasesController, ConfigController, ConsentController],
   providers: [UsersService, ConsentService],
   exports: [UsersService],
 })

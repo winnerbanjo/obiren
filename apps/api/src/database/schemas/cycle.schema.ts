@@ -63,6 +63,11 @@ export class DailyLog {
   @Prop({ type: String, default: 'UTC' })
   timeZone: string;
 
+  // Which tracking experience produced the entry. Kept separate from `date` so
+  // a user can switch objectives without corrupting past calendar history.
+  @Prop({ type: String, enum: ['cycle', 'pregnancy', 'postpartum', 'general'], default: 'cycle' })
+  mode: string;
+
   @Prop({
     type: {
       level: { type: String, enum: ['none', 'spotting', 'light', 'medium', 'heavy'], default: 'none' },
@@ -72,6 +77,27 @@ export class DailyLog {
   bleeding?: {
     level: string;
     clots?: boolean;
+  };
+
+  @Prop({ type: String, enum: ['pink', 'light_red', 'red', 'dark_red', 'brown'] })
+  bloodColor?: string;
+
+  // Self-reported energy on a 1-5 scale (1 = exhausted, 5 = energetic).
+  @Prop({ type: Number, min: 1, max: 5 })
+  energy?: number;
+
+  @Prop({ type: [String], default: [] })
+  cravings: string[];
+
+  @Prop({
+    type: {
+      hours: { type: Number, min: 0, max: 24 },
+      quality: { type: String, enum: ['poor', 'fair', 'good', 'great'] },
+    },
+  })
+  sleep?: {
+    hours?: number;
+    quality?: string;
   };
 
   @Prop({
