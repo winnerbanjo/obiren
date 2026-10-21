@@ -248,7 +248,8 @@ export async function runVersionedMigrations(dbUri?: string): Promise<{ success:
       await db.collection('guardian_contacts').createIndex({ ownerUserId: 1, phoneE164: 1 }, { unique: true, name: 'uniq_guardian_owner_phone' });
       await db.collection('guardian_invites').createIndex({ ownerUserId: 1, status: 1 }, { name: 'idx_guardian_invite_owner_status' });
       await db.collection('guardian_invites').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 2592000, name: 'ttl_guardian_invite_retention' });
-      await db.collection('notification_outbox').createIndex({ userId: 1, createdAt: -1 }, { name: 'idx_notification_user_created' });
+      // `idx_notif_userId_created` (migration 001) already covers this key;
+      // creating it again under a second name fails with IndexOptionsConflict.
       await migrationsCollection.updateOne({ migrationId: mig005Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
       appliedMigrations.push(mig005Id);
     }
