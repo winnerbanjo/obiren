@@ -93,6 +93,7 @@ export class Booking {
   @Prop({ type: Types.ObjectId, ref: 'Payment' }) paymentId?: Types.ObjectId;
   @Prop({ type: Date }) expiresAt?: Date;
   @Prop({ type: Date }) confirmedAt?: Date;
+  @Prop({ type: Date }) completedAt?: Date;
   @Prop({ type: Date }) cancelledAt?: Date;
   @Prop({ type: String, maxlength: 300 }) cancellationReason?: string;
   @Prop({ type: String, enum: ['none', 'not_required', 'pending_policy', 'refunded'], default: 'none' }) refundStatus: string;
@@ -128,6 +129,26 @@ export class Payment {
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
 PaymentSchema.index({ bookingId: 1, createdAt: -1 }, { name: 'idx_payment_booking_created' });
 PaymentSchema.index({ gateway: 1, status: 1 }, { name: 'idx_payment_gateway_status' });
+
+/**
+ * A promotion managed by staff. Validation is read-only: a discount is quoted
+ * from this record plus the server price, but nothing is redeemed until the
+ * approved checkout path applies it.
+ */
+export type PromoCodeDocument = PromoCode & Document;
+@Schema({ timestamps: true, collection: 'promo_codes' })
+export class PromoCode {
+  @Prop({ required: true, unique: true, uppercase: true, trim: true, maxlength: 40 }) code: string;
+  @Prop({ required: true, min: 1, max: 100 }) percentOff: number;
+  @Prop({ required: true, maxlength: 40 }) policyVersion: string;
+  @Prop({ type: Number, min: 1 }) maxRedemptions?: number;
+  @Prop({ type: Number, default: 0, min: 0 }) redemptions: number;
+  @Prop({ type: Date }) expiresAt?: Date;
+  @Prop({ type: Boolean, default: true }) active: boolean;
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true }) createdByUserId: Types.ObjectId;
+}
+export const PromoCodeSchema = SchemaFactory.createForClass(PromoCode);
+PromoCodeSchema.index({ active: 1, expiresAt: 1 }, { name: 'idx_promo_active_expiry' });
 
 /** Webhook replay protection: every provider event id is stored once. */
 export type PaymentWebhookEventDocument = PaymentWebhookEvent & Document;

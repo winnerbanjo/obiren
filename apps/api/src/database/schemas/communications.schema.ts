@@ -68,6 +68,26 @@ export const HealthShareSchema = SchemaFactory.createForClass(HealthShare);
 HealthShareSchema.index({ ownerUserId: 1, createdAt: -1 });
 HealthShareSchema.index({ recipientUserId: 1, expiresAt: 1, revokedAt: 1 });
 
+/**
+ * Message attachment metadata. Files live in the storage provider; nothing is
+ * downloadable until malware scanning is configured, so `available` stays false
+ * and the scan state is reported honestly.
+ */
+export type AttachmentDocument = Attachment & Document;
+@Schema({ timestamps: true, collection: 'consultation_attachments' })
+export class Attachment {
+  @Prop({ type: Types.ObjectId, ref: 'Consultation', required: true, index: true }) consultationId: Types.ObjectId;
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true }) uploaderUserId: Types.ObjectId;
+  @Prop({ type: String, required: true, maxlength: 200 }) fileName: string;
+  @Prop({ type: String, required: true, enum: ['image/jpeg', 'image/png', 'application/pdf'] }) contentType: string;
+  @Prop({ type: Number, required: true, min: 1, max: 10485760 }) sizeBytes: number;
+  @Prop({ type: String, required: true, maxlength: 300 }) storagePublicId: string;
+  @Prop({ type: String, required: true, enum: ['not_configured', 'pending', 'clean', 'infected'], default: 'not_configured' }) scanStatus: string;
+  @Prop({ type: Boolean, default: false }) available: boolean;
+}
+export const AttachmentSchema = SchemaFactory.createForClass(Attachment);
+AttachmentSchema.index({ consultationId: 1, createdAt: -1 }, { name: 'idx_attachment_consultation_created' });
+
 export type DeviceDocument = Device & Document;
 /**
  * A registered mobile/web notification target. Only a salted hash of the

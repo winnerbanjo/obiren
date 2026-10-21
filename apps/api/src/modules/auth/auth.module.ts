@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { User, UserSchema, UserProfile, UserProfileSchema } from '../../database/schemas/user.schema';
 import { Session, SessionSchema } from '../../database/schemas/session.schema';
+import { MfaCredential, MfaCredentialSchema } from '../../database/schemas/mfa.schema';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { Session, SessionSchema } from '../../database/schemas/session.schema';
       { name: User.name, schema: UserSchema },
       { name: UserProfile.name, schema: UserProfileSchema },
       { name: Session.name, schema: SessionSchema },
+      { name: MfaCredential.name, schema: MfaCredentialSchema },
     ]),
     JwtModule.register({
       secret: env().jwtAccessSecret,

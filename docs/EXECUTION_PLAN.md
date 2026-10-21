@@ -24,7 +24,8 @@
 - [x] Consent collection appends grant/revocation events by purpose, policy version, source, timestamp, and authenticated owner.
 - [x] `/config/options` serves existing localization/country data plus explicitly provisional intake/session enums.
 - [x] Add new versioned indexes for onboarding drafts and consent event history.
-- [ ] Auth completion: add Google OIDC only with server-side token verification and configured audience; no client-trusted profile claims.
+- [x] Optional staff MFA: TOTP enrolment/verification, single-use recovery codes, encrypted secret at rest, and a short-lived challenge step in sign-in. Sign-in only requires it once an account enables it.
+- [ ] Google OIDC: add only with server-side token verification and a configured audience; no client-trusted profile claims. (Still blocked on provider/audience ownership.)
 - [ ] Tighten onboarding required fields and paths only after PM confirms skip rules, under-18 policy, unknown LMP behavior, and purpose-specific consent requirements.
 - [ ] Mobile team reviews endpoint/enum contract; product/privacy and clinical owners approve the unresolved policies/options.
 
@@ -56,7 +57,8 @@
 - [x] Add `/specialists` catalog parity, specialist-scoped slots, the held → pending_payment → confirmed booking state machine, cancellation with slot release, and deterministic receipts. Confirmation occurs only after a signed webhook whose server-side verification matches the quoted amount and currency.
 - [x] Extend `/daily-logs` and `/home` with the PRD field set, local-date day view, and `/periods` CRUD over existing cycle records.
 - [ ] Define cancellation/refund policy, clinic vs audio/video/text session types, pricing, entitlements and promo codes with product before enabling checkout. Refunds are marked `pending_policy`, never simulated.
-- [ ] Add clinician-side booking operations and entitlement checks once pricing and refunds are approved.
+- [x] Clinician-side booking completion (`POST /clinician/bookings/:id/complete`) and `GET /subscriptions/me`, which derives entitlements from confirmed, provider-verified bookings and reports `policyPending` instead of inventing a plan catalogue.
+- [ ] Apply approved pricing, promotions and refunds at checkout once the payment/refund policy exists.
 
 **Exit criteria:** Concurrent hold and webhook replay/forgery/amount-mismatch/outage tests pass in sandbox; confirmation occurs only after verified gateway success; refund and operational runbooks are approved.
 
@@ -68,6 +70,8 @@
 - [x] Encrypted message storage (AES-256-GCM, ciphertext and tag at rest), delivered/read states based on client evidence. Attachment presigning/scanning remains unimplemented.
 - [x] User-authorized health briefs with evidence range, scopes, expiry, revocation, and audit. free-text notes are excluded from the snapshot.
 - [x] User notification inbox, read state, preferences, device token registration/revocation with hashed tokens, discreet-mode-safe payloads, and honest delivery status.
+- [x] Consultation attachment metadata registration with participant checks. Download fails closed (503) until malware scanning is configured, so nothing is released unscanned.
+- [x] Deterministic health briefs (`POST /briefs/generate`, `GET /briefs/:id`, `DELETE /briefs/:id`, `GET /specialists/me/shared-briefs`) with a SHA-256 content hash, per-scope counts, consent and verified-clinician gating, and no free-text notes.
 - [x] Reuse the existing notification outbox and internal worker; no parallel queue was added and unconfigured providers are marked failed, never sent.
 
 **Exit criteria:** Unauthorized conversation access and expired/revoked share tests pass; provider failure handling is visible and no private health detail leaks to locked-screen payloads.
@@ -82,7 +86,8 @@
 - [x] Localized emergency/domestic-violence resources served from the published dataset with explicit verification and freshness records: `GET /safety/resources` is public (no token, no account data), each record carries `source_verified`/`directory_source_verified`/`operationally_confirmed` state plus `lastCheckedAt`/`nextReviewDueAt`/`freshness`, and staff reviews are recorded through audited, evidence-backed `emergency_manager` administration. An unreviewed or overdue resource is labelled as such; nothing claims rescue or government dispatch.
 - [ ] Operationally confirm every published number with the provider before launch. The dataset is source-checked only; several records still carry an editorial follow-up note and must not be presented as operationally confirmed.
 - [x] Extend export/deletion routes with job records, owner-cancellable deletion, consultation-message export, and documented retention limits. Erasure execution is operator-managed pending retention approval.
-- [ ] Support FAQ/ticket APIs with no unnecessary health-data exposure.
+- [x] Support FAQ and ticket APIs: public versioned FAQ copy that reports its own review state, owner-scoped tickets with references and replies, and a staff queue. No health record is attached to a ticket.
+- [x] Retention housekeeping (`POST /internal/cron/run-retention`) for expired operational records only (sessions, invitations, location sessions, expired shares/briefs, idempotency rows, old webhook audit rows). Preview is the default; deletion needs `RETENTION_EXECUTION_ENABLED=true`. Account health records are never purged by it.
 
 **Exit criteria:** Guardian/SOS delivery failures, no GPS, no network, partial delivery, revoke-mid-session, account export integrity, deletion cancellation/retention and role-isolation tests pass; operational safety plan is approved.
 
@@ -95,7 +100,8 @@
 - Legal/privacy review of Nigeria/Ghana obligations, consent, DSAR, data retention and vendor DPAs.
 - Load test against agreed staging workload and document P95 targets; configure alarms and incident response.
 - Verify Paystack/SMS/email/push/webhook failure recovery and production/staging separation.
-- Publish OpenAPI 3.1, Postman examples, ERD, sanitized role fixtures, mobile-screen API matrix, runbooks, rollback plan, and API changelog.
+- [x] Sanitized five-role demo seed (`apps/api/scripts/seed-demo.ts`) plus a verified, priced clinician for local and staging checks.
+- [ ] Publish Postman examples, ERD, mobile-screen API matrix, runbooks, rollback plan, and API changelog (OpenAPI 3.1 artifacts are already generated).
 
 **Exit criteria:** QA, mobile, engineering, clinical, privacy/security, and operations signoff; no production health data in test; staging accounts for each role; no deployment or production migration without explicit release authorization.
 
@@ -116,4 +122,4 @@
 
 ## Current next action
 
-Milestones 2–5 have backend slices implemented and covered by e2e tests. Remaining work is gated on decisions rather than code: product/privacy approval of consent semantics; Google OIDC provider/audience; practitioner verification policy, pricing, refunds, and Paystack sandbox credentials before checkout; approved message attachments/retention; an operational SOS delivery channel with validated per-country resources; and qualified erasure execution with documented retention exceptions. Do not enable payments, guardian messaging, or account erasure until those approvals and sandbox verifications exist.
+Every PRD endpoint in the audited scope is now implemented and covered by e2e tests, including MFA, support, articles, privacy settings, briefs, attachments, promotions/entitlements and retention. What remains is configuration and approval, not missing routes: Google OIDC provider/audience, product/privacy approval of consent semantics and policy versions, practitioner pricing plus refund/promotion policy, Paystack and messaging/storage credentials, an approved attachment scanner, an operational SOS delivery channel with validated per-country resources, and qualified erasure execution with documented retention exceptions. Do not enable payments, guardian messaging, or account erasure until those approvals and sandbox verifications exist.

@@ -359,6 +359,32 @@ export async function runVersionedMigrations(dbUri?: string): Promise<{ success:
       appliedMigrations.push(mig010Id);
     }
 
+    const mig011Id = '011_support_content_mfa_brief_indexes';
+    const mig011Name = 'Create support, article, brief, MFA, attachment and promo-code indexes';
+    const mig011Checksum = crypto.createHash('sha256').update(mig011Id + mig011Name).digest('hex');
+    const existing011 = await migrationsCollection.findOne({ migrationId: mig011Id, status: 'COMPLETED' });
+    if (!existing011) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig011Id },
+        { $set: { name: mig011Name, checksum: mig011Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('support_tickets').createIndex({ reference: 1 }, { unique: true, name: 'uniq_support_ticket_reference' });
+      await db.collection('support_tickets').createIndex({ userId: 1, createdAt: -1 }, { name: 'idx_support_ticket_owner_created' });
+      await db.collection('support_tickets').createIndex({ status: 1, createdAt: -1 }, { name: 'idx_support_ticket_status_created' });
+      await db.collection('articles').createIndex({ slug: 1 }, { unique: true, name: 'uniq_article_slug' });
+      await db.collection('articles').createIndex({ status: 1, publishedAt: -1 }, { name: 'idx_article_published' });
+      await db.collection('articles').createIndex({ category: 1, status: 1 }, { name: 'idx_article_category_status' });
+      await db.collection('health_briefs').createIndex({ ownerUserId: 1, createdAt: -1 }, { name: 'idx_brief_owner_created' });
+      await db.collection('health_briefs').createIndex({ recipientUserId: 1, expiresAt: 1 }, { name: 'idx_brief_recipient_expiry' });
+      await db.collection('mfa_credentials').createIndex({ userId: 1 }, { unique: true, name: 'uniq_mfa_user' });
+      await db.collection('consultation_attachments').createIndex({ consultationId: 1, createdAt: -1 }, { name: 'idx_attachment_consultation_created' });
+      await db.collection('promo_codes').createIndex({ code: 1 }, { unique: true, name: 'uniq_promo_code' });
+      await db.collection('promo_codes').createIndex({ active: 1, expiresAt: 1 }, { name: 'idx_promo_active_expiry' });
+      await migrationsCollection.updateOne({ migrationId: mig011Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig011Id);
+    }
+
     const mig003Id = '003_cycle_period_query_index';
     const mig003Name = 'Add cycle history date/status compound index';
     const mig003Checksum = crypto.createHash('sha256').update(mig003Id + mig003Name).digest('hex');

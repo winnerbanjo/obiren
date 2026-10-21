@@ -13,6 +13,9 @@ import {
   ForgotPasswordSchema,
   ResetPasswordSchema,
   VerifyEmailSchema,
+  MfaVerifySchema,
+  MfaDisableSchema,
+  MfaLoginVerifySchema,
 } from '../../common/validation/api-schemas';
 
 export const REFRESH_COOKIE = 'obiren_refresh';
@@ -45,15 +48,18 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(@Res({ passthrough: true }) res: Response, @Body(new ZodValidationPipe(LoginSchema)) body) {
     const result = await this.authService.login(body);
-    // Refresh token in an HTTP-only cookie (browser clients). The JSON body
-    // also carries it for non-browser clients; browsers use the cookie.
-    res.cookie(REFRESH_COOKIE, result.data.tokens.refreshToken, {
-      httpOnly: true,
-      secure: isProd(),
-      sameSite: 'lax',
-      path: '/api/v1/auth',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
+    // MFA-enabled accounts receive only a short-lived challenge token here.
+    if ('tokens' in result.data) {
+      // Refresh token in an HTTP-only cookie (browser clients). The JSON body
+      // also carries it for non-browser clients; browsers use the cookie.
+      res.cookie(REFRESH_COOKIE, result.data.tokens.refreshToken, {
+        httpOnly: true,
+        secure: isProd(),
+        sameSite: 'lax',
+        path: '/api/v1/auth',
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+    }
     return result;
   }
 
@@ -113,6 +119,70 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Session metadata.' })
   async getSessions(@Req() req: any) {
     return this.authService.getSessions(req.user.sub);
+  }
+
+  // ---------------- multi-factor authentication ----------------
+
+  @ApiBearerAuth('accessToken')
+  @UseGuards(JwtAuthGuard)
+  @Get('mfa/status')
+  @ApiOperation({ summary: 'Get MFA status', description: 'Reports whether TOTP multi-factor authentication is enabled, pending enrolment, or unused for the authenticated account. Secrets and recovery codes are never returned.' })
+  @ApiResponse({ status: 200, description: 'MFA state and remaining recovery codes.' })
+  async mfaStatus(@Req() req: any) {
+    return this.authService.mfaStatus(req.user.sub);
+  }
+
+  @ApiBearerAuth('accessToken')
+  @UseGuards(JwtAuthGuard)
+  @Post('mfa/enroll')
+  @ApiOperation({ summary: 'Start TOTP enrolment', description: 'Generates a new authenticator secret and single-use recovery codes. The secret and codes are returned exactly once and only the encrypted secret is stored. Requires the configured encryption key; returns 503 otherwise.' })
+  @ApiResponse({ status: 201, description: 'Pending enrolment with secret, otpauth URL and recovery codes.' })
+  @ApiResponse({ status: 409, description: 'MFA is already enabled.' })
+  @ApiResponse({ status: 503, description: 'Encryption key is not configured.' })
+  async mfaEnroll(@Req() req: any) {
+    return this.authService.mfaEnroll(req.user.sub);
+  }
+
+  @ApiBearerAuth('accessToken')
+  @UseGuards(JwtAuthGuard)
+  @Post('mfa/verify')
+  @ApiOperation({ summary: 'Confirm enrolment', description: 'Confirms a pending enrolment with a 6-digit code. Only then does sign-in start requiring the second factor.' })
+  @ApiBody({ schema: { type: 'object', required: ['code'], additionalProperties: false, properties: { code: { type: 'string', pattern: '^\\d{6}$' } } } })
+  @ApiResponse({ status: 201, description: 'MFA enabled.' })
+  @ApiResponse({ status: 400, description: 'No pending enrolment.' })
+  @ApiResponse({ status: 401, description: 'Invalid code.' })
+  async mfaVerify(@Req() req: any, @Body(new ZodValidationPipe(MfaVerifySchema)) body) {
+    return this.authService.mfaVerifyEnrollment(req.user.sub, body.code);
+  }
+
+  @ApiBearerAuth('accessToken')
+  @UseGuards(JwtAuthGuard)
+  @Post('mfa/disable')
+  @ApiOperation({ summary: 'Disable MFA', description: 'Requires a current 6-digit code or a recovery code. Disabling deletes the stored secret.' })
+  @ApiBody({ schema: { type: 'object', required: ['code'], additionalProperties: false, properties: { code: { type: 'string', pattern: '^(\\d{6}|[A-Za-z2-7]{10})$' } } } })
+  @ApiResponse({ status: 201, description: 'MFA disabled.' })
+  @ApiResponse({ status: 400, description: 'MFA is not enabled.' })
+  @ApiResponse({ status: 401, description: 'Invalid code.' })
+  async mfaDisable(@Req() req: any, @Body(new ZodValidationPipe(MfaDisableSchema)) body) {
+    return this.authService.mfaDisable(req.user.sub, body.code);
+  }
+
+  @Post('mfa/challenge')
+  @ApiOperation({ summary: 'Complete sign-in with a second factor', description: 'Exchanges the short-lived MFA token returned by `/auth/login` plus a valid code for a normal access/refresh pair. Recovery codes are single-use.' })
+  @ApiBody({ schema: { type: 'object', required: ['mfaToken', 'code'], additionalProperties: false, properties: { mfaToken: { type: 'string', minLength: 20, maxLength: 2048 }, code: { type: 'string', description: '6-digit authenticator code or 10-character recovery code.' }, platform: { type: 'string', enum: ['web', 'ios', 'android'], default: 'web' } } } })
+  @ApiResponse({ status: 200, description: 'Authenticated with a fresh token pair.' })
+  @ApiResponse({ status: 401, description: 'Expired challenge or invalid code.' })
+  @HttpCode(HttpStatus.OK)
+  async mfaChallenge(@Res({ passthrough: true }) res: Response, @Body(new ZodValidationPipe(MfaLoginVerifySchema)) body) {
+    const result = await this.authService.mfaChallenge(body);
+    res.cookie(REFRESH_COOKIE, result.data.tokens.refreshToken, {
+      httpOnly: true,
+      secure: isProd(),
+      sameSite: 'lax',
+      path: '/api/v1/auth',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+    return result;
   }
 
   // ---------------- email verification ----------------

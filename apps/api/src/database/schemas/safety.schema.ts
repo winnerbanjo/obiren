@@ -77,6 +77,8 @@ export class GuardianContact {
   @Prop({ type: Date }) acceptedAt?: Date;
   @Prop({ type: Date }) verifiedAt?: Date;
   @Prop({ type: Date }) revokedAt?: Date;
+  /** Last time the owner re-issued this invitation; used for resend throttling. */
+  @Prop({ type: Date }) lastInviteResentAt?: Date;
 }
 export const GuardianContactSchema = SchemaFactory.createForClass(GuardianContact);
 GuardianContactSchema.index({ ownerUserId: 1, status: 1 });

@@ -3,7 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { CommunicationsController } from './communications.controller';
 import { CommunicationsService } from './communications.service';
 import { NotificationOutbox, NotificationOutboxSchema } from '../../database/schemas/notification.schema';
-import { Consultation, ConsultationSchema, Device, DeviceSchema, HealthShare, HealthShareSchema, Message, MessageSchema, NotificationPreference, NotificationPreferenceSchema } from '../../database/schemas/communications.schema';
+import { Attachment, AttachmentSchema, Consultation, ConsultationSchema, Device, DeviceSchema, HealthShare, HealthShareSchema, Message, MessageSchema, NotificationPreference, NotificationPreferenceSchema } from '../../database/schemas/communications.schema';
 import { UserProfile, UserProfileSchema } from '../../database/schemas/user.schema';
 import { Cycle, CycleSchema, DailyLog, DailyLogSchema } from '../../database/schemas/cycle.schema';
 import { Pregnancy, PregnancySchema } from '../../database/schemas/pregnancy.schema';
@@ -23,6 +23,7 @@ import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
     { name: DailyLog.name, schema: DailyLogSchema },
     { name: Pregnancy.name, schema: PregnancySchema },
     { name: ConsentEvent.name, schema: ConsentEventSchema },
+    { name: Attachment.name, schema: AttachmentSchema },
   ]), JwtAuthModule],
   controllers: [CommunicationsController],
   providers: [CommunicationsService],

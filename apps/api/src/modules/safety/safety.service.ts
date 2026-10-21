@@ -167,6 +167,94 @@ export class SafetyService {
     return { success: true, data: { status: 'accepted_identity_verification_required' }, meta: this.meta() };
   }
 
+  /**
+   * Re-issue a guardian invitation. No message is delivered while the approved
+   * channel is unconfigured, so the response states that explicitly; re-issuing
+   * is rate-limited in the database to stop invitation spam.
+   */
+  async resendGuardianInvite(ownerUserId: string, contactId: string) {
+    const owner = new Types.ObjectId(ownerUserId);
+    const contact = await this.guardianModel.findOne({ _id: new Types.ObjectId(contactId), ownerUserId: owner, status: { $ne: 'revoked' } }).lean().exec();
+    if (!contact) throw new NotFoundException('Guardian contact not found');
+
+    // Throttle re-issues, not the original invitation: one per minute per contact.
+    if (contact.lastInviteResentAt && contact.lastInviteResentAt.getTime() > Date.now() - 60_000) {
+      throw new HttpException(
+        { success: false, error: { code: 'GUARDIAN_INVITE_THROTTLED', message: 'An invitation was reissued less than a minute ago. Wait before resending.' } },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    await this.guardianInviteModel.updateMany(
+      { contactId: contact._id, status: 'pending' },
+      { $set: { status: 'revoked', revokedAt: new Date() } },
+    );
+    const rawToken = crypto.randomBytes(32).toString('base64url');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const invite = await this.guardianInviteModel.create({
+      ownerUserId: owner,
+      contactId: contact._id,
+      tokenHash,
+      expiresAt: new Date(Date.now() + 7 * 86400000),
+      status: 'pending',
+    });
+    await this.guardianModel.updateOne({ _id: contact._id }, { $set: { lastInviteResentAt: new Date() } });
+    await this.audit(ownerUserId, 'GUARDIAN_INVITE_REISSUED', contact._id.toString());
+    return {
+      success: true,
+      data: {
+        contactId: contact._id.toString(),
+        inviteId: invite._id.toString(),
+        expiresAt: invite.expiresAt,
+        invitationDelivery: 'disabled_pending_approved_channel',
+        message: 'Invitation reissued. No message was sent because no approved delivery channel is configured.',
+      },
+      meta: this.meta(),
+    };
+  }
+
+  /** Owner-controlled scope change; existing SOS records keep the scopes they used. */
+  async updateGuardianScopes(ownerUserId: string, contactId: string, scopes: string[]) {
+    const contact = await this.guardianModel.findOneAndUpdate(
+      { _id: new Types.ObjectId(contactId), ownerUserId: new Types.ObjectId(ownerUserId), status: { $ne: 'revoked' } },
+      { $set: { scopes } },
+      { new: true },
+    ).lean().exec();
+    if (!contact) throw new NotFoundException('Guardian contact not found');
+    await this.audit(ownerUserId, 'GUARDIAN_SCOPES_UPDATED', contactId);
+    return { success: true, data: { id: contactId, scopes: contact.scopes, status: contact.status }, meta: this.meta() };
+  }
+
+  /** PRD `/sos-events/:id`: owner-scoped incident state with delivery evidence. */
+  async getSosEvent(userId: string, incidentId: string): Promise<Record<string, unknown>> {
+    const owner = new Types.ObjectId(userId);
+    const incident = await this.incidentModel.findOne({ _id: new Types.ObjectId(incidentId), userId: owner }).lean().exec();
+    if (!incident) throw new NotFoundException('SOS incident not found for this account');
+    const attempts = await this.deliveryAttemptModel
+      .find({ incidentId: incident._id, ownerUserId: owner })
+      .select('guardianContactId channel status failureCode attemptedAt')
+      .sort({ attemptedAt: 1, _id: 1 })
+      .lean()
+      .exec();
+    return {
+      success: true,
+      data: {
+        id: incident._id.toString(),
+        status: incident.status,
+        type: incident.type,
+        dispatchStatus: incident.dispatchStatus,
+        deliveryConfirmed: attempts.some((attempt) => attempt.status === 'sent'),
+        isTestMode: incident.isTestMode,
+        triggeredAt: incident.triggeredAt,
+        cancelledAt: incident.cancelledAt ?? null,
+        recipientCount: incident.trustedContactIds?.length ?? 0,
+        attempts: attempts.map((attempt) => ({ ...attempt, id: attempt._id.toString() })),
+        note: 'Obiren does not dispatch emergency services. Delivery is only shown as confirmed when a provider returned evidence.',
+      },
+      meta: this.meta(),
+    };
+  }
+
   async revokeGuardian(ownerUserId: string, contactId: string) {
     const contact = await this.guardianModel.findOneAndUpdate({ _id: new Types.ObjectId(contactId), ownerUserId: new Types.ObjectId(ownerUserId), status: { $ne: 'revoked' } }, { $set: { status: 'revoked', revokedAt: new Date() } }, { new: true }).exec();
     if (!contact) throw new NotFoundException('Guardian contact not found');

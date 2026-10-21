@@ -101,6 +101,24 @@ export class UserProfile {
 
   @Prop({ type: String, default: 'PENDING' })
   onboardingStatus: string;
+
+  /**
+   * Non-legal preferences only. Consent decisions are append-only events in
+   * `consent_events`, never booleans on the profile.
+   */
+  @Prop({
+    type: {
+      shareAnalytics: { type: Boolean, default: false },
+      shareCrashReports: { type: Boolean, default: false },
+      personalizedContent: { type: Boolean, default: false },
+    },
+    default: {},
+  })
+  privacyPreferences?: {
+    shareAnalytics?: boolean;
+    shareCrashReports?: boolean;
+    personalizedContent?: boolean;
+  };
 }
 
 export const UserProfileSchema = SchemaFactory.createForClass(UserProfile);

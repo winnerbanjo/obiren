@@ -4,6 +4,8 @@ import { UsersController } from './users.controller';
 import { AccountAliasesController } from './aliases.controller';
 import { ConfigController } from './config.controller';
 import { ConsentController } from './consent.controller';
+import { PrivacySettingsController } from './privacy-settings.controller';
+import { PrivacySettingsService } from './privacy-settings.service';
 import { UsersService } from './users.service';
 import { User, UserSchema, UserProfile, UserProfileSchema } from '../../database/schemas/user.schema';
 import { Onboarding, OnboardingSchema } from '../../database/schemas/onboarding.schema';
@@ -43,8 +45,8 @@ import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
     ]),
     JwtAuthModule,
   ],
-  controllers: [UsersController, AccountAliasesController, ConfigController, ConsentController],
-  providers: [UsersService, ConsentService],
+  controllers: [UsersController, AccountAliasesController, ConfigController, ConsentController, PrivacySettingsController],
+  providers: [UsersService, ConsentService, PrivacySettingsService],
   exports: [UsersService],
 })
 export class UsersModule {}

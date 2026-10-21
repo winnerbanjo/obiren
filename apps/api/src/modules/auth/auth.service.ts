@@ -1,4 +1,12 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
@@ -9,6 +17,9 @@ import { User, UserDocument, UserProfile, UserProfileDocument } from '../../data
 import { Session, SessionDocument } from '../../database/schemas/session.schema';
 import { MailService } from '../mail/mail.service';
 import { shouldExposeDevTokens } from '../../common/auth/token-exposure';
+import { MfaCredential, MfaCredentialDocument } from '../../database/schemas/mfa.schema';
+import { decryptHealthNote, encryptHealthNote } from '../../common/crypto/health-data-crypto';
+import { buildOtpauthUrl, generateRecoveryCodes, generateTotpSecret, hashRecoveryCode, verifyTotp } from '../../common/auth/totp';
 
 const ACCESS_TTL_SECONDS = 15 * 60;
 const REFRESH_TTL_DAYS = 30;
@@ -23,6 +34,7 @@ export class AuthService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(UserProfile.name) private userProfileModel: Model<UserProfileDocument>,
     @InjectModel(Session.name) private sessionModel: Model<SessionDocument>,
+    @InjectModel(MfaCredential.name) private mfaModel: Model<MfaCredentialDocument>,
     private jwtService: JwtService,
     private readonly mail: MailService,
   ) {}
@@ -115,13 +127,34 @@ export class AuthService {
       });
     }
 
+    // Opt-in staff MFA: passwords are verified first, then a short-lived
+    // challenge token is returned instead of session tokens.
+    const credential = await this.mfaModel.findOne({ userId: user._id, status: 'enabled' }).lean().exec();
+    if (credential) {
+      return {
+        success: true,
+        data: {
+          mfaRequired: true,
+          mfaToken: this.signMfaToken((user._id as Types.ObjectId).toString()),
+          methods: ['totp'],
+          message: 'Enter the 6-digit authenticator code, or a recovery code, to finish signing in.',
+        },
+        meta: this.meta(),
+      };
+    }
+
+    return this.issueSession(user, dto.platform);
+  }
+
+  /** Access/refresh pair; shared by password login and the MFA challenge. */
+  async issueSession(user: UserDocument, platform: string) {
     const accessToken = this.signAccessToken(user);
 
     const rawRefreshToken = crypto.randomBytes(40).toString('hex');
     await this.sessionModel.create({
       userId: user._id,
       refreshTokenHash: this.hashToken(rawRefreshToken),
-      platform: dto.platform,
+      platform,
       expiresAt: this.createRefreshExpiry(),
     });
 
@@ -150,6 +183,174 @@ export class AuthService {
       },
       meta: this.meta(),
     };
+  }
+
+  // ---------------- multi-factor authentication ----------------
+
+  private signMfaToken(userId: string): string {
+    return this.jwtService.sign(
+      { sub: userId, purpose: 'mfa' },
+      { secret: env().jwtAccessSecret, expiresIn: '5m' },
+    );
+  }
+
+  private encryptSecret(secret: string) {
+    try {
+      return encryptHealthNote(secret);
+    } catch {
+      throw new ServiceUnavailableException(
+        'Multi-factor enrolment requires the configured encryption key. Nothing was changed.',
+      );
+    }
+  }
+
+  private decryptSecret(credential: MfaCredentialDocument): string {
+    try {
+      return decryptHealthNote({
+        ciphertext: credential.secretCiphertext,
+        iv: credential.secretIv,
+        authTag: credential.secretAuthTag,
+        keyId: credential.keyId,
+      });
+    } catch {
+      throw new ServiceUnavailableException('The stored MFA secret could not be decrypted. Contact an administrator.');
+    }
+  }
+
+  async mfaStatus(userId: string) {
+    const credential = await this.mfaModel.findOne({ userId: new Types.ObjectId(userId) }).lean().exec();
+    return {
+      success: true,
+      data: {
+        enabled: credential?.status === 'enabled',
+        pendingEnrolment: credential?.status === 'pending',
+        enabledAt: credential?.enabledAt ?? null,
+        lastUsedAt: credential?.lastUsedAt ?? null,
+        recoveryCodesRemaining: credential?.recoveryCodeHashes?.length ?? 0,
+      },
+      meta: this.meta(),
+    };
+  }
+
+  /**
+   * Starts enrolment. The secret is shown exactly once so it can be typed into
+   * an authenticator app; only its ciphertext is stored.
+   */
+  async mfaEnroll(userId: string) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new UnauthorizedException('User not found');
+    const existing = await this.mfaModel.findOne({ userId: user._id });
+    if (existing?.status === 'enabled') {
+      throw new ConflictException('Multi-factor authentication is already enabled for this account');
+    }
+
+    const secret = generateTotpSecret();
+    const encrypted = this.encryptSecret(secret);
+    const { codes, hashes } = generateRecoveryCodes();
+
+    await this.mfaModel.findOneAndUpdate(
+      { userId: user._id },
+      {
+        $set: {
+          secretCiphertext: encrypted.ciphertext,
+          secretIv: encrypted.iv,
+          secretAuthTag: encrypted.authTag,
+          keyId: encrypted.keyId,
+          status: 'pending',
+          recoveryCodeHashes: hashes,
+        },
+        $unset: { enabledAt: 1, lastUsedAt: 1 },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+
+    return {
+      success: true,
+      data: {
+        status: 'pending',
+        secret,
+        otpauthUrl: buildOtpauthUrl(secret, user.email),
+        recoveryCodes: codes,
+        message: 'Add the secret to an authenticator app, then confirm with a 6-digit code. Recovery codes are shown only once.',
+      },
+      meta: this.meta(),
+    };
+  }
+
+  async mfaVerifyEnrollment(userId: string, code: string) {
+    const credential = await this.mfaModel.findOne({ userId: new Types.ObjectId(userId) });
+    if (!credential) throw new BadRequestException('Start multi-factor enrolment before confirming a code');
+    if (credential.status === 'enabled') throw new ConflictException('Multi-factor authentication is already enabled');
+    if (!verifyTotp(this.decryptSecret(credential), code)) {
+      throw new UnauthorizedException('Invalid authentication code');
+    }
+    credential.status = 'enabled';
+    credential.enabledAt = new Date();
+    credential.lastUsedAt = new Date();
+    await credential.save();
+    return {
+      success: true,
+      data: {
+        enabled: true,
+        enabledAt: credential.enabledAt,
+        recoveryCodesRemaining: credential.recoveryCodeHashes.length,
+      },
+      meta: this.meta(),
+    };
+  }
+
+  async mfaDisable(userId: string, code: string) {
+    const credential = await this.mfaModel.findOne({ userId: new Types.ObjectId(userId) });
+    if (!credential || credential.status !== 'enabled') {
+      throw new BadRequestException('Multi-factor authentication is not enabled for this account');
+    }
+    const secret = this.decryptSecret(credential);
+    const recoveryIndex = credential.recoveryCodeHashes.indexOf(hashRecoveryCode(code));
+    const accepted = verifyTotp(secret, code) || recoveryIndex >= 0;
+    if (!accepted) throw new UnauthorizedException('Invalid authentication code');
+    await this.mfaModel.deleteOne({ _id: credential._id });
+    return {
+      success: true,
+      data: { enabled: false, message: 'Multi-factor authentication disabled. Sign-in now uses the password only.' },
+      meta: this.meta(),
+    };
+  }
+
+  /** Completes a login started while MFA was enabled. */
+  async mfaChallenge(input: { mfaToken: string; code: string; platform: string }) {
+    let payload: { sub?: string; purpose?: string } = {};
+    try {
+      payload = await this.jwtService.verifyAsync(input.mfaToken, { secret: env().jwtAccessSecret });
+    } catch {
+      throw new UnauthorizedException('The multi-factor challenge expired. Sign in again.');
+    }
+    if (payload.purpose !== 'mfa' || !payload.sub) {
+      throw new UnauthorizedException('Invalid multi-factor challenge');
+    }
+
+    const user = await this.userModel.findById(payload.sub);
+    if (!user || ['suspended', 'restricted', 'deleted'].includes(user.status)) {
+      throw new ForbiddenException('This account is not permitted to sign in.');
+    }
+
+    const credential = await this.mfaModel.findOne({ userId: user._id, status: 'enabled' });
+    if (!credential) throw new BadRequestException('Multi-factor authentication is not enabled for this account');
+
+    const secret = this.decryptSecret(credential);
+    let accepted = verifyTotp(secret, input.code);
+    if (!accepted) {
+      const recoveryIndex = credential.recoveryCodeHashes.indexOf(hashRecoveryCode(input.code));
+      if (recoveryIndex >= 0) {
+        // A recovery code is single-use.
+        credential.recoveryCodeHashes.splice(recoveryIndex, 1);
+        accepted = true;
+      }
+    }
+    if (!accepted) throw new UnauthorizedException('Invalid authentication code');
+
+    credential.lastUsedAt = new Date();
+    await credential.save();
+    return this.issueSession(user, input.platform);
   }
 
   // ---------------- refresh / logout / sessions ----------------

@@ -1,9 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as crypto from 'crypto';
 import { NotificationOutbox, NotificationOutboxDocument } from '../../database/schemas/notification.schema';
-import { NotificationPreference, NotificationPreferenceDocument, HealthShare, HealthShareDocument, Consultation, ConsultationDocument, Message, MessageDocument, Device, DeviceDocument } from '../../database/schemas/communications.schema';
+import { NotificationPreference, NotificationPreferenceDocument, HealthShare, HealthShareDocument, Consultation, ConsultationDocument, Message, MessageDocument, Device, DeviceDocument, Attachment, AttachmentDocument } from '../../database/schemas/communications.schema';
 import { decryptHealthNote, encryptHealthNote } from '../../common/crypto/health-data-crypto';
 import { UserProfile, UserProfileDocument } from '../../database/schemas/user.schema';
 import { Cycle, CycleDocument, DailyLog, DailyLogDocument } from '../../database/schemas/cycle.schema';
@@ -24,6 +24,7 @@ export class CommunicationsService {
     @InjectModel(Consultation.name) private readonly consultationModel: Model<ConsultationDocument>,
     @InjectModel(Message.name) private readonly messageModel: Model<MessageDocument>,
     @InjectModel(Device.name) private readonly deviceModel: Model<DeviceDocument>,
+    @InjectModel(Attachment.name) private readonly attachmentModel: Model<AttachmentDocument>,
   ) {}
   private meta() { return { requestId: `req_${Date.now()}` }; }
 
@@ -202,6 +203,83 @@ export class CommunicationsService {
       { $set: { status: 'read', readAt: new Date() } },
     );
     return { success: true, data: { consultationId, markedRead: result.modifiedCount }, meta: this.meta() };
+  }
+
+  // ---------------- Consultation attachments ----------------
+
+  private attachmentView(attachment: Record<string, any>, includeStorage: boolean) {
+    return {
+      id: attachment._id.toString(),
+      consultationId: attachment.consultationId.toString(),
+      fileName: attachment.fileName,
+      contentType: attachment.contentType,
+      sizeBytes: attachment.sizeBytes,
+      scanStatus: attachment.scanStatus,
+      downloadAvailable: Boolean(attachment.available),
+      createdAt: attachment.createdAt,
+      ...(includeStorage ? { storagePublicId: attachment.storagePublicId } : {}),
+    };
+  }
+
+  /**
+   * Registers an attachment that the client already stored. Scanning is not
+   * configured, so the record is explicitly unavailable for download rather
+   * than pretending a safety check happened.
+   */
+  async createAttachment(
+    userId: string,
+    consultationId: string,
+    input: { fileName: string; contentType: string; sizeBytes: number; storagePublicId: string },
+  ) {
+    const consultation = await this.requireMembership(userId, consultationId);
+    if (consultation.status !== 'open') throw new ConflictException('This consultation is closed and accepts no new attachments');
+    const attachment = await this.attachmentModel.create({
+      consultationId: consultation._id,
+      uploaderUserId: new Types.ObjectId(userId),
+      fileName: input.fileName,
+      contentType: input.contentType,
+      sizeBytes: input.sizeBytes,
+      storagePublicId: input.storagePublicId,
+      scanStatus: 'not_configured',
+      available: false,
+    });
+    return {
+      success: true,
+      data: {
+        ...this.attachmentView(attachment.toObject() as Record<string, any>, true),
+        downloadAvailable: false,
+        message: 'Attachment metadata stored. Download stays disabled until malware scanning is configured.',
+      },
+      meta: this.meta(),
+    };
+  }
+
+  async listAttachments(userId: string, consultationId: string) {
+    const consultation = await this.requireMembership(userId, consultationId);
+    const rows = await this.attachmentModel
+      .find({ consultationId: consultation._id })
+      .sort({ _id: -1 })
+      .limit(50)
+      .lean()
+      .exec();
+    return {
+      success: true,
+      data: { consultationId, attachments: rows.map((row) => this.attachmentView(row as Record<string, any>, false)) },
+      meta: this.meta(),
+    };
+  }
+
+  /** Fail closed: no attachment leaves storage before an approved scan exists. */
+  async getAttachmentDownload(userId: string, attachmentId: string) {
+    const attachment = await this.attachmentModel.findById(attachmentId).lean().exec();
+    if (!attachment) throw new NotFoundException('Attachment not found');
+    await this.requireMembership(userId, attachment.consultationId.toString());
+    if (!attachment.available || attachment.scanStatus !== 'clean') {
+      throw new ServiceUnavailableException(
+        'Attachment downloads are disabled until malware scanning is configured. The file has not been released.',
+      );
+    }
+    throw new ServiceUnavailableException('Attachment delivery is not enabled in this deployment.');
   }
 
   // ---------------- Notification devices ----------------

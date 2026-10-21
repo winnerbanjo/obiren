@@ -126,6 +126,10 @@ are enforced **at the database level**, not just in code:
 - `safety_pins`: unique per user; stores **only** an argon2id hash.
 - `emergency_resource_reviews`: unique per published resource; records staff
   verification state, last check and next review date (freshness is never implied).
+- `mfa_credentials`: unique per user; the TOTP secret is stored **encrypted** and
+  recovery codes as SHA-256 hashes.
+- `support_tickets`, `articles`, `health_briefs`, `promo_codes`: unique reference,
+  slug, and code indexes where duplicates would be ambiguous.
 - `waitlist_entries`: unique `normalizedEmail`.
 
 `apps/api/src/database/migrations/database-migrations.ts` is a versioned
@@ -163,7 +167,15 @@ Base path `/api/v1`:
 - `daily-logs/:date` — get/upsert (validated `YYYY-MM-DD`)
 - `pregnancies` — create (one-active rule), current, `:id/end`, `:id/logs/:date`
 - `safety/*` — resources (public verified emergency directory with freshness),
-  pin (create/change/status), sos/trigger, sos/cancel (PIN), incidents
+  pin (create/change/status), sos/trigger, sos/cancel (PIN), incidents,
+  `sos-events/:id`, guardian resend/scopes
+- `auth/mfa/*` — status, enrol, verify, disable, challenge (opt-in TOTP)
+- `support/*` — public FAQs, owner-scoped tickets and replies
+- `articles` — published, medically approved health education only
+- `privacy-settings` — consent purposes + non-legal preferences
+- `briefs` — deterministic health briefs for a verified clinician
+- `subscriptions/me`, `promo-codes/validate`, `consultations/:id/attachments`
+- `internal/cron/run-retention` — expired operational records only (secret-guarded)
 - `health-vault/*` — upload-intent, documents CRUD, signed download (5-min)
 - `directory/*` — search (text + filters + pagination), nearby (2dsphere `$near`), service by id
 - `notifications/*` — Twilio inbound/status webhooks (signature-validated), internal cron
@@ -172,14 +184,20 @@ Base path `/api/v1`:
   reviews (audited, evidence-backed), audit logs (role-guarded)
 - `health` — liveness probe
 
-Regenerate `apps/api/openapi.json` via `npm run api:build` artifacts script
-(`apps/api/scripts/generate-artifacts.ts`).
+Regenerate `apps/api/openapi.json` via `npm --prefix apps/api run generate:openapi`.
+
+Sanitized role fixtures for local/staging checks (never production):
+
+```bash
+cd apps/api
+MONGODB_URI=<non-production uri> npx ts-node --transpile-only scripts/seed-demo.ts
+```
 
 ## Testing
 
 ```bash
 cd apps/api
-npm test          # 32 end-to-end tests, real Nest app + in-memory MongoDB
+npm test          # 128 end-to-end tests, real Nest app + in-memory MongoDB
 ```
 
 Tests boot the actual application (same security config as production) against

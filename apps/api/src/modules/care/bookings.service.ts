@@ -65,6 +65,7 @@ export class BookingsService {
       expiresAt: booking.expiresAt ? booking.expiresAt.toISOString() : null,
       confirmedAt: booking.confirmedAt ? booking.confirmedAt.toISOString() : null,
       cancelledAt: booking.cancelledAt ? booking.cancelledAt.toISOString() : null,
+      completedAt: booking.completedAt ? booking.completedAt.toISOString() : null,
       refundStatus: booking.refundStatus,
       cancellationReason: booking.cancellationReason ?? null,
     };
@@ -455,6 +456,36 @@ export class BookingsService {
         paidAt: issuedAt.toISOString(),
         refundStatus: booking.refundStatus,
         provider: payment.gateway,
+      },
+      meta: this.meta(),
+    };
+  }
+
+  /**
+   * Clinician-side completion of a confirmed session. Completion records that
+   * the session took place; it never touches payment or refund state.
+   */
+  async completeClinicianBooking(clinicianUserId: string, bookingId: string) {
+    const clinician = await this.slotModel.db.collection('clinicians').findOne({ userId: new Types.ObjectId(clinicianUserId) });
+    if (!clinician) throw new ForbiddenException('An active clinician profile is required');
+    const booking = await this.bookingModel.findOne({ _id: new Types.ObjectId(bookingId), clinicianId: clinician._id });
+    if (!booking) throw new NotFoundException('Booking not found for this clinician');
+    if (booking.status !== 'confirmed') {
+      throw new ConflictException(`Only a confirmed session can be completed; this booking is ${booking.status}`);
+    }
+    if (booking.startsAt.getTime() > Date.now()) {
+      throw new UnprocessableEntityException('A future session cannot be marked completed before it starts');
+    }
+    booking.status = 'completed';
+    booking.completedAt = new Date();
+    booking.version += 1;
+    await booking.save();
+    return {
+      success: true,
+      data: {
+        booking: this.presentBooking(booking),
+        paymentChanged: false,
+        message: 'Session marked completed. Payment and refund state were not modified.',
       },
       meta: this.meta(),
     };

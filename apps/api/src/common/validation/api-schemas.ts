@@ -568,6 +568,230 @@ export const EmergencyResourceIdParam = z
   .string()
   .regex(/^[A-Z]{2}-\d{3}$/, 'Invalid emergency resource identifier');
 
+// ---------------- Support ----------------
+
+const supportCategories = ['account', 'privacy', 'billing', 'technical', 'safety', 'other'] as const;
+const supportStatuses = ['open', 'in_progress', 'resolved', 'closed'] as const;
+
+export const SupportFaqQuerySchema = z
+  .object({ category: z.enum(['getting_started', 'privacy', 'care', 'billing', 'safety']).optional() })
+  .strict();
+
+export const SupportTicketCreateSchema = z
+  .object({
+    subject: z.string().trim().min(3).max(160),
+    category: z.enum(supportCategories).default('other'),
+    message: z.string().trim().min(10).max(4000),
+  })
+  .strict();
+
+export const SupportTicketListQuerySchema = z
+  .object({ cursor: objectId.optional(), limit: z.coerce.number().int().min(1).max(50).default(20) })
+  .strict();
+
+export const SupportTicketReplySchema = z.object({ body: z.string().trim().min(1).max(4000) }).strict();
+
+export const AdminSupportTicketQuerySchema = z
+  .object({
+    status: z.enum(supportStatuses).optional(),
+    cursor: objectId.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+export const AdminSupportTicketUpdateSchema = z
+  .object({
+    status: z.enum(supportStatuses).optional(),
+    reply: z.string().trim().min(1).max(4000).optional(),
+  })
+  .strict()
+  .refine((value) => value.status !== undefined || value.reply !== undefined, 'Provide a status or a reply');
+
+// ---------------- Articles ----------------
+
+const articleSlug = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(3)
+  .max(120)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must be lowercase words separated by hyphens');
+
+export const ArticleSlugParam = articleSlug;
+
+export const ArticleListQuerySchema = z
+  .object({
+    category: z.string().trim().min(1).max(60).optional(),
+    cursor: objectId.optional(),
+    limit: z.coerce.number().int().min(1).max(50).default(20),
+  })
+  .strict();
+
+export const AdminArticleCreateSchema = z
+  .object({
+    slug: articleSlug,
+    title: z.string().trim().min(3).max(200),
+    summary: z.string().trim().min(10).max(600),
+    body: z.string().trim().min(50).max(50000),
+    category: z.string().trim().min(1).max(60),
+    tags: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
+  })
+  .strict();
+
+export const AdminArticleUpdateSchema = z
+  .object({
+    title: z.string().trim().min(3).max(200).optional(),
+    summary: z.string().trim().min(10).max(600).optional(),
+    body: z.string().trim().min(50).max(50000).optional(),
+    category: z.string().trim().min(1).max(60).optional(),
+    tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, 'Provide at least one article field');
+
+/** Medical review is an audited decision and requires stored evidence. */
+export const AdminArticleQuerySchema = z
+  .object({
+    status: z.enum(['draft', 'published', 'archived']).optional(),
+    cursor: objectId.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+export const AdminArticleReviewSchema = z
+  .object({
+    medicalReviewStatus: z.enum(['pending', 'approved', 'rejected']),
+    reviewEvidenceRef: z.string().trim().min(1).max(300).optional(),
+    reviewNote: z.string().trim().max(500).optional(),
+  })
+  .strict()
+  .refine(
+    (value) => value.medicalReviewStatus !== 'approved' || Boolean(value.reviewEvidenceRef),
+    'A review evidence reference is required before content can be medically approved',
+  );
+
+// ---------------- Privacy settings ----------------
+
+const privacyPurposes = [
+  'terms_of_service_acknowledgement',
+  'privacy_notice_acknowledgement',
+  'health_data_processing',
+  'care_communications',
+  'health_sharing',
+  'location_sharing',
+  'marketing',
+] as const;
+
+/**
+ * Privacy settings never invent a second consent channel: any purpose change is
+ * appended to the same consent history used elsewhere in the product.
+ */
+export const PrivacySettingsPatchSchema = z
+  .object({
+    purposes: z
+      .array(
+        z
+          .object({
+            purpose: z.enum(privacyPurposes),
+            granted: z.boolean(),
+            policyVersion: z.string().trim().min(1).max(40),
+          })
+          .strict(),
+      )
+      .max(7)
+      .optional(),
+    shareAnalytics: z.boolean().optional(),
+    shareCrashReports: z.boolean().optional(),
+    personalizedContent: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, 'Provide at least one privacy setting');
+
+// ---------------- Promotions and entitlements ----------------
+
+export const PromoCodeValidateSchema = z
+  .object({
+    code: z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9_-]+$/, 'Invalid promo code format'),
+    clinicianId: objectId,
+    sessionType: z.enum(['clinic', 'audio', 'video', 'text']),
+  })
+  .strict();
+
+export const AdminPromoCodeCreateSchema = z
+  .object({
+    code: z.string().trim().toUpperCase().min(3).max(40).regex(/^[A-Z0-9_-]+$/),
+    percentOff: z.number().int().min(1).max(100),
+    policyVersion: z.string().trim().min(1).max(40),
+    maxRedemptions: z.number().int().min(1).max(100000).optional(),
+    expiresAt: z.string().datetime({ offset: true }).optional(),
+  })
+  .strict()
+  .refine((value) => !value.expiresAt || new Date(value.expiresAt).getTime() > Date.now(), 'expiresAt must be in the future');
+
+// ---------------- Health briefs ----------------
+
+export const HealthBriefCreateSchema = z
+  .object({
+    recipientUserId: objectId,
+    scopes: z.array(z.enum(['cycles', 'daily_logs', 'pregnancy'])).min(1).max(3),
+    from: isoDate,
+    to: isoDate,
+    expiresAt: z.string().datetime({ offset: true }),
+  })
+  .strict()
+  .refine((value) => value.from <= value.to, 'from must be on or before to')
+  .refine(
+    (value) => Date.parse(`${value.to}T00:00:00Z`) - Date.parse(`${value.from}T00:00:00Z`) <= 366 * 86400000,
+    'Shared evidence range cannot exceed 366 days',
+  )
+  .refine((value) => new Date(value.expiresAt).getTime() > Date.now(), 'Share expiry must be in the future')
+  .refine(
+    (value) => new Date(value.expiresAt).getTime() - Date.now() <= 30 * 86400000,
+    'Briefs must expire within 30 days',
+  );
+
+// ---------------- Consultation attachments ----------------
+
+export const AttachmentCreateSchema = z
+  .object({
+    fileName: z.string().trim().min(1).max(200),
+    contentType: z.enum(['image/jpeg', 'image/png', 'application/pdf']),
+    sizeBytes: z.number().int().min(1).max(10 * 1024 * 1024),
+    storagePublicId: z.string().trim().min(1).max(300),
+  })
+  .strict();
+
+// ---------------- Multi-factor authentication ----------------
+
+export const MfaVerifySchema = z
+  .object({ code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit authenticator code') })
+  .strict();
+
+export const MfaDisableSchema = z
+  .object({ code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit authenticator code') })
+  .strict();
+
+export const MfaLoginVerifySchema = z
+  .object({
+    mfaToken: z.string().min(20).max(2048),
+    // Either a 6-digit TOTP code or a one-time 10-character recovery code.
+    code: z.string().trim().regex(/^(\d{6}|[A-Za-z2-7]{10})$/, 'Enter the 6-digit authenticator code or a recovery code'),
+    platform: z.enum(['web', 'ios', 'android']).default('web'),
+  })
+  .strict();
+
+// ---------------- Guardian maintenance and SOS state ----------------
+
+export const GuardianScopesUpdateSchema = z
+  .object({ scopes: z.array(z.enum(['sos_alert', 'check_in'])).min(1).max(2) })
+  .strict();
+
+// ---------------- Retention job ----------------
+
+export const RetentionRunQuerySchema = z
+  .object({ dryRun: z.enum(['true', 'false']).optional() })
+  .strict();
+
 // ---------------- Communications / health sharing ----------------
 export const HealthShareCreateSchema = z
   .object({

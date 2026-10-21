@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { CommunicationsService } from './communications.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ConversationListQuerySchema, DeviceRegisterSchema, HealthShareCreateSchema, MessageCreateSchema, MessageListQuerySchema, MongoIdParam } from '../../common/validation/api-schemas';
+import { AttachmentCreateSchema, ConversationListQuerySchema, DeviceRegisterSchema, HealthShareCreateSchema, MessageCreateSchema, MessageListQuerySchema, MongoIdParam } from '../../common/validation/api-schemas';
 
 const preferenceSchema = z.object({ inAppEnabled: z.boolean().optional(), emailEnabled: z.boolean().optional(), smsEnabled: z.boolean().optional(), discreetMode: z.boolean().optional(), disabledCategories: z.array(z.enum(['REMINDER', 'SUPPORT', 'SAFETY', 'SYSTEM'])).max(10).optional() }).strict().refine((v) => Object.keys(v).length > 0, 'Provide at least one preference');
 const inboxQuery = z.object({ cursor: MongoIdParam.optional(), limit: z.coerce.number().int().min(1).max(100).default(30) }).strict();
@@ -51,6 +51,42 @@ export class CommunicationsController {
   @ApiResponse({ status: 404, description: 'Consultation not found for this account.' })
   async acknowledgeMessages(@Req() req: any, @Param('id', new ZodValidationPipe(MongoIdParam)) id: string) {
     return this.communications.acknowledgeMessages(req.user.sub, id);
+  }
+
+  @Post('consultations/:id/attachments')
+  @ApiParam({ name: 'id', description: '24-character consultation identifier.' })
+  @ApiOperation({
+    summary: 'Register a consultation attachment',
+    description: 'Participant-only. The client uploads to storage first and registers the resulting identifier; the record is stored with `scanStatus: not_configured` and `downloadAvailable: false` because malware scanning is not configured. Nothing is released to the other participant.',
+  })
+  @ApiBody({ schema: { type: 'object', required: ['fileName', 'contentType', 'sizeBytes', 'storagePublicId'], additionalProperties: false, properties: { fileName: { type: 'string', maxLength: 200 }, contentType: { type: 'string', enum: ['image/jpeg', 'image/png', 'application/pdf'] }, sizeBytes: { type: 'integer', minimum: 1, maximum: 10485760 }, storagePublicId: { type: 'string', maxLength: 300 } } } })
+  @ApiResponse({ status: 201, description: 'Attachment metadata stored; download explicitly unavailable.' })
+  @ApiResponse({ status: 404, description: 'Consultation not found for this account.' })
+  @ApiResponse({ status: 409, description: 'Consultation is closed.' })
+  async createAttachment(
+    @Req() req: any,
+    @Param('id', new ZodValidationPipe(MongoIdParam)) id: string,
+    @Body(new ZodValidationPipe(AttachmentCreateSchema)) body,
+  ) {
+    return this.communications.createAttachment(req.user.sub, id, body);
+  }
+
+  @Get('consultations/:id/attachments')
+  @ApiParam({ name: 'id', description: '24-character consultation identifier.' })
+  @ApiOperation({ summary: 'List consultation attachments', description: 'Participant-only metadata listing; storage identifiers are not returned here and every item reports its scan state.' })
+  @ApiResponse({ status: 200, description: 'Attachment metadata for this consultation.' })
+  async listAttachments(@Req() req: any, @Param('id', new ZodValidationPipe(MongoIdParam)) id: string) {
+    return this.communications.listAttachments(req.user.sub, id);
+  }
+
+  @Get('attachments/:id/download')
+  @ApiParam({ name: 'id', description: '24-character attachment identifier.' })
+  @ApiOperation({ summary: 'Request an attachment download', description: 'Fails closed (503) until malware scanning is configured and the file is clean. The caller must be a consultation participant.' })
+  @ApiResponse({ status: 200, description: 'Signed download reference when scanning is approved (not enabled in this deployment).' })
+  @ApiResponse({ status: 404, description: 'Attachment not found or not visible to this account.' })
+  @ApiResponse({ status: 503, description: 'Download is disabled until scanning is configured.' })
+  async downloadAttachment(@Req() req: any, @Param('id', new ZodValidationPipe(MongoIdParam)) id: string) {
+    return this.communications.getAttachmentDownload(req.user.sub, id);
   }
 
   @Get('devices')

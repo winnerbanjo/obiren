@@ -24,6 +24,10 @@ import { HealthModule } from './health/health.module';
 import { HomeModule } from './modules/home/home.module';
 import { CareModule } from './modules/care/care.module';
 import { CommunicationsModule } from './modules/communications/communications.module';
+import { SupportModule } from './modules/support/support.module';
+import { ArticlesModule } from './modules/articles/articles.module';
+import { BriefsModule } from './modules/briefs/briefs.module';
+import { RetentionModule } from './modules/retention/retention.module';
 
 @Module({
   imports: [
@@ -59,6 +63,10 @@ import { CommunicationsModule } from './modules/communications/communications.mo
     HomeModule,
     CareModule,
     CommunicationsModule,
+    SupportModule,
+    ArticlesModule,
+    BriefsModule,
+    RetentionModule,
   ],
   providers: [
     // Envelope runs outermost so idempotency stores service-level payloads and

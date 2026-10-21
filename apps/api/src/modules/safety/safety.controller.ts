@@ -1,10 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SafetyService } from './safety.service';
 import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { TriggerSosSchema, CancelSosSchema, SetSafetyPinSchema, ChangeSafetyPinSchema, GuardianCreateSchema, GuardianAcceptSchema, MongoIdParam, QuietCheckInSchema, LocationSessionSchema, LocationUpdateSchema } from '../../common/validation/api-schemas';
+import { TriggerSosSchema, CancelSosSchema, SetSafetyPinSchema, ChangeSafetyPinSchema, GuardianCreateSchema, GuardianAcceptSchema, GuardianScopesUpdateSchema, MongoIdParam, QuietCheckInSchema, LocationSessionSchema, LocationUpdateSchema } from '../../common/validation/api-schemas';
 import { Idempotent } from '../../common/idempotency/idempotent.decorator';
 
 @ApiTags('Safety')
@@ -31,6 +31,30 @@ export class SafetyController {
   @ApiOperation({ summary: 'Accept a guardian invitation', description: 'Token is single-use and hashed at rest. Acceptance does not verify the invitee’s identity; independent verification is still required.' })
   @ApiResponse({ status: 200, description: 'Invitation accepted pending identity verification.' })
   async acceptGuardian(@Body(new ZodValidationPipe(GuardianAcceptSchema)) body) { return this.safetyService.acceptGuardianInvite(body.token); }
+
+  @Post('guardians/:id/resend')
+  @ApiParam({ name: 'id', description: '24-character guardian contact identifier.' })
+  @ApiOperation({ summary: 'Re-issue a guardian invitation', description: 'Issues a fresh single-use invitation and invalidates older pending ones. Delivery is disabled until an approved channel exists, so no message is claimed to have been sent. Serial requests are throttled to one per minute per contact.' })
+  @ApiResponse({ status: 201, description: 'New invitation id and expiry; delivery explicitly disabled.' })
+  @ApiResponse({ status: 404, description: 'Guardian contact not found for this owner.' })
+  @ApiResponse({ status: 429, description: 'An invitation was issued less than a minute ago.' })
+  async resendGuardianInvite(@Req() req: any, @Param('id', new ZodValidationPipe(MongoIdParam)) id: string) {
+    return this.safetyService.resendGuardianInvite(req.user.sub, id);
+  }
+
+  @Patch('guardians/:id/scopes')
+  @ApiParam({ name: 'id', description: '24-character guardian contact identifier.' })
+  @ApiOperation({ summary: 'Change a trusted contact’s scopes', description: 'Owner-only scope change between SOS alerts and quiet check-ins. Existing incidents keep the recipients they were created with.' })
+  @ApiBody({ schema: { type: 'object', required: ['scopes'], additionalProperties: false, properties: { scopes: { type: 'array', minItems: 1, maxItems: 2, items: { type: 'string', enum: ['sos_alert', 'check_in'] } } } } })
+  @ApiResponse({ status: 200, description: 'Updated scopes.' })
+  @ApiResponse({ status: 404, description: 'Guardian contact not found for this owner.' })
+  async updateGuardianScopes(
+    @Req() req: any,
+    @Param('id', new ZodValidationPipe(MongoIdParam)) id: string,
+    @Body(new ZodValidationPipe(GuardianScopesUpdateSchema)) body: { scopes: string[] },
+  ) {
+    return this.safetyService.updateGuardianScopes(req.user.sub, id, body.scopes);
+  }
 
   @Delete('guardians/:id')
   @ApiParam({ name: 'id', description: '24-character guardian contact identifier.' })
@@ -110,6 +134,15 @@ export class SafetyController {
   @ApiResponse({ status: 404, description: 'Incident not found for this account.' })
   async getSosDeliveries(@Req() req: any, @Param('id', new ZodValidationPipe(MongoIdParam)) id: string): Promise<Record<string, unknown>> {
     return this.safetyService.getSosDeliveries(req.user.sub, id);
+  }
+
+  @Get('sos-events/:id')
+  @ApiParam({ name: 'id', description: '24-character SOS incident identifier.' })
+  @ApiOperation({ summary: 'Get one SOS event with delivery evidence', description: 'PRD alias for a single incident. Owner-scoped; reports deliveryConfirmed only when a provider returned evidence, and never implies emergency dispatch.' })
+  @ApiResponse({ status: 200, description: 'Incident state and recorded delivery attempts.' })
+  @ApiResponse({ status: 404, description: 'Incident not found for this account.' })
+  async getSosEvent(@Req() req: any, @Param('id', new ZodValidationPipe(MongoIdParam)) id: string): Promise<Record<string, unknown>> {
+    return this.safetyService.getSosEvent(req.user.sub, id);
   }
 
   @Get('incidents')

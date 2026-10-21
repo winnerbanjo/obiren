@@ -355,6 +355,202 @@
         ]
       }
     },
+    "/auth/mfa/status": {
+      "get": {
+        "description": "Reports whether TOTP multi-factor authentication is enabled, pending enrolment, or unused for the authenticated account. Secrets and recovery codes are never returned.",
+        "operationId": "AuthController_mfaStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "MFA state and remaining recovery codes."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get MFA status",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/mfa/enroll": {
+      "post": {
+        "description": "Generates a new authenticator secret and single-use recovery codes. The secret and codes are returned exactly once and only the encrypted secret is stored. Requires the configured encryption key; returns 503 otherwise.",
+        "operationId": "AuthController_mfaEnroll",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Pending enrolment with secret, otpauth URL and recovery codes."
+          },
+          "409": {
+            "description": "MFA is already enabled."
+          },
+          "503": {
+            "description": "Encryption key is not configured."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Start TOTP enrolment",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/mfa/verify": {
+      "post": {
+        "description": "Confirms a pending enrolment with a 6-digit code. Only then does sign-in start requiring the second factor.",
+        "operationId": "AuthController_mfaVerify",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^\\d{6}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "MFA enabled."
+          },
+          "400": {
+            "description": "No pending enrolment."
+          },
+          "401": {
+            "description": "Invalid code."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Confirm enrolment",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/mfa/disable": {
+      "post": {
+        "description": "Requires a current 6-digit code or a recovery code. Disabling deletes the stored secret.",
+        "operationId": "AuthController_mfaDisable",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^(\\d{6}|[A-Za-z2-7]{10})$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "MFA disabled."
+          },
+          "400": {
+            "description": "MFA is not enabled."
+          },
+          "401": {
+            "description": "Invalid code."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Disable MFA",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/auth/mfa/challenge": {
+      "post": {
+        "description": "Exchanges the short-lived MFA token returned by `/auth/login` plus a valid code for a normal access/refresh pair. Recovery codes are single-use.",
+        "operationId": "AuthController_mfaChallenge",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mfaToken",
+                  "code"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "mfaToken": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 2048
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "6-digit authenticator code or 10-character recovery code."
+                  },
+                  "platform": {
+                    "type": "string",
+                    "enum": [
+                      "web",
+                      "ios",
+                      "android"
+                    ],
+                    "default": "web"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated with a fresh token pair."
+          },
+          "401": {
+            "description": "Expired challenge or invalid code."
+          }
+        },
+        "summary": "Complete sign-in with a second factor",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
     "/auth/verify-email": {
       "post": {
         "description": "Consumes the single-use, time-limited token delivered in the verification email.",
@@ -1032,6 +1228,105 @@
         "summary": "Record a purpose-specific consent decision",
         "tags": [
           "Consents"
+        ]
+      }
+    },
+    "/privacy-settings": {
+      "get": {
+        "description": "Returns the current decision for every consent purpose together with its policy version, plus non-legal preferences (analytics, crash reports, personalisation). An undecided purpose is reported as `granted: null`, never as a default yes.",
+        "operationId": "PrivacySettingsController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Consent purposes, preferences and data controls."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Read privacy settings and consent state",
+        "tags": [
+          "Users"
+        ]
+      },
+      "patch": {
+        "description": "Purpose changes are appended to the consent history with the supplied policy version; preferences are updated separately. Nothing here changes account ownership or shared data retroactively.",
+        "operationId": "PrivacySettingsController_update",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "purposes": {
+                    "type": "array",
+                    "maxItems": 7,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "purpose",
+                        "granted",
+                        "policyVersion"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "purpose": {
+                          "type": "string",
+                          "enum": [
+                            "terms_of_service_acknowledgement",
+                            "privacy_notice_acknowledgement",
+                            "health_data_processing",
+                            "care_communications",
+                            "health_sharing",
+                            "location_sharing",
+                            "marketing"
+                          ]
+                        },
+                        "granted": {
+                          "type": "boolean"
+                        },
+                        "policyVersion": {
+                          "type": "string",
+                          "maxLength": 40
+                        }
+                      }
+                    }
+                  },
+                  "shareAnalytics": {
+                    "type": "boolean"
+                  },
+                  "shareCrashReports": {
+                    "type": "boolean"
+                  },
+                  "personalizedContent": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated privacy settings with the purposes that changed."
+          },
+          "400": {
+            "description": "Unknown purpose, missing policy version, or no field supplied."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Update privacy settings",
+        "tags": [
+          "Users"
         ]
       }
     },
@@ -2981,6 +3276,105 @@
         ]
       }
     },
+    "/safety/guardians/{id}/resend": {
+      "post": {
+        "description": "Issues a fresh single-use invitation and invalidates older pending ones. Delivery is disabled until an approved channel exists, so no message is claimed to have been sent. Serial requests are throttled to one per minute per contact.",
+        "operationId": "SafetyController_resendGuardianInvite",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character guardian contact identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "New invitation id and expiry; delivery explicitly disabled."
+          },
+          "404": {
+            "description": "Guardian contact not found for this owner."
+          },
+          "429": {
+            "description": "An invitation was issued less than a minute ago."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Re-issue a guardian invitation",
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
+    "/safety/guardians/{id}/scopes": {
+      "patch": {
+        "description": "Owner-only scope change between SOS alerts and quiet check-ins. Existing incidents keep the recipients they were created with.",
+        "operationId": "SafetyController_updateGuardianScopes",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character guardian contact identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scopes"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "scopes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 2,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "sos_alert",
+                        "check_in"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated scopes."
+          },
+          "404": {
+            "description": "Guardian contact not found for this owner."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Change a trusted contact’s scopes",
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
     "/safety/guardians/{id}": {
       "delete": {
         "description": "Owner-only revocation immediately removes the contact from future SOS recipient selection.",
@@ -3463,6 +3857,40 @@
           }
         ],
         "summary": "List recorded SOS delivery attempts",
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
+    "/safety/sos-events/{id}": {
+      "get": {
+        "description": "PRD alias for a single incident. Owner-scoped; reports deliveryConfirmed only when a provider returned evidence, and never implies emergency dispatch.",
+        "operationId": "SafetyController_getSosEvent",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character SOS incident identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Incident state and recorded delivery attempts."
+          },
+          "404": {
+            "description": "Incident not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get one SOS event with delivery evidence",
         "tags": [
           "Safety"
         ]
@@ -4881,6 +5309,49 @@
         ]
       }
     },
+    "/clinician/bookings/{id}/complete": {
+      "post": {
+        "description": "Scoped to the caller’s own clinician profile. Only a confirmed session that has already started can be completed; payment and refund state are left untouched.",
+        "operationId": "ClinicianBookingsController_complete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character booking identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Booking completed."
+          },
+          "403": {
+            "description": "No clinician profile for this account."
+          },
+          "404": {
+            "description": "Booking does not belong to this clinician."
+          },
+          "409": {
+            "description": "Booking is not confirmed."
+          },
+          "422": {
+            "description": "The session has not started yet."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Mark a confirmed session completed",
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
     "/payments/{id}": {
       "get": {
         "description": "Owner-scoped payment record, including the provider reference and verification time. No raw card data is ever stored.",
@@ -4981,6 +5452,116 @@
         "summary": "Paystack payment webhook",
         "tags": [
           "Notifications and webhooks"
+        ]
+      }
+    },
+    "/promo-codes/validate": {
+      "post": {
+        "description": "Quotes the discount from the stored promotion and the server-side session price. Nothing is charged, reserved or redeemed: `applied` stays false while the payment and promotion policy is unapproved.",
+        "operationId": "PromoCodesController_validate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "code",
+                  "clinicianId",
+                  "sessionType"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "clinicianId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{24}$"
+                  },
+                  "sessionType": {
+                    "type": "string",
+                    "enum": [
+                      "clinic",
+                      "audio",
+                      "video",
+                      "text"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Quoted discount and payable amount; not applied."
+          },
+          "404": {
+            "description": "Unknown or expired promo code."
+          },
+          "409": {
+            "description": "No redemptions remain."
+          },
+          "503": {
+            "description": "No approved price exists for this clinician and session type."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Validate a promo code against the server price",
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/admin/promo-codes": {
+      "post": {
+        "description": "Stores a promotion with its policy version. Creating a code does not enable discounted checkout; that stays behind the approved payment policy.",
+        "operationId": "AdminPromoCodesController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Promo code created."
+          },
+          "409": {
+            "description": "Code already exists."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Create a promo code (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/subscriptions/me": {
+      "get": {
+        "description": "Derives entitlements from persisted, provider-verified bookings. No subscription plans are published yet, so `plan` is null and `policyPending` is true rather than inventing a catalogue.",
+        "operationId": "SubscriptionsController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Entitlements, usage counts and the explicit policy-pending state."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Read the caller’s entitlements",
+        "tags": [
+          "Subscriptions"
         ]
       }
     },
@@ -5128,6 +5709,149 @@
           }
         ],
         "summary": "Acknowledge consultation messages as read",
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/consultations/{id}/attachments": {
+      "post": {
+        "description": "Participant-only. The client uploads to storage first and registers the resulting identifier; the record is stored with `scanStatus: not_configured` and `downloadAvailable: false` because malware scanning is not configured. Nothing is released to the other participant.",
+        "operationId": "CommunicationsController_createAttachment",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character consultation identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "fileName",
+                  "contentType",
+                  "sizeBytes",
+                  "storagePublicId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "fileName": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "contentType": {
+                    "type": "string",
+                    "enum": [
+                      "image/jpeg",
+                      "image/png",
+                      "application/pdf"
+                    ]
+                  },
+                  "sizeBytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10485760
+                  },
+                  "storagePublicId": {
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Attachment metadata stored; download explicitly unavailable."
+          },
+          "404": {
+            "description": "Consultation not found for this account."
+          },
+          "409": {
+            "description": "Consultation is closed."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Register a consultation attachment",
+        "tags": [
+          "Communications"
+        ]
+      },
+      "get": {
+        "description": "Participant-only metadata listing; storage identifiers are not returned here and every item reports its scan state.",
+        "operationId": "CommunicationsController_listAttachments",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character consultation identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Attachment metadata for this consultation."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List consultation attachments",
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/attachments/{id}/download": {
+      "get": {
+        "description": "Fails closed (503) until malware scanning is configured and the file is clean. The caller must be a consultation participant.",
+        "operationId": "CommunicationsController_downloadAttachment",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character attachment identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Signed download reference when scanning is approved (not enabled in this deployment)."
+          },
+          "404": {
+            "description": "Attachment not found or not visible to this account."
+          },
+          "503": {
+            "description": "Download is disabled until scanning is configured."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Request an attachment download",
         "tags": [
           "Communications"
         ]
@@ -5507,6 +6231,713 @@
         "summary": "Revoke a health share",
         "tags": [
           "Communications"
+        ]
+      }
+    },
+    "/support/faqs": {
+      "get": {
+        "description": "Public, versioned FAQ copy for account, privacy, care, billing and safety questions. Each entry reports its review state; copy is provisional until product and clinical review is recorded.",
+        "operationId": "SupportFaqController_listFaqs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "FAQ entries with the content version."
+          }
+        },
+        "summary": "List support FAQs",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/support/tickets": {
+      "post": {
+        "description": "Creates an owner-scoped support request with a human-readable reference. Tickets are not a clinical channel and no health record is attached automatically.",
+        "operationId": "SupportTicketsController_createTicket",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "subject",
+                  "message"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "subject": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "account",
+                      "privacy",
+                      "billing",
+                      "technical",
+                      "safety",
+                      "other"
+                    ],
+                    "default": "other"
+                  },
+                  "message": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Ticket reference and current status."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Raise a support ticket",
+        "tags": [
+          "Support"
+        ]
+      },
+      "get": {
+        "description": "Cursor-paginated tickets owned by the authenticated account, newest first.",
+        "operationId": "SupportTicketsController_listTickets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Owner tickets and next cursor."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List the caller’s support tickets",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/support/tickets/{id}": {
+      "get": {
+        "description": "Owner-scoped ticket with its reply thread. Other accounts receive 404.",
+        "operationId": "SupportTicketsController_getTicket",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character support ticket identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ticket and replies."
+          },
+          "404": {
+            "description": "Ticket not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get one support ticket",
+        "tags": [
+          "Support"
+        ]
+      },
+      "patch": {
+        "description": "Appends an owner message. Replying to a resolved or closed ticket reopens it.",
+        "operationId": "SupportTicketsController_reply",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character support ticket identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated ticket with the new reply."
+          },
+          "404": {
+            "description": "Ticket not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Reply to your support ticket",
+        "tags": [
+          "Support"
+        ]
+      }
+    },
+    "/admin/support/tickets": {
+      "get": {
+        "description": "Cross-account ticket queue with status filter. Requires a support, compliance or administrative role.",
+        "operationId": "SupportAdminController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Tickets and next cursor."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List support tickets (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/support/tickets/{id}": {
+      "put": {
+        "description": "Records a support reply and/or changes the ticket status. Resolution timestamps are set server-side and the handling staff member is stored.",
+        "operationId": "SupportAdminController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character support ticket identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated ticket."
+          },
+          "404": {
+            "description": "Ticket not found."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Update a support ticket (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/articles": {
+      "get": {
+        "description": "Cursor-paginated, medically approved content only. Drafts and content awaiting clinical review are never returned.",
+        "operationId": "ArticlesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Published articles and next cursor."
+          }
+        },
+        "summary": "List published health articles",
+        "tags": [
+          "Articles"
+        ]
+      }
+    },
+    "/articles/{slug}": {
+      "get": {
+        "description": "Returns the full body of a published, medically approved article, with its content version and disclaimer.",
+        "operationId": "ArticlesController_detail",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "description": "Article slug.",
+            "schema": {
+              "example": "understanding-your-cycle",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Article body."
+          },
+          "404": {
+            "description": "No published article has that slug."
+          }
+        },
+        "summary": "Read a published article",
+        "tags": [
+          "Articles"
+        ]
+      }
+    },
+    "/admin/articles": {
+      "get": {
+        "description": "Draft, published and archived content with review state. Requires content, medical-review or administrative role.",
+        "operationId": "AdminArticlesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Articles and next cursor."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List articles (admin)",
+        "tags": [
+          "Admin"
+        ]
+      },
+      "post": {
+        "description": "Creates unpublished content with medical review pending. Nothing is visible to users until a medical reviewer approves it and it is published.",
+        "operationId": "AdminArticlesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "slug",
+                  "title",
+                  "summary",
+                  "body",
+                  "category"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "slug": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "summary": {
+                    "type": "string",
+                    "maxLength": 600
+                  },
+                  "body": {
+                    "type": "string",
+                    "maxLength": 50000
+                  },
+                  "category": {
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 20
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Draft created with medical review pending."
+          },
+          "409": {
+            "description": "Slug already exists."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Create an article draft (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/articles/{id}": {
+      "put": {
+        "description": "Updating content invalidates any earlier medical approval: the article returns to draft with review pending.",
+        "operationId": "AdminArticlesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character article identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated article with review reset."
+          },
+          "404": {
+            "description": "Article not found."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Update an article (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/articles/{id}/review": {
+      "put": {
+        "description": "Records an audited clinical decision. Approval requires a stored evidence reference; a rejected or pending decision cannot be published.",
+        "operationId": "AdminArticlesController_review",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character article identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Review recorded."
+          },
+          "404": {
+            "description": "Article not found."
+          },
+          "422": {
+            "description": "Approval without an evidence reference."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Record a medical review (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/articles/{id}/publish": {
+      "post": {
+        "description": "Publishes content only after an approved medical review; otherwise returns 422.",
+        "operationId": "AdminArticlesController_publish",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character article identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Article published."
+          },
+          "422": {
+            "description": "Content has not passed medical review."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Publish an article (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/articles/{id}/archive": {
+      "post": {
+        "description": "Removes the article from the public listing while retaining its record.",
+        "operationId": "AdminArticlesController_archive",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character article identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Article archived."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Archive an article (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/briefs/generate": {
+      "post": {
+        "description": "Builds a traceable snapshot from the caller’s capped date range, requires current health-sharing consent and a verified, active clinician recipient, and returns a SHA-256 content hash with per-scope record counts. Free-text notes are never included and no inference is performed.",
+        "operationId": "BriefsController_generate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "recipientUserId",
+                  "scopes",
+                  "from",
+                  "to",
+                  "expiresAt"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "recipientUserId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{24}$"
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "cycles",
+                        "daily_logs",
+                        "pregnancy"
+                      ]
+                    }
+                  },
+                  "from": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "to": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "expiresAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Must be in the future and within 30 days."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Brief identifier, content hash and traceability counts."
+          },
+          "400": {
+            "description": "Invalid or inverted range, or self-recipient."
+          },
+          "404": {
+            "description": "Missing consent or no verified clinician recipient."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Generate a deterministic health brief for a clinician",
+        "tags": [
+          "Health briefs"
+        ]
+      }
+    },
+    "/briefs/{id}": {
+      "get": {
+        "description": "Available to the owner and the named recipient only. Expired or revoked briefs return 404.",
+        "operationId": "BriefsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character brief identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Brief snapshot, hash and viewer role."
+          },
+          "404": {
+            "description": "Brief not found, expired or revoked."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Read a health brief",
+        "tags": [
+          "Health briefs"
+        ]
+      },
+      "delete": {
+        "description": "Owner-only revocation. The recipient immediately loses access.",
+        "operationId": "BriefsController_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character brief identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Brief revoked."
+          },
+          "404": {
+            "description": "Active brief not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Revoke a health brief",
+        "tags": [
+          "Health briefs"
+        ]
+      }
+    },
+    "/specialists/me/shared-briefs": {
+      "get": {
+        "description": "Active (unexpired, unrevoked) briefs whose recipient is this clinician account. Requires the clinician role.",
+        "operationId": "ClinicianSharedBriefsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Shared briefs without snapshot bodies."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List briefs shared with the signed-in clinician",
+        "tags": [
+          "Health briefs"
+        ]
+      }
+    },
+    "/internal/cron/run-retention": {
+      "post": {
+        "description": "Internal scheduler operation that previews, or deletes, expired operational records (sessions, expired invitations, location sessions, expired shares/briefs, idempotency rows, old webhook audit rows). Deletion requires `dryRun=false` and `RETENTION_EXECUTION_ENABLED=true`; account health records are never purged here. Not a mobile-client operation.",
+        "operationId": "RetentionController_run",
+        "parameters": [
+          {
+            "name": "x-cron-secret",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Cron-Secret",
+            "in": "header",
+            "description": "Value configured by the operator as CRON_SECRET.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Per-collection counts plus the explicit dry-run/executed state."
+          },
+          "401": {
+            "description": "Missing or invalid cron credential."
+          }
+        },
+        "summary": "Run retention housekeeping (internal)",
+        "tags": [
+          "Notifications and webhooks"
         ]
       }
     }

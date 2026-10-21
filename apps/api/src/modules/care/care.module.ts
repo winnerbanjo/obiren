@@ -10,6 +10,8 @@ import {
   PaystackWebhookController,
 } from './bookings.controller';
 import { BookingsService } from './bookings.service';
+import { PromotionsService } from './promotions.service';
+import { AdminPromoCodesController, PromoCodesController, SubscriptionsController } from './promotions.controller';
 import {
   AvailabilitySlot,
   AvailabilitySlotSchema,
@@ -23,6 +25,8 @@ import {
   PaymentSchema,
   PaymentWebhookEvent,
   PaymentWebhookEventSchema,
+  PromoCode,
+  PromoCodeSchema,
 } from '../../database/schemas/care.schema';
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { IdempotencyModule } from '../../common/idempotency/idempotency.module';
@@ -38,6 +42,7 @@ import { PaystackProvider } from '../../common/payments/paystack.provider';
       { name: Booking.name, schema: BookingSchema },
       { name: Payment.name, schema: PaymentSchema },
       { name: PaymentWebhookEvent.name, schema: PaymentWebhookEventSchema },
+      { name: PromoCode.name, schema: PromoCodeSchema },
       { name: User.name, schema: UserSchema },
     ]),
     JwtAuthModule,
@@ -50,8 +55,11 @@ import { PaystackProvider } from '../../common/payments/paystack.provider';
     ClinicianBookingsController,
     PaymentsController,
     PaystackWebhookController,
+    PromoCodesController,
+    AdminPromoCodesController,
+    SubscriptionsController,
   ],
-  providers: [CareService, BookingsService, PaystackProvider],
-  exports: [CareService, BookingsService],
+  providers: [CareService, BookingsService, PromotionsService, PaystackProvider],
+  exports: [CareService, BookingsService, PromotionsService],
 })
 export class CareModule {}

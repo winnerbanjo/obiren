@@ -657,6 +657,15 @@ export const safetyApi = {
       deliveryConfirmed: boolean;
       attempts: Array<{ id: string; channel: string; status: string; failureCode?: string; attemptedAt: string }>;
     }>('GET', `/safety/sos/${incidentId}/deliveries`),
+  getSosEvent: (incidentId: string) => request<Record<string, unknown>>('GET', `/safety/sos-events/${incidentId}`),
+  resendGuardianInvite: (id: string) =>
+    request<{ contactId: string; inviteId: string; expiresAt: string; invitationDelivery: string; message: string }>(
+      'POST',
+      `/safety/guardians/${id}/resend`,
+      {},
+    ),
+  updateGuardianScopes: (id: string, scopes: Array<'sos_alert' | 'check_in'>) =>
+    request<{ id: string; scopes: string[]; status: string }>('PATCH', `/safety/guardians/${id}/scopes`, { scopes }),
 };
 
 // ---------------------------------------------------------------------------
@@ -817,6 +826,12 @@ export const bookingsApi = {
       reason ? { reason } : {},
     ),
   getPayment: (paymentId: string) => request<PaymentData>('GET', `/payments/${paymentId}`),
+  completeAsClinician: (bookingId: string) =>
+    request<{ booking: BookingData; paymentChanged: false; message: string }>(
+      'POST',
+      `/clinician/bookings/${bookingId}/complete`,
+      {},
+    ),
   getReceipt: (bookingId: string) =>
     request<{
       receiptNo: string;
@@ -957,4 +972,138 @@ export const adminApi = {
   ) => request<Record<string, unknown>>('PUT', `/admin/safety/resources/${recordId}/review`, input),
   createConsultation: (input: { patientUserId: string; clinicianId: string }) =>
     request<{ id: string; status: string; participantCount: number; bookingConfirmed: false; message: string }>('POST', '/admin/consultations', input),
+};
+
+// ---------------------------------------------------------------------------
+// Support, articles, privacy, subscriptions, promotions, briefs and MFA
+// ---------------------------------------------------------------------------
+
+export interface SupportFaqData {
+  slug: string;
+  category: string;
+  question: string;
+  answer: string;
+  reviewStatus: 'provisional' | 'approved';
+}
+
+export interface SupportTicketData {
+  id: string;
+  reference: string;
+  subject: string;
+  category: string;
+  message: string;
+  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  replies: Array<{ authorRole: 'user' | 'support'; body: string; createdAt: string }>;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export const supportApi = {
+  faqs: (category?: string) => {
+    const suffix = category ? `?category=${encodeURIComponent(category)}` : '';
+    return request<{ version: string; reviewStatus: string; faqs: SupportFaqData[] }>('GET', `/support/faqs${suffix}`);
+  },
+  createTicket: (input: { subject: string; message: string; category?: string }) =>
+    request<SupportTicketData>('POST', '/support/tickets', input),
+  listTickets: (query: { cursor?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return request<{ tickets: SupportTicketData[]; nextCursor: string | null }>('GET', `/support/tickets${suffix}`);
+  },
+  getTicket: (id: string) => request<SupportTicketData>('GET', `/support/tickets/${id}`),
+  reply: (id: string, body: string) => request<SupportTicketData>('PATCH', `/support/tickets/${id}`, { body }),
+};
+
+export interface ArticleSummaryData {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string;
+  body?: string;
+  category: string;
+  tags: string[];
+  status: string;
+  medicalReviewStatus: 'pending' | 'approved' | 'rejected';
+  publishedAt: string | null;
+  version: number;
+  disclaimer: string;
+}
+
+export const articlesApi = {
+  list: (query: { category?: string; cursor?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return request<{ articles: ArticleSummaryData[]; nextCursor: string | null }>('GET', `/articles${suffix}`);
+  },
+  get: (slug: string) => request<ArticleSummaryData>('GET', `/articles/${slug}`),
+};
+
+export const privacyApi = {
+  get: () =>
+    request<{
+      purposes: Array<{ purpose: string; granted: boolean | null; policyVersion: string | null; decided: boolean }>;
+      undecidedPurposes: string[];
+      preferences: { shareAnalytics: boolean; shareCrashReports: boolean; personalizedContent: boolean };
+      dataControls: { exportAvailable: boolean; deletionAvailable: boolean; deletionWindowDays: number; erasureNote: string };
+    }>('GET', '/privacy-settings'),
+  update: (input: {
+    purposes?: Array<{ purpose: string; granted: boolean; policyVersion: string }>;
+    shareAnalytics?: boolean;
+    shareCrashReports?: boolean;
+    personalizedContent?: boolean;
+  }) => request<Record<string, unknown>>('PATCH', '/privacy-settings', input),
+};
+
+export const subscriptionsApi = {
+  me: () =>
+    request<{
+      subscription: { plan: string | null; status: string; catalog: string; message: string };
+      entitlements: Array<{ bookingId: string; sessionType: string; startsAt: string }>;
+      usage: { upcomingSessions: number; completedSessions: number; verifiedPayments: number };
+      policyPending: boolean;
+    }>('GET', '/subscriptions/me'),
+};
+
+export const promosApi = {
+  validate: (input: { code: string; clinicianId: string; sessionType: SessionType }) =>
+    request<{
+      code: string;
+      percentOff: number;
+      originalAmountMinor: number;
+      discountMinor: number;
+      payableAmountMinor: number;
+      currency: string;
+      applied: false;
+      reason: string;
+      message: string;
+    }>('POST', '/promo-codes/validate', input),
+};
+
+export const briefsApi = {
+  generate: (input: { recipientUserId: string; scopes: string[]; from: string; to: string; expiresAt: string }) =>
+    request<{
+      id: string;
+      contentHash: string;
+      generatorVersion: string;
+      scopes: string[];
+      range: { from: string; to: string };
+      recordCounts: { cycles: number; dailyLogs: number; pregnancies: number };
+      notesIncluded: false;
+    }>('POST', '/briefs/generate', input),
+  get: (id: string) => request<Record<string, unknown>>('GET', `/briefs/${id}`),
+  revoke: (id: string) => request<{ id: string; status: string }>('DELETE', `/briefs/${id}`),
+  sharedBriefs: () => request<{ briefs: Array<Record<string, unknown>> }>('GET', '/specialists/me/shared-briefs'),
+};
+
+export const mfaApi = {
+  status: () =>
+    request<{ enabled: boolean; pendingEnrolment: boolean; recoveryCodesRemaining: number }>('GET', '/auth/mfa/status'),
+  enroll: () =>
+    request<{ status: string; secret: string; otpauthUrl: string; recoveryCodes: string[] }>('POST', '/auth/mfa/enroll', {}),
+  verify: (code: string) => request<{ enabled: boolean }>('POST', '/auth/mfa/verify', { code }),
+  disable: (code: string) => request<{ enabled: false }>('POST', '/auth/mfa/disable', { code }),
+  challenge: (input: { mfaToken: string; code: string; platform?: 'web' | 'ios' | 'android' }) =>
+    request<{ user: unknown; tokens: { accessToken: string; refreshToken: string } }>('POST', '/auth/mfa/challenge', input),
 };

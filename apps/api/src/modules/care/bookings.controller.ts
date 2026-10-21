@@ -143,6 +143,18 @@ export class ClinicianBookingsController {
   async list(@Req() req: any, @Query(new ZodValidationPipe(ClinicianBookingQuerySchema)) query) {
     return this.bookingsService.listClinicianBookings(req.user.sub, query);
   }
+
+  @Post('bookings/:id/complete')
+  @ApiParam({ name: 'id', description: '24-character booking identifier.' })
+  @ApiOperation({ summary: 'Mark a confirmed session completed', description: 'Scoped to the caller’s own clinician profile. Only a confirmed session that has already started can be completed; payment and refund state are left untouched.' })
+  @ApiResponse({ status: 201, description: 'Booking completed.' })
+  @ApiResponse({ status: 403, description: 'No clinician profile for this account.' })
+  @ApiResponse({ status: 404, description: 'Booking does not belong to this clinician.' })
+  @ApiResponse({ status: 409, description: 'Booking is not confirmed.' })
+  @ApiResponse({ status: 422, description: 'The session has not started yet.' })
+  async complete(@Req() req: any, @Param('id', new ZodValidationPipe(MongoIdParam)) id: string) {
+    return this.bookingsService.completeClinicianBooking(req.user.sub, id);
+  }
 }
 
 @ApiTags('Notifications and webhooks')
