@@ -37,6 +37,8 @@ export interface ValidatedEnv {
   cronSecret?: string;
   healthDataEncryptionKey?: string;
   healthDataEncryptionKeyId: string;
+  paymentEnabled: boolean;
+  paymentPolicyVersion?: string;
   cloudinary: { cloudName?: string; apiKey?: string; apiSecret?: string };
   twilio: { accountSid?: string; authToken?: string; whatsappFrom?: string };
   mail: { mailtrapToken?: string; fromEmail?: string; fromName?: string };
@@ -95,8 +97,13 @@ export function validateEnv(env: Record<string, string | undefined> = process.en
   // --- Optional integrations (warn, do not block, but never default to fake secrets) ---
   const cronSecret = env.CRON_SECRET || undefined;
   if (isProd() && !cronSecret) {
-    warnings.push('CRON_SECRET not set - internal cron endpoints are UNAUTHENTICATED in production');
+    productionErrors.push('CRON_SECRET is required in production for internal cron endpoints');
   }
+
+  const paymentEnabled = env.PAYMENT_ENABLED === 'true' && Boolean(env.PAYMENT_POLICY_VERSION) && env.PAYMENT_POLICY_VERSION.startsWith('approved:');
+  const paymentPolicyVersion = paymentEnabled ? env.PAYMENT_POLICY_VERSION : undefined;
+  if (env.PAYMENT_ENABLED === 'true' && !paymentEnabled) productionErrors.push('PAYMENT_ENABLED requires PAYMENT_POLICY_VERSION=approved:<version>');
+  if (paymentEnabled && !env.PAYSTACK_SECRET_KEY) productionErrors.push('PAYSTACK_SECRET_KEY is required when payments are enabled');
 
   const healthDataEncryptionKey = env.HEALTH_DATA_ENCRYPTION_KEY || undefined;
   if (healthDataEncryptionKey) {
@@ -160,6 +167,8 @@ export function validateEnv(env: Record<string, string | undefined> = process.en
     cronSecret,
     healthDataEncryptionKey,
     healthDataEncryptionKeyId: env.HEALTH_DATA_ENCRYPTION_KEY_ID || 'default',
+    paymentEnabled,
+    paymentPolicyVersion,
     cloudinary,
     twilio,
     mail,

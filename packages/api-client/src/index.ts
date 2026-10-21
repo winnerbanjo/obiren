@@ -225,12 +225,159 @@ export interface UserProfileData {
   onboardingStatus: string;
 }
 
+export interface PrivacyJobData {
+  _id?: string;
+  id?: string;
+  type: 'export' | 'deletion';
+  status: string;
+  requestedAt: string;
+  availableAt?: string;
+  completedAt?: string;
+}
+
 export const usersApi = {
   getProfile: () => request<UserProfileData>('GET', '/users/me'),
   updateProfile: (updates: Record<string, unknown>) => request<UserProfileData>('PATCH', '/users/me', updates),
   exportData: () => request<Record<string, unknown>>('GET', '/users/me/export'),
-  requestDeletion: () => request<Record<string, unknown>>('POST', '/users/me/request-deletion', {}),
+  getPrivacyJobs: () => request<PrivacyJobData[]>('GET', '/users/me/privacy-jobs'),
+  requestDeletion: () => request<{ jobId: string; deletionScheduledFor: string; erasureCompleted: false }>('POST', '/users/me/request-deletion', {}),
   cancelDeletion: () => request<Record<string, unknown>>('POST', '/users/me/cancel-deletion', {}),
+};
+
+// ---------------------------------------------------------------------------
+// Communications API (inbox, preferences, health sharing)
+// ---------------------------------------------------------------------------
+
+export interface NotificationPreferenceData {
+  inAppEnabled: boolean;
+  emailEnabled: boolean;
+  smsEnabled: boolean;
+  discreetMode: boolean;
+  disabledCategories: string[];
+}
+
+export interface InboxNotification {
+  id: string;
+  category: string;
+  status: string;
+  createdAt?: string;
+  title: string;
+  body: string;
+}
+
+export interface HealthShareData {
+  id: string;
+  ownerUserId?: string;
+  scopes: Array<'cycles' | 'daily_logs' | 'pregnancy'>;
+  evidenceFrom: string;
+  evidenceTo: string;
+  expiresAt: string;
+  status?: string;
+  data?: { cycles?: CycleData[]; logs?: DailyLogData[]; pregnancies?: PregnancyData[]; disclaimer?: string };
+}
+
+export const communicationsApi = {
+  getInbox: (query: { cursor?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return request<{ notifications: InboxNotification[]; nextCursor: string | null }>('GET', `/notifications${suffix}`);
+  },
+  markRead: (id: string) => request<{ id: string; status: string }>('PATCH', `/notifications/${id}/read`, {}),
+  getPreferences: () => request<NotificationPreferenceData>('GET', '/notification-preferences'),
+  updatePreferences: (updates: Partial<NotificationPreferenceData>) => request<NotificationPreferenceData>('PATCH', '/notification-preferences', updates),
+};
+
+export const healthSharesApi = {
+  create: (input: { recipientUserId: string; scopes: HealthShareData['scopes']; from: string; to: string; expiresAt: string }) =>
+    request<HealthShareData>('POST', '/health-shares', input),
+  getReceived: () => request<HealthShareData[]>('GET', '/health-shares/received'),
+  revoke: (id: string) => request<{ id: string; status: string }>('DELETE', `/health-shares/${id}`),
+};
+
+// ---------------------------------------------------------------------------
+// Consultations API (participant-scoped, encrypted messages)
+// ---------------------------------------------------------------------------
+
+export interface ConsultationData {
+  id: string;
+  role: 'patient' | 'clinician';
+  status: 'open' | 'closed';
+  lastMessageAt?: string;
+  closedAt?: string | null;
+  createdAt?: string;
+}
+
+export interface ConsultationMessage {
+  id: string;
+  consultationId: string;
+  senderUserId: string;
+  body: string;
+  status: 'sent' | 'delivered' | 'read';
+  deliveredAt?: string | null;
+  readAt?: string | null;
+  createdAt?: string;
+  isOwnMessage?: boolean;
+}
+
+export const consultationsApi = {
+  list: (query: { cursor?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return request<{ consultations: ConsultationData[]; nextCursor: string | null }>('GET', `/consultations${suffix}`);
+  },
+  getMessages: (id: string, query: { cursor?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return request<{ consultationId: string; messages: ConsultationMessage[]; nextCursor: string | null }>(
+      'GET',
+      `/consultations/${id}/messages${suffix}`,
+    );
+  },
+  sendMessage: (id: string, body: string) =>
+    request<ConsultationMessage>('POST', `/consultations/${id}/messages`, { body }),
+  acknowledge: (id: string) =>
+    request<{ consultationId: string; markedRead: number }>('POST', `/consultations/${id}/read`, {}),
+};
+
+// ---------------------------------------------------------------------------
+// Notification devices API
+// ---------------------------------------------------------------------------
+
+export interface DeviceData {
+  id: string;
+  platform: 'ios' | 'android' | 'web';
+  deviceName?: string | null;
+  status: 'active' | 'revoked';
+  lastSeenAt?: string;
+  createdAt?: string;
+}
+
+export const devicesApi = {
+  list: () => request<DeviceData[]>('GET', '/devices'),
+  register: (input: { platform: DeviceData['platform']; token: string; deviceName?: string }) =>
+    request<DeviceData>('POST', '/devices', input),
+  revoke: (id: string) => request<{ id: string; status: string }>('DELETE', `/devices/${id}`),
+};
+
+// ---------------------------------------------------------------------------
+// Home API
+// ---------------------------------------------------------------------------
+
+export interface HomeSummary {
+  cycle: CycleData | null;
+  pregnancy: PregnancyData | null;
+  recentLogs: DailyLogData[];
+}
+
+export const homeApi = {
+  getSummary: () => request<HomeSummary>('GET', '/home'),
+  getCalendarLogs: (from: string, to: string) => {
+    const params = new URLSearchParams({ from, to });
+    return request<{ from: string; to: string; logs: DailyLogData[] }>('GET', `/daily-logs?${params.toString()}`);
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -337,6 +484,16 @@ export const pregnancyApi = {
 // Safety API
 // ---------------------------------------------------------------------------
 
+export interface GuardianContactData {
+  _id?: string;
+  name: string;
+  phoneE164: string;
+  status: 'pending' | 'verified' | 'revoked';
+  scopes: string[];
+  acceptedAt?: string;
+  verifiedAt?: string;
+}
+
 export interface SosIncident {
   id?: string;
   _id?: string;
@@ -357,6 +514,67 @@ export const safetyApi = {
     request<{ incident: SosIncident; message: string }>('POST', '/safety/sos/trigger', input),
   cancelSos: (pin: string) => request<SosIncident>('POST', '/safety/sos/cancel', { pin }),
   getIncidents: () => request<SosIncident[]>('GET', '/safety/incidents'),
+  getGuardians: () => request<GuardianContactData[]>('GET', '/safety/guardians'),
+  addGuardian: (input: { name: string; phoneE164: string; scopes: Array<'sos_alert' | 'check_in'> }) =>
+    request<{ contact: GuardianContactData; status: string; invitationDelivery: string }>('POST', '/safety/guardians', input),
+  revokeGuardian: (id: string) => request<{ id: string; status: string }>('DELETE', `/safety/guardians/${id}`),
+  startLocationSession: (expiresAt: string) => request<{ sessionId: string; status: string; expiresAt: string }>('POST', '/safety/location-sessions', { expiresAt }),
+  revokeLocationSession: (id: string) => request<{ sessionId: string; status: string }>('DELETE', `/safety/location-sessions/${id}`),
+  getSosDeliveries: (incidentId: string) =>
+    request<{
+      incidentId: string;
+      dispatchStatus: string;
+      deliveryConfirmed: boolean;
+      attempts: Array<{ id: string; channel: string; status: string; failureCode?: string; attemptedAt: string }>;
+    }>('GET', `/safety/sos/${incidentId}/deliveries`),
+};
+
+// ---------------------------------------------------------------------------
+// Care API (verified specialists, availability, temporary holds)
+// ---------------------------------------------------------------------------
+
+export interface ClinicianData {
+  _id: string;
+  displayName: string;
+  specialties: string[];
+  languages: string[];
+  countryCode: string;
+}
+
+export interface AvailabilitySlotData {
+  _id: string;
+  clinicianId: string;
+  startsAt: string;
+  endsAt: string;
+  sessionType: 'clinic' | 'audio' | 'video' | 'text';
+  status: string;
+  clinician?: ClinicianData;
+}
+
+export interface BookingHoldData {
+  holdId: string;
+  slotId: string;
+  status: string;
+  expiresAt: string;
+  bookingEnabled: false;
+  message: string;
+}
+
+export const careApi = {
+  listClinicians: (query: { countryCode?: string; specialty?: string; language?: string } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return request<ClinicianData[]>('GET', `/care/clinicians${suffix}`);
+  },
+  listAvailability: (query: { from: string; to: string; countryCode?: string }) => {
+    const params = new URLSearchParams({ from: query.from, to: query.to });
+    if (query.countryCode) params.set('countryCode', query.countryCode);
+    return request<AvailabilitySlotData[]>('GET', `/care/availability?${params.toString()}`);
+  },
+  holdSlot: (slotId: string) => request<BookingHoldData>('POST', '/care/holds', { slotId }),
+  listHolds: () => request<Array<{ _id: string; slotId: string; status: string; expiresAt: string }>>('GET', '/care/holds'),
+  cancelHold: (id: string) => request<{ holdId: string; status: string }>('DELETE', `/care/holds/${id}`),
 };
 
 // ---------------------------------------------------------------------------
@@ -462,4 +680,14 @@ export const adminApi = {
   listUsers: (page = 1, limit = 20) => request<{ users: any[]; total: number; page: number; limit: number }>('GET', `/admin/users?page=${page}&limit=${limit}`),
   setUserStatus: (id: string, status: string) => request<{ id: string; status: string }>('PUT', `/admin/users/${id}/status`, { status }),
   auditLogs: () => request<any[]>('GET', '/admin/audit-logs'),
+  listClinicians: (query: { verificationStatus?: 'pending' | 'verified' | 'rejected'; page?: number; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return request<{ clinicians: any[]; total: number; page: number; limit: number }>('GET', `/admin/clinicians${suffix}`);
+  },
+  verifyClinician: (id: string, input: { verificationStatus: 'pending' | 'verified' | 'rejected'; evidenceRef?: string; note?: string; active?: boolean }) =>
+    request<any>('PUT', `/admin/clinicians/${id}/verification`, input),
+  createConsultation: (input: { patientUserId: string; clinicianId: string }) =>
+    request<{ id: string; status: string; participantCount: number; bookingConfirmed: false; message: string }>('POST', '/admin/consultations', input),
 };

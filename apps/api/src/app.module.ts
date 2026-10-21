@@ -15,6 +15,9 @@ import { HealthVaultModule } from './modules/health-vault/health-vault.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { WaitlistModule } from './modules/waitlist/waitlist.module';
 import { HealthModule } from './health/health.module';
+import { HomeModule } from './modules/home/home.module';
+import { CareModule } from './modules/care/care.module';
+import { CommunicationsModule } from './modules/communications/communications.module';
 
 @Module({
   imports: [
@@ -47,6 +50,9 @@ import { HealthModule } from './health/health.module';
     AdminModule,
     WaitlistModule,
     HealthModule,
+    HomeModule,
+    CareModule,
+    CommunicationsModule,
   ],
 })
 export class AppModule {}

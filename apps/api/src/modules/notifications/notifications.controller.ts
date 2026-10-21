@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Headers, Req, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Headers, Req, Query, UnauthorizedException } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 
@@ -24,7 +24,11 @@ export class NotificationsController {
   @Post('webhooks/twilio/whatsapp/status')
   @ApiOperation({ summary: 'Twilio WhatsApp delivery-status webhook', description: 'Provider-to-server status callback. Configure Twilio to send MessageSid and MessageStatus form fields. Not a mobile-client operation.' })
   @ApiResponse({ status: 201, description: 'Provider status accepted and mapped to the internal delivery state.' })
-  async handleTwilioStatus(@Body() body: any) {
+  async handleTwilioStatus(@Body() body: any, @Headers('x-twilio-signature') signature: string, @Req() req: any) {
+    const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+    if (!this.notificationsService.verifyTwilioSignature(signature, fullUrl, body)) {
+      throw new UnauthorizedException('Invalid Twilio status webhook signature');
+    }
     return this.notificationsService.handleTwilioStatus(body);
   }
 
@@ -38,7 +42,7 @@ export class NotificationsController {
     const expected = process.env.CRON_SECRET;
     const secret = cronSecret || headerSecret;
     if (!expected || !secret || secret !== expected) {
-      return { success: false, error: 'Unauthorized CRON_SECRET token' };
+      throw new UnauthorizedException('Invalid or missing cron credential');
     }
     return this.notificationsService.processNotificationOutbox();
   }

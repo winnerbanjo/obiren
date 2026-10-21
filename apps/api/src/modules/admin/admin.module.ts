@@ -6,6 +6,8 @@ import { AuditLog, AuditLogSchema } from '../../database/schemas/audit-log.schem
 import { User, UserSchema } from '../../database/schemas/user.schema';
 import { Pregnancy, PregnancySchema } from '../../database/schemas/pregnancy.schema';
 import { DirectoryService, DirectoryServiceSchema } from '../../database/schemas/directory.schema';
+import { Clinician, ClinicianSchema } from '../../database/schemas/care.schema';
+import { Consultation, ConsultationSchema } from '../../database/schemas/communications.schema';
 import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
 
 @Module({
@@ -15,6 +17,8 @@ import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
       { name: User.name, schema: UserSchema },
       { name: Pregnancy.name, schema: PregnancySchema },
       { name: DirectoryService.name, schema: DirectoryServiceSchema },
+      { name: Clinician.name, schema: ClinicianSchema },
+      { name: Consultation.name, schema: ConsultationSchema },
     ]),
     JwtAuthModule,
   ],

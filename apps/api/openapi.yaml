@@ -75,9 +75,9 @@ paths:
   /auth/login:
     post:
       description: >-
-        Returns a 15-minute bearer access token and a 30-day rotating refresh token. Native clients should set
-        platform to ios or android and store refresh tokens in secure storage. Browser clients may use the
-        HttpOnly obiren_refresh cookie.
+        Returns a 15-minute bearer access token and a 30-day rotating refresh token. Native clients should set platform
+        to ios or android and store refresh tokens in secure storage. Browser clients may use the HttpOnly
+        obiren_refresh cookie.
       operationId: AuthController_login
       parameters: []
       requestBody:
@@ -147,9 +147,9 @@ paths:
   /auth/refresh:
     post:
       description: >-
-        Exchanges a valid refresh token for a new access token and refresh token. The old refresh token is
-        revoked immediately; replace it in secure storage. Native clients provide refreshToken in JSON.
-        Browser clients may send the HttpOnly cookie.
+        Exchanges a valid refresh token for a new access token and refresh token. The old refresh token is revoked
+        immediately; replace it in secure storage. Native clients provide refreshToken in JSON. Browser clients may send
+        the HttpOnly cookie.
       operationId: AuthController_refresh
       parameters: []
       requestBody:
@@ -170,8 +170,8 @@ paths:
       responses:
         '200':
           description: >-
-            Tokens rotated successfully. Persist both returned tokens; the submitted refresh token can no
-            longer be reused.
+            Tokens rotated successfully. Persist both returned tokens; the submitted refresh token can no longer be
+            reused.
           content:
             application/json:
               example:
@@ -189,8 +189,8 @@ paths:
   /auth/logout:
     post:
       description: >-
-        Revokes the supplied refresh token and clears the browser refresh cookie. Native clients should pass
-        their current refreshToken.
+        Revokes the supplied refresh token and clears the browser refresh cookie. Native clients should pass their
+        current refreshToken.
       operationId: AuthController_logout
       parameters: []
       requestBody:
@@ -215,8 +215,8 @@ paths:
   /auth/me:
     get:
       description: >-
-        Returns the account identity, roles, verification state, and a compact profile. Use this after sign-in
-        or token refresh to hydrate the current-user state.
+        Returns the account identity, roles, verification state, and a compact profile. Use this after sign-in or token
+        refresh to hydrate the current-user state.
       operationId: AuthController_me
       parameters: []
       responses:
@@ -310,8 +310,8 @@ paths:
   /auth/forgot-password:
     post:
       description: >-
-        Sends password-reset instructions when an eligible account exists. The response is intentionally
-        generic to prevent account enumeration.
+        Sends password-reset instructions when an eligible account exists. The response is intentionally generic to
+        prevent account enumeration.
       operationId: AuthController_forgotPassword
       parameters: []
       requestBody:
@@ -337,8 +337,8 @@ paths:
   /auth/reset-password:
     post:
       description: >-
-        Consumes a valid password-reset token and revokes all existing sessions. Passwords require at least
-        eight characters, one uppercase letter, and one number.
+        Consumes a valid password-reset token and revokes all existing sessions. Passwords require at least eight
+        characters, one uppercase letter, and one number.
       operationId: AuthController_resetPassword
       parameters: []
       requestBody:
@@ -373,8 +373,8 @@ paths:
   /users/me:
     get:
       description: >-
-        Returns the authenticated account and profile summary. The user is derived from the access token; no
-        user ID is accepted from the client.
+        Returns the authenticated account and profile summary. The user is derived from the access token; no user ID is
+        accepted from the client.
       operationId: UsersController_getProfile
       parameters: []
       responses:
@@ -449,8 +449,8 @@ paths:
   /users/onboarding:
     get:
       description: >-
-        Returns the authenticated user’s resumable onboarding state. A user identifier is never accepted from
-        the client.
+        Returns the authenticated user’s resumable onboarding state. A user identifier is never accepted from the
+        client.
       operationId: UsersController_getOnboarding
       parameters: []
       responses:
@@ -463,8 +463,8 @@ paths:
         - Users
     patch:
       description: >-
-        Partially updates the current user’s onboarding draft. Canonical steps are numbered 1 through 8; the
-        draft can be resumed or rewound.
+        Partially updates the current user’s onboarding draft. Canonical steps are numbered 1 through 8; the draft can
+        be resumed or rewound.
       operationId: UsersController_updateOnboarding
       parameters: []
       requestBody:
@@ -522,8 +522,8 @@ paths:
   /users/onboarding/complete:
     post:
       description: >-
-        Completes the user’s onboarding after all eight steps and the required objective have been saved. The
-        server sets onboardingStatus; it is not client-editable.
+        Completes the user’s onboarding after all eight steps and the required objective have been saved. The server
+        sets onboardingStatus; it is not client-editable.
       operationId: UsersController_completeOnboarding
       parameters: []
       responses:
@@ -534,6 +534,21 @@ paths:
       security:
         - accessToken: []
       summary: Complete onboarding
+      tags:
+        - Users
+  /users/me/privacy-jobs:
+    get:
+      description: >-
+        Lists only privacy jobs belonging to the authenticated account. Deletion job execution is operator-managed and
+        is not proof of completed erasure.
+      operationId: UsersController_getPrivacyJobs
+      parameters: []
+      responses:
+        '200':
+          description: Owner-scoped privacy job records.
+      security:
+        - accessToken: []
+      summary: List personal-data export and deletion requests
       tags:
         - Users
   /users/me/export:
@@ -552,8 +567,8 @@ paths:
   /users/me/request-deletion:
     post:
       description: >-
-        Schedules account deletion after a 30-day grace period. This is a consequential account action; the
-        user can cancel it during the grace period.
+        Schedules account deletion after a 30-day grace period. This is a consequential account action; the user can
+        cancel it during the grace period.
       operationId: UsersController_requestDeletion
       parameters: []
       responses:
@@ -580,8 +595,8 @@ paths:
   /config/options:
     get:
       description: >-
-        Returns versioned UI option values. Condition and consultation choices are provisional and must be
-        confirmed by product/clinical review.
+        Returns versioned UI option values. Condition and consultation choices are provisional and must be confirmed by
+        product/clinical review.
       operationId: ConfigController_getOptions
       parameters: []
       responses:
@@ -593,8 +608,8 @@ paths:
   /consents:
     get:
       description: >-
-        Returns the latest recorded choice per purpose plus the append-only grant/revocation event history for
-        the authenticated user.
+        Returns the latest recorded choice per purpose plus the append-only grant/revocation event history for the
+        authenticated user.
       operationId: ConsentController_getConsents
       parameters: []
       responses:
@@ -607,8 +622,8 @@ paths:
         - Consents
     post:
       description: >-
-        Appends a grant or revocation event. Previous consent evidence is never overwritten. A recorded grant
-        is not legal advice or proof that a purpose is lawful.
+        Appends a grant or revocation event. Previous consent evidence is never overwritten. A recorded grant is not
+        legal advice or proof that a purpose is lawful.
       operationId: ConsentController_recordConsent
       parameters: []
       requestBody:
@@ -672,8 +687,8 @@ paths:
   /cycles/history:
     get:
       description: >-
-        Returns this user’s recorded cycles, average observed cycle interval, data sufficiency, and a cursor
-        for the next page. Not a contraceptive method.
+        Returns this user’s recorded cycles, average observed cycle interval, data sufficiency, and a cursor for the
+        next page. Not a contraceptive method.
       operationId: CyclesController_getCycleHistory
       parameters: []
       responses:
@@ -708,8 +723,8 @@ paths:
   /cycles/{id}:
     patch:
       description: >-
-        Updates the authenticated user’s period start/end dates or private note. Dates are calendar dates.
-        Periods cannot overlap or be reordered across adjacent records.
+        Updates the authenticated user’s period start/end dates or private note. Dates are calendar dates. Periods
+        cannot overlap or be reordered across adjacent records.
       operationId: CyclesController_updateCycle
       parameters:
         - name: id
@@ -752,8 +767,8 @@ paths:
   /cycles/start-period:
     post:
       description: >-
-        Starts a cycle for the supplied calendar date, or today when omitted. Repeating the same date is
-        idempotent; any previous active cycle is completed.
+        Starts a cycle for the supplied calendar date, or today when omitted. Repeating the same date is idempotent; any
+        previous active cycle is completed.
       operationId: CyclesController_startPeriod
       parameters: []
       requestBody:
@@ -827,9 +842,9 @@ paths:
         - Daily logs
     put:
       description: >-
-        Upserts the authenticated user’s log for the date. Omitted mood and symptom lists default to empty
-        arrays; provide the complete desired value for each included field. The response includes a version
-        for subsequent conditional edits.
+        Upserts the authenticated user’s log for the date. Omitted mood and symptom lists default to empty arrays;
+        provide the complete desired value for each included field. The response includes a version for subsequent
+        conditional edits.
       operationId: DailyLogsController_upsertDailyLog
       parameters:
         - name: date
@@ -900,8 +915,8 @@ paths:
         - Daily logs
     patch:
       description: >-
-        Changes only supplied fields and nested properties. Include the current version returned by GET/PUT;
-        stale writes receive 409 VERSION_CONFLICT.
+        Changes only supplied fields and nested properties. Include the current version returned by GET/PUT; stale
+        writes receive 409 VERSION_CONFLICT.
       operationId: DailyLogsController_patchDailyLog
       parameters:
         - name: date
@@ -1015,8 +1030,8 @@ paths:
   /pregnancies/current:
     get:
       description: >-
-        Returns the current pregnancy with estimated gestational age and milestone, or `data: null` when no
-        active pregnancy exists.
+        Returns the current pregnancy with estimated gestational age and milestone, or `data: null` when no active
+        pregnancy exists.
       operationId: PregnancyController_getCurrentPregnancy
       parameters: []
       responses:
@@ -1062,8 +1077,8 @@ paths:
   /pregnancies:
     post:
       description: >-
-        Provide either lastMenstrualPeriod or estimatedDueDate. Only one active pregnancy is allowed per
-        account. Dates use YYYY-MM-DD.
+        Provide either lastMenstrualPeriod or estimatedDueDate. Only one active pregnancy is allowed per account. Dates
+        use YYYY-MM-DD.
       operationId: PregnancyController_createPregnancy
       parameters: []
       requestBody:
@@ -1106,9 +1121,7 @@ paths:
         - Pregnancy
   /pregnancies/{id}:
     patch:
-      description: >-
-        Owner-scoped update. An owner-entered due date is recorded as an estimate and is not marked
-        clinician-confirmed.
+      description: Owner-scoped update. An owner-entered due date is recorded as an estimate and is not marked clinician-confirmed.
       operationId: PregnancyController_updatePregnancy
       parameters:
         - name: id
@@ -1160,9 +1173,7 @@ paths:
         - Pregnancy
   /pregnancies/{id}/timeline:
     get:
-      description: >-
-        Returns owner-scoped recorded pregnancy events and due-date estimate. No unreviewed medical advice is
-        generated.
+      description: Returns owner-scoped recorded pregnancy events and due-date estimate. No unreviewed medical advice is generated.
       operationId: PregnancyController_getTimeline
       parameters:
         - name: id
@@ -1184,8 +1195,8 @@ paths:
   /pregnancies/{id}/kicks:
     post:
       description: >-
-        Owner-scoped. Tracking is blocked before 28 gestational weeks; this is a logging feature, not
-        reassurance or medical advice.
+        Owner-scoped. Tracking is blocked before 28 gestational weeks; this is a logging feature, not reassurance or
+        medical advice.
       operationId: PregnancyController_recordKickSession
       parameters:
         - name: id
@@ -1246,9 +1257,7 @@ paths:
         - Pregnancy
   /pregnancies/{id}/wellness/{date}:
     patch:
-      description: >-
-        Updates only supplied water or vitamin values for a local calendar date; does not overwrite symptom
-        fields.
+      description: Updates only supplied water or vitamin values for a local calendar date; does not overwrite symptom fields.
       operationId: PregnancyController_updateWellness
       parameters:
         - name: id
@@ -1294,9 +1303,7 @@ paths:
         - Pregnancy
   /pregnancies/{id}/end:
     post:
-      description: >-
-        Records the outcome and ends the pregnancy. Valid reasons are completed, loss, terminated, or
-        archived.
+      description: Records the outcome and ends the pregnancy. Valid reasons are completed, loss, terminated, or archived.
       operationId: PregnancyController_endPregnancy
       parameters:
         - name: id
@@ -1338,9 +1345,8 @@ paths:
   /pregnancies/{id}/logs/{date}:
     put:
       description: >-
-        Upserts the authenticated user’s structured pregnancy check-in for a local date. Free-text notes are
-        encrypted at rest. Selected high-risk symptom labels return an urgent safety notice; this API is not
-        an emergency service.
+        Upserts the authenticated user’s structured pregnancy check-in for a local date. Free-text notes are encrypted
+        at rest. Selected high-risk symptom labels return an urgent safety notice; this API is not an emergency service.
       operationId: PregnancyController_logSymptom
       parameters:
         - name: id
@@ -1432,8 +1438,8 @@ paths:
   /directory/search:
     get:
       description: >-
-        Searches verified directory resources by text, category, and country. Results are paginated; use
-        countryCode=ALL to search across countries.
+        Searches verified directory resources by text, category, and country. Results are paginated; use countryCode=ALL
+        to search across countries.
       operationId: DirectoryController_search
       parameters:
         - name: limit
@@ -1482,8 +1488,8 @@ paths:
   /directory/nearby:
     get:
       description: >-
-        Returns resources near WGS84 coordinates. Longitude is -180..180, latitude is -90..90, and distance is
-        in meters.
+        Returns resources near WGS84 coordinates. Longitude is -180..180, latitude is -90..90, and distance is in
+        meters.
       operationId: DirectoryController_getNearby
       parameters:
         - name: limit
@@ -1557,8 +1563,8 @@ paths:
   /webhooks/twilio/whatsapp/inbound:
     post:
       description: >-
-        Provider-to-server callback. Twilio signs the exact public request URL and form parameters; configure
-        the public webhook URL and preserve form-encoded payloads. Not a mobile-client operation.
+        Provider-to-server callback. Twilio signs the exact public request URL and form parameters; configure the public
+        webhook URL and preserve form-encoded payloads. Not a mobile-client operation.
       operationId: NotificationsController_handleTwilioInbound
       parameters:
         - name: x-twilio-signature
@@ -1583,10 +1589,15 @@ paths:
   /webhooks/twilio/whatsapp/status:
     post:
       description: >-
-        Provider-to-server status callback. Configure Twilio to send MessageSid and MessageStatus form fields.
-        Not a mobile-client operation.
+        Provider-to-server status callback. Configure Twilio to send MessageSid and MessageStatus form fields. Not a
+        mobile-client operation.
       operationId: NotificationsController_handleTwilioStatus
-      parameters: []
+      parameters:
+        - name: x-twilio-signature
+          required: true
+          in: header
+          schema:
+            type: string
       responses:
         '201':
           description: Provider status accepted and mapped to the internal delivery state.
@@ -1596,9 +1607,9 @@ paths:
   /internal/cron/process-notifications:
     get:
       description: >-
-        Internal scheduler operation that atomically claims and processes up to 20 due notifications. Supply
-        the configured secret in the X-Cron-Secret header; query-string secrets are supported for
-        compatibility but discouraged because URLs may be logged. Not a mobile-client operation.
+        Internal scheduler operation that atomically claims and processes up to 20 due notifications. Supply the
+        configured secret in the X-Cron-Secret header; query-string secrets are supported for compatibility but
+        discouraged because URLs may be logged. Not a mobile-client operation.
       operationId: NotificationsController_processNotificationOutbox
       parameters:
         - name: cronSecret
@@ -1624,11 +1635,232 @@ paths:
       summary: Process pending notification outbox (internal)
       tags:
         - Notifications and webhooks
+  /safety/guardians:
+    get:
+      description: >-
+        Returns only the authenticated owner’s non-revoked guardian contacts. Pending contacts are not used for SOS
+        alerts.
+      operationId: SafetyController_listGuardians
+      parameters: []
+      responses:
+        '200':
+          description: Owner-scoped guardian contact list.
+      security:
+        - accessToken: []
+      summary: List trusted contacts
+      tags:
+        - Safety
+    post:
+      description: >-
+        Creates an invitation record. No invitation is sent and no identity verification is claimed until an approved
+        delivery and verification flow is configured.
+      operationId: SafetyController_createGuardian
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - phoneE164
+                - scopes
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                phoneE164:
+                  type: string
+                  pattern: ^\\+[1-9]\\d{7,14}$
+                scopes:
+                  type: array
+                  minItems: 1
+                  maxItems: 2
+                  items:
+                    type: string
+                    enum:
+                      - sos_alert
+                      - check_in
+      responses:
+        '201':
+          description: Pending guardian contact; external invitation delivery is disabled.
+      security:
+        - accessToken: []
+      summary: Add a pending trusted contact
+      tags:
+        - Safety
+  /safety/guardians/accept:
+    post:
+      description: >-
+        Token is single-use and hashed at rest. Acceptance does not verify the invitee’s identity; independent
+        verification is still required.
+      operationId: SafetyController_acceptGuardian
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              additionalProperties: false
+              properties:
+                token:
+                  type: string
+                  minLength: 32
+                  maxLength: 256
+      responses:
+        '200':
+          description: Invitation accepted pending identity verification.
+      security:
+        - accessToken: []
+      summary: Accept a guardian invitation
+      tags:
+        - Safety
+  /safety/guardians/{id}:
+    delete:
+      description: Owner-only revocation immediately removes the contact from future SOS recipient selection.
+      operationId: SafetyController_revokeGuardian
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character guardian contact identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Guardian contact revoked.
+        '404':
+          description: Guardian contact not found for this owner.
+      security:
+        - accessToken: []
+      summary: Revoke a trusted contact
+      tags:
+        - Safety
+  /safety/check-ins:
+    post:
+      description: Records a private, owner-scoped check-in reminder. It does not contact emergency services or guardians.
+      operationId: SafetyController_createQuietCheckIn
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - checkInAt
+                - expiresAt
+              additionalProperties: false
+              properties:
+                checkInAt:
+                  type: string
+                  format: date-time
+                expiresAt:
+                  type: string
+                  format: date-time
+                  description: Maximum 24 hours after checkInAt.
+      responses:
+        '201':
+          description: ''
+      security:
+        - accessToken: []
+      summary: Create a quiet safety check-in
+      tags:
+        - Safety
+  /safety/location-sessions:
+    post:
+      description: Requires current location-sharing consent; session expires within one hour and does not dispatch SOS.
+      operationId: SafetyController_startLocationSession
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - expiresAt
+              additionalProperties: false
+              properties:
+                expiresAt:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          description: ''
+      security:
+        - accessToken: []
+      summary: Start a short location-sharing session
+      tags:
+        - Safety
+  /safety/location-sessions/{id}/updates:
+    post:
+      operationId: SafetyController_updateLocationSession
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character location-session identifier.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - latitude
+                - longitude
+                - recordedAt
+              additionalProperties: false
+              properties:
+                latitude:
+                  type: number
+                  minimum: -90
+                  maximum: 90
+                longitude:
+                  type: number
+                  minimum: -180
+                  maximum: 180
+                recordedAt:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          description: ''
+      security:
+        - accessToken: []
+      tags:
+        - Safety
+  /safety/location-sessions/{id}:
+    delete:
+      operationId: SafetyController_revokeLocationSession
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character location-session identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      security:
+        - accessToken: []
+      tags:
+        - Safety
   /safety/pin:
     post:
       description: >-
-        Sets a 4–8 digit PIN. When a PIN already exists, currentPin is required. PINs are stored as one-way
-        hashes and never returned.
+        Sets a 4–8 digit PIN. When a PIN already exists, currentPin is required. PINs are stored as one-way hashes and
+        never returned.
       operationId: SafetyController_setSafetyPin
       parameters: []
       requestBody:
@@ -1697,9 +1929,7 @@ paths:
         - Safety
   /safety/pin/status:
     get:
-      description: >-
-        Reports whether a PIN exists and whether verification is temporarily locked. Never returns the PIN or
-        its hash.
+      description: Reports whether a PIN exists and whether verification is temporarily locked. Never returns the PIN or its hash.
       operationId: SafetyController_pinStatus
       parameters: []
       responses:
@@ -1713,8 +1943,9 @@ paths:
   /safety/sos/trigger:
     post:
       description: >-
-        Creates an SOS incident for the authenticated user. Set isTestMode=true to simulate a drill. A live
-        request can notify trusted-circle guardians; this endpoint does not replace local emergency services.
+        Creates an SOS incident for the authenticated user. Set isTestMode=true to simulate a drill. Records a
+        user-requested incident. No guardian delivery or emergency-services dispatch is claimed; this endpoint does not
+        replace local emergency services.
       operationId: SafetyController_triggerSos
       parameters: []
       requestBody:
@@ -1759,8 +1990,8 @@ paths:
   /safety/sos/cancel:
     post:
       description: >-
-        Requires the account Safety PIN. Incorrect PIN attempts are throttled; the active incident remains
-        live if verification fails.
+        Requires the account Safety PIN. Incorrect PIN attempts are throttled; the active incident remains live if
+        verification fails.
       operationId: SafetyController_cancelSos
       parameters: []
       requestBody:
@@ -1791,6 +2022,29 @@ paths:
       summary: Cancel the active SOS incident
       tags:
         - Safety
+  /safety/sos/{id}/deliveries:
+    get:
+      description: >-
+        Owner-scoped delivery evidence. Attempts are only marked sent when an approved provider confirms delivery;
+        deliveryConfirmed is false otherwise. This is not a guarantee of rescue or dispatch.
+      operationId: SafetyController_getSosDeliveries
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character SOS incident identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Recorded delivery attempts and dispatch status.
+        '404':
+          description: Incident not found for this account.
+      security:
+        - accessToken: []
+      summary: List recorded SOS delivery attempts
+      tags:
+        - Safety
   /safety/incidents:
     get:
       description: Returns up to 100 incidents belonging to the authenticated user, newest first.
@@ -1807,9 +2061,9 @@ paths:
   /health-vault/upload-intent:
     post:
       description: >-
-        Returns Cloudinary upload parameters; the mobile client uploads the file directly to uploadUrl using
-        the returned apiKey, signature, timestamp, folder, and publicId. The API secret is never exposed.
-        Requires configured storage credentials.
+        Returns Cloudinary upload parameters; the mobile client uploads the file directly to uploadUrl using the
+        returned apiKey, signature, timestamp, folder, and publicId. The API secret is never exposed. Requires
+        configured storage credentials.
       operationId: HealthVaultController_generateUploadIntent
       parameters: []
       responses:
@@ -1837,8 +2091,8 @@ paths:
         - Health vault
     post:
       description: >-
-        Call after uploading a file with a successful upload intent. Submit the Cloudinary public ID
-        returned/generated for that upload; this endpoint stores metadata and does not upload the file itself.
+        Call after uploading a file with a successful upload intent. Submit the Cloudinary public ID returned/generated
+        for that upload; this endpoint stores metadata and does not upload the file itself.
       operationId: HealthVaultController_saveDocument
       parameters: []
       requestBody:
@@ -1904,8 +2158,8 @@ paths:
   /health-vault/documents/{id}:
     get:
       description: >-
-        Returns an owner-only signed URL that expires after five minutes. Do not persist or share the URL;
-        request a new one when needed.
+        Returns an owner-only signed URL that expires after five minutes. Do not persist or share the URL; request a new
+        one when needed.
       operationId: HealthVaultController_getSignedDownloadUrl
       parameters:
         - name: id
@@ -1930,9 +2184,7 @@ paths:
       tags:
         - Health vault
     delete:
-      description: >-
-        Soft-deletes the authenticated user’s document metadata. A deleted document can no longer be
-        downloaded.
+      description: Soft-deletes the authenticated user’s document metadata. A deleted document can no longer be downloaded.
       operationId: HealthVaultController_deleteDocument
       parameters:
         - name: id
@@ -1995,8 +2247,8 @@ paths:
   /admin/users/{id}/status:
     put:
       description: >-
-        Changes a user’s account status. Requires super_admin or platform_admin; only a super_admin may modify
-        another super_admin account.
+        Changes a user’s account status. Requires super_admin or platform_admin; only a super_admin may modify another
+        super_admin account.
       operationId: AdminController_setUserStatus
       parameters:
         - name: id
@@ -2025,6 +2277,110 @@ paths:
       summary: Create or update a directory record (admin)
       tags:
         - Admin
+  /admin/clinicians:
+    get:
+      description: >-
+        Returns clinician verification state, evidence references, and review metadata. Requires super_admin or
+        platform_admin.
+      operationId: AdminController_listClinicians
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      security:
+        - accessToken: []
+      summary: List clinician verification records (admin)
+      tags:
+        - Admin
+  /admin/clinicians/{id}/verification:
+    put:
+      description: >-
+        Records an audited verification decision. Verifying requires a stored evidence reference and a linked account
+        holding the clinician role. Only verified, active clinicians appear in the user catalog.
+      operationId: AdminController_verifyClinician
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character clinician profile identifier.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - verificationStatus
+              additionalProperties: false
+              properties:
+                verificationStatus:
+                  type: string
+                  enum:
+                    - pending
+                    - verified
+                    - rejected
+                evidenceRef:
+                  type: string
+                  maxLength: 300
+                  description: Reference to stored verification evidence; required to verify.
+                note:
+                  type: string
+                  maxLength: 500
+                active:
+                  type: boolean
+                  description: Defaults to true when verified, false otherwise.
+      responses:
+        '200':
+          description: Verification decision recorded and audited.
+        '400':
+          description: Missing evidence reference.
+        '404':
+          description: Clinician profile not found.
+        '422':
+          description: Linked account is missing or lacks the clinician role.
+      security:
+        - accessToken: []
+      summary: Review a clinician verification (admin)
+      tags:
+        - Admin
+  /admin/consultations:
+    post:
+      description: >-
+        Creates a membership-scoped care relationship between an active patient and a verified, active clinician. This
+        is not a booking, payment, or confirmed appointment.
+      operationId: AdminController_createConsultation
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - patientUserId
+                - clinicianId
+              additionalProperties: false
+              properties:
+                patientUserId:
+                  type: string
+                  pattern: ^[0-9a-fA-F]{24}$
+                clinicianId:
+                  type: string
+                  pattern: ^[0-9a-fA-F]{24}$
+      responses:
+        '201':
+          description: Consultation recorded; booking and payment are not confirmed.
+        '404':
+          description: Patient account or verified clinician not found.
+        '409':
+          description: An open consultation already exists.
+      security:
+        - accessToken: []
+      summary: Record a patient–clinician consultation (admin)
+      tags:
+        - Admin
   /admin/audit-logs:
     get:
       description: Returns the latest audit records. Requires super_admin or compliance_officer role.
@@ -2041,8 +2397,8 @@ paths:
   /waitlist:
     post:
       description: >-
-        Public, rate-limited signup (10 requests per minute per IP). Duplicate emails receive the same
-        response shape as new signups to prevent account enumeration.
+        Public, rate-limited signup (10 requests per minute per IP). Duplicate emails receive the same response shape as
+        new signups to prevent account enumeration.
       operationId: WaitlistController_join
       parameters: []
       requestBody:
@@ -2094,8 +2450,8 @@ paths:
   /waitlist/entries:
     get:
       description: >-
-        Privileged operational endpoint for paginated waitlist entries. Requires a bearer token with
-        super_admin or platform_admin role; not intended for mobile clients.
+        Privileged operational endpoint for paginated waitlist entries. Requires a bearer token with super_admin or
+        platform_admin role; not intended for mobile clients.
       operationId: WaitlistController_list
       parameters:
         - name: page
@@ -2125,9 +2481,9 @@ paths:
   /waitlist/preview:
     get:
       description: >-
-        Development preview returning HTML by default or JSON with format=json. In production requires the
-        private X-List-Key header. Use the role-protected /waitlist/entries API for normal admin access; this
-        route is not for mobile clients.
+        Development preview returning HTML by default or JSON with format=json. In production requires the private
+        X-List-Key header. Use the role-protected /waitlist/entries API for normal admin access; this route is not for
+        mobile clients.
       operationId: WaitlistController_preview
       parameters:
         - name: format
@@ -2155,8 +2511,8 @@ paths:
   /health:
     get:
       description: >-
-        Lightweight liveness probe. A successful response confirms the HTTP service is running; it does not
-        guarantee downstream dependencies are healthy.
+        Lightweight liveness probe. A successful response confirms the HTTP service is running; it does not guarantee
+        downstream dependencies are healthy.
       operationId: HealthController_health
       parameters: []
       responses:
@@ -2174,6 +2530,525 @@ paths:
       summary: Check API liveness
       tags:
         - Health
+  /home:
+    get:
+      description: >-
+        Aggregates persisted current-cycle, pregnancy, and recent-log state. Dates and predictions are estimates, not
+        medical advice.
+      operationId: HomeController_getHome
+      parameters: []
+      responses:
+        '200':
+          description: Persisted home summary for the bearer-token owner.
+      security:
+        - accessToken: []
+      summary: Get authenticated-user home summary
+      tags:
+        - Home
+  /daily-logs:
+    get:
+      description: >-
+        Returns only the authenticated user’s logs, ordered by local calendar date. Free-text notes are omitted from
+        this calendar response.
+      operationId: HomeController_getCalendar
+      parameters:
+        - name: to
+          required: true
+          in: query
+          description: Inclusive local calendar date (YYYY-MM-DD); range maximum 93 days.
+          schema: {}
+        - name: from
+          required: true
+          in: query
+          description: Inclusive local calendar date (YYYY-MM-DD).
+          schema: {}
+      responses:
+        '200':
+          description: Calendar log entries; notes are omitted.
+      security:
+        - accessToken: []
+      summary: List daily logs for a calendar range
+      tags:
+        - Home
+  /care/clinicians:
+    get:
+      description: Unverified or inactive clinicians are never exposed in the user catalog.
+      operationId: CareController_listClinicians
+      parameters: []
+      responses:
+        '200':
+          description: Verified clinician catalog.
+      summary: List active verified specialists
+      tags:
+        - Care
+  /care/availability:
+    get:
+      description: Only slots owned by active verified clinicians are returned. Expired holds are treated as open.
+      operationId: CareController_listAvailability
+      parameters: []
+      responses:
+        '200':
+          description: Verified specialist availability.
+      summary: List available specialist slots
+      tags:
+        - Care
+    post:
+      description: Only a verified clinician may publish future availability. No price or booking entitlement is created.
+      operationId: CareController_createAvailability
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - startsAt
+                - endsAt
+                - sessionType
+              additionalProperties: false
+              properties:
+                startsAt:
+                  type: string
+                  format: date-time
+                endsAt:
+                  type: string
+                  format: date-time
+                sessionType:
+                  type: string
+                  enum:
+                    - clinic
+                    - audio
+                    - video
+                    - text
+      responses:
+        '201':
+          description: Availability slot published.
+        '403':
+          description: Active verified clinician profile required.
+      security:
+        - accessToken: []
+      summary: Publish a clinician availability slot
+      tags:
+        - Care
+  /care/holds:
+    get:
+      description: Returns only non-expired holds owned by the authenticated user. Holds do not confirm appointments or payments.
+      operationId: CareController_listMyHolds
+      parameters: []
+      responses:
+        '200':
+          description: Active temporary holds.
+      security:
+        - accessToken: []
+      summary: List the caller’s active temporary holds
+      tags:
+        - Care
+    post:
+      description: Atomically holds one slot for 10 minutes. This is not a booking, payment, or confirmed appointment.
+      operationId: CareController_holdSlot
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - slotId
+              additionalProperties: false
+              properties:
+                slotId:
+                  type: string
+                  pattern: ^[0-9a-fA-F]{24}$
+      responses:
+        '201':
+          description: Temporary hold created; no booking or payment confirmed.
+        '409':
+          description: Slot has already been held or booked.
+      security:
+        - accessToken: []
+      summary: Create a temporary slot hold
+      tags:
+        - Care
+  /care/holds/{id}:
+    delete:
+      description: Only the hold owner can release it. Confirmed booking cancellation is not implemented.
+      operationId: CareController_cancelHold
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character booking hold identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Temporary hold cancelled.
+        '404':
+          description: Active hold not found for this account.
+      security:
+        - accessToken: []
+      summary: Cancel a temporary hold
+      tags:
+        - Care
+  /consultations:
+    get:
+      description: >-
+        Returns only consultations where the authenticated user is a participant. A consultation records a care
+        relationship; it is not proof of payment or a confirmed appointment.
+      operationId: CommunicationsController_listConsultations
+      parameters: []
+      responses:
+        '200':
+          description: Participant-scoped consultations and next cursor.
+      security:
+        - accessToken: []
+      summary: List the caller’s consultations
+      tags:
+        - Communications
+  /consultations/{id}/messages:
+    get:
+      description: >-
+        Participant-only. Message text is decrypted per request and never stored in plaintext. Fetching marks
+        counterpart messages delivered; read state requires an explicit acknowledgement.
+      operationId: CommunicationsController_listMessages
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character consultation identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Newest-first message page and next cursor.
+        '404':
+          description: Consultation not found for this account.
+      security:
+        - accessToken: []
+      summary: List encrypted consultation messages
+      tags:
+        - Communications
+    post:
+      description: >-
+        Participant-only. The body is encrypted before storage. This API records a message; it does not promise a
+        clinician response time or emergency coverage.
+      operationId: CommunicationsController_postMessage
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character consultation identifier.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body
+              additionalProperties: false
+              properties:
+                body:
+                  type: string
+                  minLength: 1
+                  maxLength: 4000
+                  description: Plaintext message body; encrypted with AES-256-GCM at rest.
+      responses:
+        '201':
+          description: Message stored encrypted and returned decrypted to the sender.
+        '404':
+          description: Consultation not found for this account.
+        '409':
+          description: Consultation is closed.
+        '503':
+          description: Message encryption is not configured.
+      security:
+        - accessToken: []
+      summary: Send an encrypted consultation message
+      tags:
+        - Communications
+  /consultations/{id}/read:
+    post:
+      description: Participant-only, client-evidenced read acknowledgement for messages sent by the other participant.
+      operationId: CommunicationsController_acknowledgeMessages
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character consultation identifier.
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Number of messages marked read.
+        '404':
+          description: Consultation not found for this account.
+      security:
+        - accessToken: []
+      summary: Acknowledge consultation messages as read
+      tags:
+        - Communications
+  /devices:
+    get:
+      description: Returns only the authenticated account’s devices. Provider tokens and token hashes are never returned.
+      operationId: CommunicationsController_listDevices
+      parameters: []
+      responses:
+        '200':
+          description: Owner-scoped device metadata without tokens.
+      security:
+        - accessToken: []
+      summary: List registered notification devices
+      tags:
+        - Communications
+    post:
+      description: >-
+        Stores a one-way hash of the provider token against the authenticated account. Registration does not confirm
+        push delivery.
+      operationId: CommunicationsController_registerDevice
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - platform
+                - token
+              additionalProperties: false
+              properties:
+                platform:
+                  type: string
+                  enum:
+                    - ios
+                    - android
+                    - web
+                token:
+                  type: string
+                  minLength: 16
+                  maxLength: 4096
+                  description: Provider push token; stored only as a hash.
+                deviceName:
+                  type: string
+                  maxLength: 80
+      responses:
+        '201':
+          description: Device registered; token is not returned.
+        '409':
+          description: Token already belongs to another account.
+      security:
+        - accessToken: []
+      summary: Register a notification device
+      tags:
+        - Communications
+  /devices/{id}:
+    delete:
+      description: Owner-only revocation. Future notifications must not target the revoked device.
+      operationId: CommunicationsController_revokeDevice
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character device identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Device revoked.
+        '404':
+          description: Active device not found for this account.
+      security:
+        - accessToken: []
+      summary: Revoke a notification device
+      tags:
+        - Communications
+  /notifications:
+    get:
+      description: Returns owner-scoped notifications. Discreet mode replaces sensitive subject/body text with neutral copy.
+      operationId: CommunicationsController_inbox
+      parameters: []
+      responses:
+        '200':
+          description: Notification page and next cursor.
+      security:
+        - accessToken: []
+      summary: List private in-app notifications
+      tags:
+        - Communications
+  /notifications/{id}/read:
+    patch:
+      description: Only the notification owner can update read state.
+      operationId: CommunicationsController_markRead
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character notification identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Notification marked read.
+        '404':
+          description: Notification not found for this account.
+      security:
+        - accessToken: []
+      summary: Mark a private notification as read
+      tags:
+        - Communications
+  /notification-preferences:
+    get:
+      description: Returns the authenticated user’s notification channels and discreet-mode setting.
+      operationId: CommunicationsController_getPreferences
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      security:
+        - accessToken: []
+      summary: Get notification preferences
+      tags:
+        - Communications
+    patch:
+      description: >-
+        Changes only the authenticated user’s preferences. Critical safety delivery remains subject to separately
+        approved policy.
+      operationId: CommunicationsController_updatePreferences
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                inAppEnabled:
+                  type: boolean
+                emailEnabled:
+                  type: boolean
+                smsEnabled:
+                  type: boolean
+                discreetMode:
+                  type: boolean
+                disabledCategories:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: string
+                    enum:
+                      - REMINDER
+                      - SUPPORT
+                      - SAFETY
+                      - SYSTEM
+      responses:
+        '200':
+          description: Preferences saved.
+      security:
+        - accessToken: []
+      summary: Update notification preferences
+      tags:
+        - Communications
+  /health-shares:
+    post:
+      description: >-
+        Requires current health-sharing consent and an existing recipient account. The owner chooses the scopes and
+        evidence range; free-text notes are never included. Only a redacted snapshot within the chosen range is shared,
+        and the share expires automatically.
+      operationId: CommunicationsController_createHealthShare
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - recipientUserId
+                - scopes
+                - from
+                - to
+                - expiresAt
+              additionalProperties: false
+              properties:
+                recipientUserId:
+                  type: string
+                  pattern: ^[0-9a-fA-F]{24}$
+                scopes:
+                  type: array
+                  minItems: 1
+                  maxItems: 3
+                  items:
+                    type: string
+                    enum:
+                      - cycles
+                      - daily_logs
+                      - pregnancy
+                from:
+                  type: string
+                  format: date
+                to:
+                  type: string
+                  format: date
+                expiresAt:
+                  type: string
+                  format: date-time
+                  description: Maximum 30 days from now.
+      responses:
+        '201':
+          description: Share created with scope, evidence range, and expiry.
+        '400':
+          description: Invalid scopes, range, or expiry.
+        '404':
+          description: Current health-sharing consent or recipient account is missing.
+      security:
+        - accessToken: []
+      summary: Create an expiring health-data share
+      tags:
+        - Communications
+  /health-shares/received:
+    get:
+      description: >-
+        Returns only shares addressed to the authenticated recipient that are neither expired nor revoked. The owner
+        identity is returned as an opaque account identifier.
+      operationId: CommunicationsController_getReceivedShares
+      parameters: []
+      responses:
+        '200':
+          description: Received, active shares.
+      security:
+        - accessToken: []
+      summary: List unexpired shares received by the caller
+      tags:
+        - Communications
+  /health-shares/{id}:
+    delete:
+      description: >-
+        Only the sharing owner can revoke. Revocation takes effect immediately and the recipient can no longer read the
+        snapshot.
+      operationId: CommunicationsController_revokeHealthShare
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character health-share identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Share revoked.
+        '404':
+          description: Active share not found for this owner.
+      security:
+        - accessToken: []
+      summary: Revoke a health share
+      tags:
+        - Communications
 info:
   title: Obiren API
   description: >-
@@ -2184,40 +3059,37 @@ info:
 
     ## Mobile authentication flow
 
-    1. Create an account with `POST /auth/register`, then verify the email address with `POST
-    /auth/verify-email`.
+    1. Create an account with `POST /auth/register`, then verify the email address with `POST /auth/verify-email`.
 
-    2. Sign in with `POST /auth/login` and `platform: ios` or `android`. Store the short-lived access token
-    securely.
+    2. Sign in with `POST /auth/login` and `platform: ios` or `android`. Store the short-lived access token securely.
 
-    3. Send protected requests with `Authorization: Bearer <accessToken>`. Access tokens expire after 15
-    minutes.
+    3. Send protected requests with `Authorization: Bearer <accessToken>`. Access tokens expire after 15 minutes.
 
-    4. Renew with `POST /auth/refresh` using the refresh token in the JSON body (mobile clients) or the
-    `obiren_refresh` cookie (browser clients). Refresh tokens rotate; replace the stored token after each
-    successful refresh. Lifetime: 30 days.
+    4. Renew with `POST /auth/refresh` using the refresh token in the JSON body (mobile clients) or the `obiren_refresh`
+    cookie (browser clients). Refresh tokens rotate; replace the stored token after each successful refresh. Lifetime:
+    30 days.
 
     5. Revoke the session with `POST /auth/logout` when signing out.
 
 
     ## Conventions
 
-    - Request and response bodies use JSON unless an endpoint explicitly says otherwise. Unknown request
-    fields are rejected.
+    - Request and response bodies use JSON unless an endpoint explicitly says otherwise. Unknown request fields are
+    rejected.
 
     - Calendar dates use `YYYY-MM-DD`; timestamps are ISO 8601.
 
-    - Successful responses generally use `{ success, data, meta }`; `meta.requestId` can be used for support
-    and troubleshooting. Some simple endpoints return a smaller success object.
+    - Successful responses generally use `{ success, data, meta }`; `meta.requestId` can be used for support and
+    troubleshooting. Some simple endpoints return a smaller success object.
 
-    - Errors use an appropriate HTTP status. Validation errors include `message` and `statusCode`; domain
-    errors may additionally include a stable `error.code`.
+    - Errors use an appropriate HTTP status. Validation errors include `message` and `statusCode`; domain errors may
+    additionally include a stable `error.code`.
 
-    - Protected operations require the access-token bearer scheme. Refresh-token cookies are `HttpOnly` and
-    are intended for browser clients; native clients should send the refresh token in the request body.
+    - Protected operations require the access-token bearer scheme. Refresh-token cookies are `HttpOnly` and are intended
+    for browser clients; native clients should send the refresh token in the request body.
 
-    - `Admin`, `Notifications and webhooks`, and internal cron operations are operational integrations, not
-    ordinary mobile-client endpoints.
+    - `Admin`, `Notifications and webhooks`, and internal cron operations are operational integrations, not ordinary
+    mobile-client endpoints.
   version: 1.0.0
   contact: {}
 tags:
@@ -2226,9 +3098,7 @@ tags:
   - name: Users
     description: The authenticated user profile and personal-data lifecycle.
   - name: Cycles
-    description: >-
-      Authenticated menstrual-cycle tracking and cycle history. Predictions are estimates, not contraception
-      advice.
+    description: Authenticated menstrual-cycle tracking and cycle history. Predictions are estimates, not contraception advice.
   - name: Daily logs
     description: Date-keyed daily cycle symptoms and observations.
   - name: Pregnancy

@@ -738,6 +738,27 @@
         ]
       }
     },
+    "/users/me/privacy-jobs": {
+      "get": {
+        "description": "Lists only privacy jobs belonging to the authenticated account. Deletion job execution is operator-managed and is not proof of completed erasure.",
+        "operationId": "UsersController_getPrivacyJobs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Owner-scoped privacy job records."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List personal-data export and deletion requests",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
     "/users/me/export": {
       "get": {
         "description": "Returns the authenticated user’s available account and profile data in a portable JSON representation.",
@@ -2248,7 +2269,16 @@
       "post": {
         "description": "Provider-to-server status callback. Configure Twilio to send MessageSid and MessageStatus form fields. Not a mobile-client operation.",
         "operationId": "NotificationsController_handleTwilioStatus",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "x-twilio-signature",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": "Provider status accepted and mapped to the internal delivery state."
@@ -2300,6 +2330,339 @@
         "summary": "Process pending notification outbox (internal)",
         "tags": [
           "Notifications and webhooks"
+        ]
+      }
+    },
+    "/safety/guardians": {
+      "get": {
+        "description": "Returns only the authenticated owner’s non-revoked guardian contacts. Pending contacts are not used for SOS alerts.",
+        "operationId": "SafetyController_listGuardians",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Owner-scoped guardian contact list."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List trusted contacts",
+        "tags": [
+          "Safety"
+        ]
+      },
+      "post": {
+        "description": "Creates an invitation record. No invitation is sent and no identity verification is claimed until an approved delivery and verification flow is configured.",
+        "operationId": "SafetyController_createGuardian",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "phoneE164",
+                  "scopes"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "phoneE164": {
+                    "type": "string",
+                    "pattern": "^\\\\+[1-9]\\\\d{7,14}$"
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 2,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "sos_alert",
+                        "check_in"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pending guardian contact; external invitation delivery is disabled."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Add a pending trusted contact",
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
+    "/safety/guardians/accept": {
+      "post": {
+        "description": "Token is single-use and hashed at rest. Acceptance does not verify the invitee’s identity; independent verification is still required.",
+        "operationId": "SafetyController_acceptGuardian",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 32,
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Invitation accepted pending identity verification."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Accept a guardian invitation",
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
+    "/safety/guardians/{id}": {
+      "delete": {
+        "description": "Owner-only revocation immediately removes the contact from future SOS recipient selection.",
+        "operationId": "SafetyController_revokeGuardian",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character guardian contact identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Guardian contact revoked."
+          },
+          "404": {
+            "description": "Guardian contact not found for this owner."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Revoke a trusted contact",
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
+    "/safety/check-ins": {
+      "post": {
+        "description": "Records a private, owner-scoped check-in reminder. It does not contact emergency services or guardians.",
+        "operationId": "SafetyController_createQuietCheckIn",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "checkInAt",
+                  "expiresAt"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "checkInAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "expiresAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Maximum 24 hours after checkInAt."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Create a quiet safety check-in",
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
+    "/safety/location-sessions": {
+      "post": {
+        "description": "Requires current location-sharing consent; session expires within one hour and does not dispatch SOS.",
+        "operationId": "SafetyController_startLocationSession",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expiresAt"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "expiresAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Start a short location-sharing session",
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
+    "/safety/location-sessions/{id}/updates": {
+      "post": {
+        "operationId": "SafetyController_updateLocationSession",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character location-session identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "latitude",
+                  "longitude",
+                  "recordedAt"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "latitude": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  },
+                  "longitude": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180
+                  },
+                  "recordedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
+    "/safety/location-sessions/{id}": {
+      "delete": {
+        "operationId": "SafetyController_revokeLocationSession",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character location-session identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "tags": [
+          "Safety"
         ]
       }
     },
@@ -2429,7 +2792,7 @@
     },
     "/safety/sos/trigger": {
       "post": {
-        "description": "Creates an SOS incident for the authenticated user. Set isTestMode=true to simulate a drill. A live request can notify trusted-circle guardians; this endpoint does not replace local emergency services.",
+        "description": "Creates an SOS incident for the authenticated user. Set isTestMode=true to simulate a drill. Records a user-requested incident. No guardian delivery or emergency-services dispatch is claimed; this endpoint does not replace local emergency services.",
         "operationId": "SafetyController_triggerSos",
         "parameters": [],
         "requestBody": {
@@ -2539,6 +2902,40 @@
           }
         ],
         "summary": "Cancel the active SOS incident",
+        "tags": [
+          "Safety"
+        ]
+      }
+    },
+    "/safety/sos/{id}/deliveries": {
+      "get": {
+        "description": "Owner-scoped delivery evidence. Attempts are only marked sent when an approved provider confirms delivery; deliveryConfirmed is false otherwise. This is not a guarantee of rescue or dispatch.",
+        "operationId": "SafetyController_getSosDeliveries",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character SOS incident identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorded delivery attempts and dispatch status."
+          },
+          "404": {
+            "description": "Incident not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List recorded SOS delivery attempts",
         "tags": [
           "Safety"
         ]
@@ -2884,6 +3281,156 @@
         ]
       }
     },
+    "/admin/clinicians": {
+      "get": {
+        "description": "Returns clinician verification state, evidence references, and review metadata. Requires super_admin or platform_admin.",
+        "operationId": "AdminController_listClinicians",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List clinician verification records (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/clinicians/{id}/verification": {
+      "put": {
+        "description": "Records an audited verification decision. Verifying requires a stored evidence reference and a linked account holding the clinician role. Only verified, active clinicians appear in the user catalog.",
+        "operationId": "AdminController_verifyClinician",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character clinician profile identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "verificationStatus"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "verificationStatus": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "verified",
+                      "rejected"
+                    ]
+                  },
+                  "evidenceRef": {
+                    "type": "string",
+                    "maxLength": 300,
+                    "description": "Reference to stored verification evidence; required to verify."
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "active": {
+                    "type": "boolean",
+                    "description": "Defaults to true when verified, false otherwise."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verification decision recorded and audited."
+          },
+          "400": {
+            "description": "Missing evidence reference."
+          },
+          "404": {
+            "description": "Clinician profile not found."
+          },
+          "422": {
+            "description": "Linked account is missing or lacks the clinician role."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Review a clinician verification (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/consultations": {
+      "post": {
+        "description": "Creates a membership-scoped care relationship between an active patient and a verified, active clinician. This is not a booking, payment, or confirmed appointment.",
+        "operationId": "AdminController_createConsultation",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "patientUserId",
+                  "clinicianId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "patientUserId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{24}$"
+                  },
+                  "clinicianId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{24}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Consultation recorded; booking and payment are not confirmed."
+          },
+          "404": {
+            "description": "Patient account or verified clinician not found."
+          },
+          "409": {
+            "description": "An open consultation already exists."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Record a patient–clinician consultation (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
     "/admin/audit-logs": {
       "get": {
         "description": "Returns the latest audit records. Requires super_admin or compliance_officer role.",
@@ -3089,6 +3636,775 @@
         "summary": "Check API liveness",
         "tags": [
           "Health"
+        ]
+      }
+    },
+    "/home": {
+      "get": {
+        "description": "Aggregates persisted current-cycle, pregnancy, and recent-log state. Dates and predictions are estimates, not medical advice.",
+        "operationId": "HomeController_getHome",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Persisted home summary for the bearer-token owner."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get authenticated-user home summary",
+        "tags": [
+          "Home"
+        ]
+      }
+    },
+    "/daily-logs": {
+      "get": {
+        "description": "Returns only the authenticated user’s logs, ordered by local calendar date. Free-text notes are omitted from this calendar response.",
+        "operationId": "HomeController_getCalendar",
+        "parameters": [
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "description": "Inclusive local calendar date (YYYY-MM-DD); range maximum 93 days.",
+            "schema": {}
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "description": "Inclusive local calendar date (YYYY-MM-DD).",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Calendar log entries; notes are omitted."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List daily logs for a calendar range",
+        "tags": [
+          "Home"
+        ]
+      }
+    },
+    "/care/clinicians": {
+      "get": {
+        "description": "Unverified or inactive clinicians are never exposed in the user catalog.",
+        "operationId": "CareController_listClinicians",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Verified clinician catalog."
+          }
+        },
+        "summary": "List active verified specialists",
+        "tags": [
+          "Care"
+        ]
+      }
+    },
+    "/care/availability": {
+      "get": {
+        "description": "Only slots owned by active verified clinicians are returned. Expired holds are treated as open.",
+        "operationId": "CareController_listAvailability",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Verified specialist availability."
+          }
+        },
+        "summary": "List available specialist slots",
+        "tags": [
+          "Care"
+        ]
+      },
+      "post": {
+        "description": "Only a verified clinician may publish future availability. No price or booking entitlement is created.",
+        "operationId": "CareController_createAvailability",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "startsAt",
+                  "endsAt",
+                  "sessionType"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "startsAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "endsAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "sessionType": {
+                    "type": "string",
+                    "enum": [
+                      "clinic",
+                      "audio",
+                      "video",
+                      "text"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Availability slot published."
+          },
+          "403": {
+            "description": "Active verified clinician profile required."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Publish a clinician availability slot",
+        "tags": [
+          "Care"
+        ]
+      }
+    },
+    "/care/holds": {
+      "get": {
+        "description": "Returns only non-expired holds owned by the authenticated user. Holds do not confirm appointments or payments.",
+        "operationId": "CareController_listMyHolds",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Active temporary holds."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List the caller’s active temporary holds",
+        "tags": [
+          "Care"
+        ]
+      },
+      "post": {
+        "description": "Atomically holds one slot for 10 minutes. This is not a booking, payment, or confirmed appointment.",
+        "operationId": "CareController_holdSlot",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "slotId"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "slotId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{24}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Temporary hold created; no booking or payment confirmed."
+          },
+          "409": {
+            "description": "Slot has already been held or booked."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Create a temporary slot hold",
+        "tags": [
+          "Care"
+        ]
+      }
+    },
+    "/care/holds/{id}": {
+      "delete": {
+        "description": "Only the hold owner can release it. Confirmed booking cancellation is not implemented.",
+        "operationId": "CareController_cancelHold",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character booking hold identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Temporary hold cancelled."
+          },
+          "404": {
+            "description": "Active hold not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Cancel a temporary hold",
+        "tags": [
+          "Care"
+        ]
+      }
+    },
+    "/consultations": {
+      "get": {
+        "description": "Returns only consultations where the authenticated user is a participant. A consultation records a care relationship; it is not proof of payment or a confirmed appointment.",
+        "operationId": "CommunicationsController_listConsultations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Participant-scoped consultations and next cursor."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List the caller’s consultations",
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/consultations/{id}/messages": {
+      "get": {
+        "description": "Participant-only. Message text is decrypted per request and never stored in plaintext. Fetching marks counterpart messages delivered; read state requires an explicit acknowledgement.",
+        "operationId": "CommunicationsController_listMessages",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character consultation identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest-first message page and next cursor."
+          },
+          "404": {
+            "description": "Consultation not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List encrypted consultation messages",
+        "tags": [
+          "Communications"
+        ]
+      },
+      "post": {
+        "description": "Participant-only. The body is encrypted before storage. This API records a message; it does not promise a clinician response time or emergency coverage.",
+        "operationId": "CommunicationsController_postMessage",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character consultation identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "description": "Plaintext message body; encrypted with AES-256-GCM at rest."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Message stored encrypted and returned decrypted to the sender."
+          },
+          "404": {
+            "description": "Consultation not found for this account."
+          },
+          "409": {
+            "description": "Consultation is closed."
+          },
+          "503": {
+            "description": "Message encryption is not configured."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Send an encrypted consultation message",
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/consultations/{id}/read": {
+      "post": {
+        "description": "Participant-only, client-evidenced read acknowledgement for messages sent by the other participant.",
+        "operationId": "CommunicationsController_acknowledgeMessages",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character consultation identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Number of messages marked read."
+          },
+          "404": {
+            "description": "Consultation not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Acknowledge consultation messages as read",
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/devices": {
+      "get": {
+        "description": "Returns only the authenticated account’s devices. Provider tokens and token hashes are never returned.",
+        "operationId": "CommunicationsController_listDevices",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Owner-scoped device metadata without tokens."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List registered notification devices",
+        "tags": [
+          "Communications"
+        ]
+      },
+      "post": {
+        "description": "Stores a one-way hash of the provider token against the authenticated account. Registration does not confirm push delivery.",
+        "operationId": "CommunicationsController_registerDevice",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "platform",
+                  "token"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "platform": {
+                    "type": "string",
+                    "enum": [
+                      "ios",
+                      "android",
+                      "web"
+                    ]
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 4096,
+                    "description": "Provider push token; stored only as a hash."
+                  },
+                  "deviceName": {
+                    "type": "string",
+                    "maxLength": 80
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Device registered; token is not returned."
+          },
+          "409": {
+            "description": "Token already belongs to another account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Register a notification device",
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/devices/{id}": {
+      "delete": {
+        "description": "Owner-only revocation. Future notifications must not target the revoked device.",
+        "operationId": "CommunicationsController_revokeDevice",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character device identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Device revoked."
+          },
+          "404": {
+            "description": "Active device not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Revoke a notification device",
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/notifications": {
+      "get": {
+        "description": "Returns owner-scoped notifications. Discreet mode replaces sensitive subject/body text with neutral copy.",
+        "operationId": "CommunicationsController_inbox",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Notification page and next cursor."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List private in-app notifications",
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/notifications/{id}/read": {
+      "patch": {
+        "description": "Only the notification owner can update read state.",
+        "operationId": "CommunicationsController_markRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character notification identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notification marked read."
+          },
+          "404": {
+            "description": "Notification not found for this account."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Mark a private notification as read",
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/notification-preferences": {
+      "get": {
+        "description": "Returns the authenticated user’s notification channels and discreet-mode setting.",
+        "operationId": "CommunicationsController_getPreferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Get notification preferences",
+        "tags": [
+          "Communications"
+        ]
+      },
+      "patch": {
+        "description": "Changes only the authenticated user’s preferences. Critical safety delivery remains subject to separately approved policy.",
+        "operationId": "CommunicationsController_updatePreferences",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "inAppEnabled": {
+                    "type": "boolean"
+                  },
+                  "emailEnabled": {
+                    "type": "boolean"
+                  },
+                  "smsEnabled": {
+                    "type": "boolean"
+                  },
+                  "discreetMode": {
+                    "type": "boolean"
+                  },
+                  "disabledCategories": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "REMINDER",
+                        "SUPPORT",
+                        "SAFETY",
+                        "SYSTEM"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preferences saved."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Update notification preferences",
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/health-shares": {
+      "post": {
+        "description": "Requires current health-sharing consent and an existing recipient account. The owner chooses the scopes and evidence range; free-text notes are never included. Only a redacted snapshot within the chosen range is shared, and the share expires automatically.",
+        "operationId": "CommunicationsController_createHealthShare",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "recipientUserId",
+                  "scopes",
+                  "from",
+                  "to",
+                  "expiresAt"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "recipientUserId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{24}$"
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "cycles",
+                        "daily_logs",
+                        "pregnancy"
+                      ]
+                    }
+                  },
+                  "from": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "to": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "expiresAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Maximum 30 days from now."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Share created with scope, evidence range, and expiry."
+          },
+          "400": {
+            "description": "Invalid scopes, range, or expiry."
+          },
+          "404": {
+            "description": "Current health-sharing consent or recipient account is missing."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Create an expiring health-data share",
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/health-shares/received": {
+      "get": {
+        "description": "Returns only shares addressed to the authenticated recipient that are neither expired nor revoked. The owner identity is returned as an opaque account identifier.",
+        "operationId": "CommunicationsController_getReceivedShares",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Received, active shares."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List unexpired shares received by the caller",
+        "tags": [
+          "Communications"
+        ]
+      }
+    },
+    "/health-shares/{id}": {
+      "delete": {
+        "description": "Only the sharing owner can revoke. Revocation takes effect immediately and the recipient can no longer read the snapshot.",
+        "operationId": "CommunicationsController_revokeHealthShare",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character health-share identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Share revoked."
+          },
+          "404": {
+            "description": "Active share not found for this owner."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Revoke a health share",
+        "tags": [
+          "Communications"
         ]
       }
     }

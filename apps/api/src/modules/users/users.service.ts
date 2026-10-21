@@ -4,6 +4,16 @@ import { Model, Types } from 'mongoose';
 import { User, UserDocument, UserProfile, UserProfileDocument } from '../../database/schemas/user.schema';
 import { Onboarding, OnboardingDocument } from '../../database/schemas/onboarding.schema';
 import { Cycle, CycleDocument } from '../../database/schemas/cycle.schema';
+import { PrivacyJob, PrivacyJobDocument } from '../../database/schemas/privacy-job.schema';
+import { Session, SessionDocument } from '../../database/schemas/session.schema';
+import { DailyLog, DailyLogDocument } from '../../database/schemas/cycle.schema';
+import { Pregnancy, PregnancyDocument, PregnancyLog, PregnancyLogDocument } from '../../database/schemas/pregnancy.schema';
+import { ConsentEvent, ConsentDocument } from '../../database/schemas/consent.schema';
+import { NotificationOutbox, NotificationOutboxDocument } from '../../database/schemas/notification.schema';
+import { HealthVaultDoc, HealthVaultDocDocument } from '../../database/schemas/health-vault.schema';
+import { SafetyIncident, SafetyIncidentDocument, GuardianContact, GuardianContactDocument } from '../../database/schemas/safety.schema';
+import { Consultation, ConsultationDocument, Device, DeviceDocument, Message, MessageDocument } from '../../database/schemas/communications.schema';
+import { decryptHealthNote } from '../../common/crypto/health-data-crypto';
 
 @Injectable()
 export class UsersService {
@@ -12,6 +22,19 @@ export class UsersService {
     @InjectModel(UserProfile.name) private userProfileModel: Model<UserProfileDocument>,
     @InjectModel(Onboarding.name) private onboardingModel: Model<OnboardingDocument>,
     @InjectModel(Cycle.name) private cycleModel: Model<CycleDocument>,
+    @InjectModel(PrivacyJob.name) private privacyJobModel: Model<PrivacyJobDocument>,
+    @InjectModel(Session.name) private sessionModel: Model<SessionDocument>,
+    @InjectModel(DailyLog.name) private dailyLogModel: Model<DailyLogDocument>,
+    @InjectModel(Pregnancy.name) private pregnancyModel: Model<PregnancyDocument>,
+    @InjectModel(PregnancyLog.name) private pregnancyLogModel: Model<PregnancyLogDocument>,
+    @InjectModel(ConsentEvent.name) private consentModel: Model<ConsentDocument>,
+    @InjectModel(NotificationOutbox.name) private notificationModel: Model<NotificationOutboxDocument>,
+    @InjectModel(HealthVaultDoc.name) private vaultModel: Model<HealthVaultDocDocument>,
+    @InjectModel(SafetyIncident.name) private incidentModel: Model<SafetyIncidentDocument>,
+    @InjectModel(GuardianContact.name) private guardianModel: Model<GuardianContactDocument>,
+    @InjectModel(Consultation.name) private consultationModel: Model<ConsultationDocument>,
+    @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
+    @InjectModel(Device.name) private deviceModel: Model<DeviceDocument>,
   ) {}
 
   async getProfile(userId: string) {
@@ -138,67 +161,60 @@ export class UsersService {
   }
 
   async exportUserData(userId: string) {
-    const user = await this.userModel.findById(userId);
-    const profile = await this.userProfileModel.findOne({ userId: new Types.ObjectId(userId) });
-
-    return {
-      success: true,
-      data: {
-        exportVersion: '1.0',
-        complianceFramework: 'NDPR / GDPR Article 20',
-        user: {
-          id: user?._id,
-          email: user?.email,
-          countryCode: user?.countryCode,
-          status: user?.status,
-        },
-        profile,
-        exportedAt: new Date().toISOString(),
-      },
-      meta: { requestId: `req_${Date.now()}` },
-    };
+    const id = new Types.ObjectId(userId);
+    const [user, profile, onboarding, cycles, dailyLogs, pregnancies, pregnancyLogs, consents, notifications, vaultDocuments, safetyIncidents, guardians, sessions, consultations, devices] = await Promise.all([
+      this.userModel.findById(id).select('-passwordHash -emailVerificationTokenHash -passwordResetTokenHash').lean().exec(),
+      this.userProfileModel.findOne({ userId: id }).lean().exec(),
+      this.onboardingModel.findOne({ userId: id }).lean().exec(),
+      this.cycleModel.find({ userId: id }).lean().exec(),
+      this.dailyLogModel.find({ userId: id }).lean().exec(),
+      this.pregnancyModel.find({ userId: id }).lean().exec(),
+      this.pregnancyLogModel.find({ userId: id }).lean().exec(),
+      this.consentModel.find({ userId: id }).lean().exec(),
+      this.notificationModel.find({ userId: id }).select('-templateData').lean().exec(),
+      this.vaultModel.find({ userId: id }).lean().exec(),
+      this.incidentModel.find({ userId: id }).lean().exec(),
+      this.guardianModel.find({ ownerUserId: id }).lean().exec(),
+      this.sessionModel.find({ userId: id }).select('platform createdAt lastUsedAt expiresAt revokedAt').lean().exec(),
+      this.consultationModel.find({ participantUserIds: id }).select('patientUserId clinicianUserId status lastMessageAt closedAt createdAt').lean().exec(),
+      this.deviceModel.find({ userId: id }).select('platform deviceName status lastSeenAt createdAt revokedAt').lean().exec(),
+    ]);
+    const consultationIds = consultations.map((row) => row._id);
+    const messageDocs = consultationIds.length
+      ? await this.messageModel.find({ consultationId: { $in: consultationIds } }).sort({ createdAt: 1 }).lean().exec()
+      : [];
+    const consultationMessages = messageDocs.map((message) => {
+      let body: string;
+      try {
+        body = decryptHealthNote({ ciphertext: message.ciphertext, iv: message.iv, authTag: message.authTag, keyId: message.keyId });
+      } catch {
+        body = '[content could not be decrypted with the current key]';
+      }
+      return { id: message._id.toString(), consultationId: message.consultationId.toString(), senderUserId: message.senderUserId.toString(), body, status: message.status, createdAt: (message as any).createdAt };
+    });
+    const job = await this.privacyJobModel.create({ userId: id, type: 'export', status: 'completed', requestedAt: new Date(), completedAt: new Date(), expiresAt: new Date(Date.now() + 7 * 86400000) });
+    return { success: true, data: { exportVersion: '1.2', status: 'ready', jobId: job._id.toString(), user, profile, onboarding, cycles, dailyLogs, pregnancies, pregnancyLogs, consents, notifications, vaultDocuments, safetyIncidents, guardians, sessions, consultations, consultationMessages, devices, exportedAt: new Date().toISOString(), expiresAt: job.expiresAt }, meta: { requestId: `req_${Date.now()}` } };
   }
 
   async requestAccountDeletion(userId: string) {
-    const user = await this.userModel.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          status: 'deletion_pending',
-          deletionRequestedAt: new Date(),
-        },
-      },
-      { new: true },
-    );
+    const now = new Date();
+    const scheduledAt = new Date(now.getTime() + 30 * 86400000);
+    const user = await this.userModel.findOneAndUpdate({ _id: new Types.ObjectId(userId), status: { $ne: 'deleted' } }, { $set: { status: 'deletion_pending', deletionRequestedAt: now } }, { new: true });
+    if (!user) throw new NotFoundException('User not found or already deleted');
+    const job = await this.privacyJobModel.create({ userId: user._id, type: 'deletion', status: 'requested', requestedAt: now, availableAt: scheduledAt });
+    return { success: true, data: { userId: user._id, status: 'deletion_pending', jobId: job._id.toString(), executionStatus: 'pending_operator_worker', gracePeriodDays: 30, deletionScheduledFor: scheduledAt, erasureCompleted: false }, meta: { requestId: `req_${Date.now()}` } };
+  }
 
-    return {
-      success: true,
-      data: {
-        userId: user?._id,
-        status: user?.status,
-        gracePeriodDays: 30,
-        deletionScheduledFor: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
-      meta: { requestId: `req_${Date.now()}` },
-    };
+  async getPrivacyJobs(userId: string) {
+    const jobs = await this.privacyJobModel.find({ userId: new Types.ObjectId(userId) }).sort({ requestedAt: -1 }).limit(50).lean().exec();
+    return { success: true, data: jobs, meta: { requestId: `req_${Date.now()}` } };
   }
 
   async cancelAccountDeletion(userId: string) {
-    const user = await this.userModel.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          status: 'active',
-        },
-        $unset: { deletionRequestedAt: 1 },
-      },
-      { new: true },
-    );
-
-    return {
-      success: true,
-      data: { userId: user?._id, status: user?.status },
-      meta: { requestId: `req_${Date.now()}` },
-    };
+    const id = new Types.ObjectId(userId);
+    const user = await this.userModel.findOneAndUpdate({ _id: id, status: 'deletion_pending' }, { $set: { status: 'active' }, $unset: { deletionRequestedAt: 1 } }, { new: true });
+    if (!user) throw new NotFoundException('No pending deletion request found');
+    await this.privacyJobModel.updateMany({ userId: id, type: 'deletion', status: 'requested' }, { $set: { status: 'cancelled' } });
+    return { success: true, data: { userId: user._id, status: user.status, deletionCancelled: true }, meta: { requestId: `req_${Date.now()}` } };
   }
 }

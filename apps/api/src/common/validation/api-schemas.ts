@@ -408,6 +408,95 @@ export const UserStatusSchema = z
   })
   .strict();
 
+// ---------------- Care / availability ----------------
+export const CareCatalogQuerySchema = z.object({ countryCode: z.enum(['NG', 'GH', 'GB', 'US']).optional(), specialty: z.string().trim().min(1).max(80).optional(), language: z.string().trim().min(2).max(20).optional() }).strict();
+export const AvailabilityQuerySchema = z.object({ from: z.coerce.date(), to: z.coerce.date(), countryCode: z.enum(['NG', 'GH', 'GB', 'US']).optional() }).strict()
+  .refine((v) => v.from <= v.to, 'from must be on or before to')
+  .refine((v) => v.to.getTime() - v.from.getTime() <= 31 * 86400000, 'Availability range cannot exceed 31 days');
+export const CreateAvailabilitySchema = z.object({ startsAt: z.string().datetime({ offset: true }), endsAt: z.string().datetime({ offset: true }), sessionType: z.enum(['clinic', 'audio', 'video', 'text']) }).strict()
+  .refine((v) => new Date(v.endsAt) > new Date(v.startsAt), 'endsAt must follow startsAt')
+  .refine((v) => new Date(v.endsAt).getTime() - new Date(v.startsAt).getTime() <= 8 * 60 * 60 * 1000, 'Slot duration cannot exceed eight hours');
+export const HoldSlotSchema = z.object({ slotId: MongoIdParam }).strict();
+
+export const GuardianCreateSchema = z.object({ name: z.string().trim().min(1).max(120), phoneE164: z.string().regex(/^\+[1-9]\d{7,14}$/), scopes: z.array(z.enum(['sos_alert', 'check_in'])).min(1).max(2) }).strict();
+export const GuardianIdParamSchema = MongoIdParam;
+export const QuietCheckInSchema = z.object({ checkInAt: z.string().datetime({ offset: true }), expiresAt: z.string().datetime({ offset: true }) }).strict().refine((v) => new Date(v.expiresAt) > new Date(v.checkInAt) && new Date(v.expiresAt).getTime() - new Date(v.checkInAt).getTime() <= 24 * 60 * 60 * 1000, 'Quiet check-in expiry must be within 24 hours');
+export const LocationSessionSchema = z.object({ expiresAt: z.string().datetime({ offset: true }) }).strict().refine((v) => new Date(v.expiresAt) > new Date() && new Date(v.expiresAt).getTime() - Date.now() <= 60 * 60 * 1000, 'Location sessions must expire within one hour');
+export const LocationUpdateSchema = z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180), recordedAt: z.string().datetime({ offset: true }) }).strict();
+export const GuardianAcceptSchema = z.object({ token: z.string().min(32).max(256) }).strict();
+
+// ---------------- Communications / health sharing ----------------
+export const HealthShareCreateSchema = z
+  .object({
+    recipientUserId: objectId,
+    scopes: z.array(z.enum(['cycles', 'daily_logs', 'pregnancy'])).min(1).max(3),
+    from: isoDate,
+    to: isoDate,
+    expiresAt: z.string().datetime({ offset: true }),
+  })
+  .strict()
+  .refine((value) => value.from <= value.to, 'from must be on or before to')
+  .refine(
+    (value) => Date.parse(`${value.to}T00:00:00Z`) - Date.parse(`${value.from}T00:00:00Z`) <= 366 * 86400000,
+    'Shared evidence range cannot exceed 366 days',
+  )
+  .refine(
+    (value) => new Date(value.expiresAt).getTime() > Date.now(),
+    'Share expiry must be in the future',
+  )
+  .refine(
+    (value) => new Date(value.expiresAt).getTime() - Date.now() <= 30 * 86400000,
+    'Shares must expire within 30 days',
+  );
+
+export const ConversationListQuerySchema = z.object({
+  cursor: objectId.optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+}).strict();
+
+export const MessageListQuerySchema = z.object({
+  cursor: objectId.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+}).strict();
+
+export const MessageCreateSchema = z
+  .object({ body: z.string().trim().min(1, 'Message body is required').max(4000) })
+  .strict();
+
+export const DeviceRegisterSchema = z
+  .object({
+    platform: z.enum(['ios', 'android', 'web']),
+    token: z.string().min(16).max(4096),
+    deviceName: z.string().trim().max(80).optional(),
+  })
+  .strict();
+
+// ---------------- Admin care verification ----------------
+export const AdminClinicianVerificationSchema = z
+  .object({
+    verificationStatus: z.enum(['pending', 'verified', 'rejected']),
+    evidenceRef: z.string().trim().min(1).max(300).optional(),
+    note: z.string().trim().max(500).optional(),
+    active: z.boolean().optional(),
+  })
+  .strict()
+  .refine(
+    (value) => value.verificationStatus !== 'verified' || Boolean(value.evidenceRef),
+    'An evidence reference is required before a clinician can be verified',
+  );
+
+export const AdminClinicianListQuerySchema = z
+  .object({
+    verificationStatus: z.enum(['pending', 'verified', 'rejected']).optional(),
+    page: z.coerce.number().int().min(1).max(1000).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+export const AdminConsultationCreateSchema = z
+  .object({ patientUserId: objectId, clinicianId: objectId })
+  .strict();
+
 // ---------------- Waitlist ----------------
 
 export const WaitlistSignupSchema = z

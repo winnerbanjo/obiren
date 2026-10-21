@@ -52,6 +52,11 @@ export class UsersController {
     return this.usersService.updateProfile(req.user.sub, body);
   }
 
+  @Get('me/privacy-jobs')
+  @ApiOperation({ summary: 'List personal-data export and deletion requests', description: 'Lists only privacy jobs belonging to the authenticated account. Deletion job execution is operator-managed and is not proof of completed erasure.' })
+  @ApiResponse({ status: 200, description: 'Owner-scoped privacy job records.' })
+  async getPrivacyJobs(@Req() req: any) { return this.usersService.getPrivacyJobs(req.user.sub); }
+
   @Get('me/export')
   @ApiOperation({ summary: 'Export the current user’s personal data', description: 'Returns the authenticated user’s available account and profile data in a portable JSON representation.' })
   @ApiResponse({ status: 200, description: 'Personal data export.' })

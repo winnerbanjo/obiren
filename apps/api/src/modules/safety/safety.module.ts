@@ -3,18 +3,28 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { SafetyController } from './safety.controller';
 import { SafetyService } from './safety.service';
 import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
-import { SafetyIncident, SafetyIncidentSchema } from '../../database/schemas/safety.schema';
+import { GuardianContact, GuardianContactSchema, GuardianInvite, GuardianInviteSchema, LocationSession, LocationSessionSchema, SafetyDeliveryAttempt, SafetyDeliveryAttemptSchema, SafetyIncident, SafetyIncidentSchema } from '../../database/schemas/safety.schema';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { SafetyPin, SafetyPinSchema } from '../../database/schemas/safety-pin.schema';
 import { User, UserSchema } from '../../database/schemas/user.schema';
+import { AuditLog, AuditLogSchema } from '../../database/schemas/audit-log.schema';
+import { UserProfile, UserProfileSchema } from '../../database/schemas/user.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: SafetyIncident.name, schema: SafetyIncidentSchema },
+      { name: SafetyDeliveryAttempt.name, schema: SafetyDeliveryAttemptSchema },
+      { name: GuardianContact.name, schema: GuardianContactSchema },
+      { name: GuardianInvite.name, schema: GuardianInviteSchema },
+      { name: LocationSession.name, schema: LocationSessionSchema },
       { name: SafetyPin.name, schema: SafetyPinSchema },
       { name: User.name, schema: UserSchema },
+      { name: UserProfile.name, schema: UserProfileSchema },
+      { name: AuditLog.name, schema: AuditLogSchema },
     ]),
     JwtAuthModule,
+    NotificationsModule,
   ],
   controllers: [SafetyController],
   providers: [SafetyService],

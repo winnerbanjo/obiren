@@ -223,6 +223,56 @@ export async function runVersionedMigrations(dbUri?: string): Promise<{ success:
       appliedMigrations.push(mig004Id);
     }
 
+    const mig005Id = '005_prd_milestones_2_5';
+    const mig005Name = 'Add provider-neutral home, care, communications, guardian, and privacy job storage indexes';
+    const mig005Checksum = crypto.createHash('sha256').update(mig005Id + mig005Name).digest('hex');
+    const existing005 = await migrationsCollection.findOne({ migrationId: mig005Id, status: 'COMPLETED' });
+    if (!existing005) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig005Id },
+        { $set: { name: mig005Name, checksum: mig005Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('clinicians').createIndex({ verificationStatus: 1, active: 1, countryCode: 1 }, { name: 'idx_clinician_verified_active_country' });
+      await db.collection('availability_slots').createIndex({ clinicianId: 1, startsAt: 1 }, { unique: true, name: 'uniq_clinician_slot_start' });
+      await db.collection('availability_slots').createIndex({ status: 1, startsAt: 1, holdExpiresAt: 1 }, { name: 'idx_availability_status_start_expiry' });
+      await db.collection('booking_holds').createIndex({ userId: 1, createdAt: -1 }, { name: 'idx_booking_hold_user_created' });
+      await db.collection('booking_holds').createIndex({ slotId: 1, status: 1 }, { name: 'idx_booking_hold_slot_status' });
+      await db.collection('booking_holds').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 2592000, name: 'ttl_booking_hold_retention' });
+      await db.collection('notification_preferences').createIndex({ userId: 1 }, { unique: true, name: 'uniq_notification_preference_user' });
+      await db.collection('consultation_messages').createIndex({ consultationId: 1, createdAt: -1 }, { name: 'idx_message_consultation_created' });
+      await db.collection('health_shares').createIndex({ recipientUserId: 1, expiresAt: 1, revokedAt: 1 }, { name: 'idx_share_recipient_expiry_revoked' });
+      await db.collection('privacy_jobs').createIndex({ userId: 1, type: 1, requestedAt: -1 }, { name: 'idx_privacy_job_owner_type_requested' });
+      await db.collection('privacy_jobs').createIndex({ status: 1, availableAt: 1 }, { name: 'idx_privacy_job_worker' });
+      await db.collection('guardian_contacts').createIndex({ ownerUserId: 1, phoneE164: 1 }, { unique: true, name: 'uniq_guardian_owner_phone' });
+      await db.collection('guardian_invites').createIndex({ ownerUserId: 1, status: 1 }, { name: 'idx_guardian_invite_owner_status' });
+      await db.collection('guardian_invites').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 2592000, name: 'ttl_guardian_invite_retention' });
+      await db.collection('notification_outbox').createIndex({ userId: 1, createdAt: -1 }, { name: 'idx_notification_user_created' });
+      await migrationsCollection.updateOne({ migrationId: mig005Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig005Id);
+    }
+
+    const mig006Id = '006_consultation_device_delivery_indexes';
+    const mig006Name = 'Add consultation, device token, and SOS delivery-attempt indexes';
+    const mig006Checksum = crypto.createHash('sha256').update(mig006Id + mig006Name).digest('hex');
+    const existing006 = await migrationsCollection.findOne({ migrationId: mig006Id, status: 'COMPLETED' });
+    if (!existing006) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig006Id },
+        { $set: { name: mig006Name, checksum: mig006Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('consultations').createIndex({ participantUserIds: 1, _id: -1 }, { name: 'idx_consultation_participant' });
+      await db.collection('consultations').createIndex({ patientUserId: 1, createdAt: -1 }, { name: 'idx_consultation_patient' });
+      await db.collection('consultations').createIndex({ clinicianUserId: 1, createdAt: -1 }, { name: 'idx_consultation_clinician' });
+      await db.collection('devices').createIndex({ tokenHash: 1 }, { unique: true, name: 'uniq_device_token_hash' });
+      await db.collection('devices').createIndex({ userId: 1, status: 1, lastSeenAt: -1 }, { name: 'idx_device_owner_status' });
+      await db.collection('safety_delivery_attempts').createIndex({ incidentId: 1, createdAt: 1 }, { name: 'idx_delivery_attempt_incident' });
+      await db.collection('safety_delivery_attempts').createIndex({ ownerUserId: 1, createdAt: -1 }, { name: 'idx_delivery_attempt_owner' });
+      await migrationsCollection.updateOne({ migrationId: mig006Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig006Id);
+    }
+
     const mig003Id = '003_cycle_period_query_index';
     const mig003Name = 'Add cycle history date/status compound index';
     const mig003Checksum = crypto.createHash('sha256').update(mig003Id + mig003Name).digest('hex');

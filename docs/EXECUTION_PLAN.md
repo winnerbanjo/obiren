@@ -32,53 +32,54 @@
 
 ## Milestone 2 — Tracking and home (Sprint 2)
 
-**Priority:** P0 · **Status:** Cycle-history/edit slice implemented; remaining work in progress
+**Priority:** P0 · **Status:** Backend slice implemented; clinical review and equipment-dependent kick guidance remain
 
 - [x] Extend existing cycle routes and prediction service; do not recreate `/cycles/current`, `/cycles/history`, or period-start behavior.
 - [x] Implement owner-scoped period edit and history detail, cursor-paginated history, duplicate/order/overlap validation, timezone-aware cycle day, confidence output, and non-contraceptive disclaimer.
 - [x] Update the shared typed API client and existing web period tracker to consume the history response envelope.
 - [x] Add versioned migration `003_cycle_period_query_index` for cycle-history queries.
-- [x] Verify full API e2e suites (5 suites, 44 tests), full monorepo build, and the new index migration on ephemeral MongoDB.
+- [x] Verify full API e2e suites (9 suites, 68 tests), full monorepo build, and the new index migrations on ephemeral MongoDB.
 - [x] Extend existing `/daily-logs/:date` with partial updates and delete using optimistic versioning.
-- [ ] Extend current pregnancy endpoints with EDD provenance/override, active journey/timeline, comprehensive pregnancy logs, daily wellness, and carefully gated kick counting.
-- [ ] Add user home aggregation from persisted data, not design placeholders.
+- [x] Extend current pregnancy endpoints with EDD provenance/override, active journey/timeline, comprehensive pregnancy logs, daily wellness, and carefully gated kick counting.
+- [x] Add user home aggregation from persisted data, not design placeholders.
+- [ ] Clinician review of gestational milestones, kick-count gating (blocked before 28 weeks), and urgent-symptom copy.
 
 **Exit criteria:** Home, calendar, history, logging and pregnancy screens can render from API state; two-user ownership tests pass; cycle dates use user timezone and prediction safety language is medically reviewed.
 
 ## Milestone 3 — Care and payments (Sprint 3)
 
-**Priority:** P0 · **Status:** Not implemented
+**Priority:** P0 · **Status:** Catalog, availability, holds, and audited verification implemented; payments and bookings intentionally disabled
 
-- Create verified specialist catalog and clinician verification administration; filter unverified/inactive practitioners from user search.
-- Build specialist availability/slot inventory and atomic expiring booking holds. Never double-book concurrent clients.
-- Integrate Paystack with server-calculated amount/currency, signed webhook verification, server-side transaction verification, idempotency/deduplication and reconciliation.
-- Define cancellation/refund policy, clinic vs audio/video/text session types, pricing, and entitlements with product before enabling checkout.
-- Add clinician slots/bookings endpoints with role-based separation.
+- [x] Create verified specialist catalog and clinician verification administration; filter unverified/inactive practitioners from user search.
+- [x] Build specialist availability/slot inventory and atomic expiring booking holds. Never double-book concurrent clients.
+- [ ] Integrate Paystack with server-calculated amount/currency, signed webhook verification, server-side transaction verification, idempotency/deduplication and reconciliation. Checkout and webhook processing currently fail closed; only constant-time signature rejection is implemented.
+- [ ] Define cancellation/refund policy, clinic vs audio/video/text session types, pricing, and entitlements with product before enabling checkout.
+- [ ] Add confirmed booking endpoints and entitlement checks once pricing, refunds, and gateway verification are approved. Temporary holds are not bookings.
 
 **Exit criteria:** Concurrent hold and webhook replay/forgery/amount-mismatch/outage tests pass in sandbox; confirmation occurs only after verified gateway success; refund and operational runbooks are approved.
 
 ## Milestone 4 — Communications and sharing (Sprint 4)
 
-**Priority:** P1 · **Status:** Not implemented
+**Priority:** P1 · **Status:** Conversations, sharing, inbox, and devices implemented; attachments and provider delivery remain
 
-- Consultation-bound conversations with membership checks and cursor pagination.
-- Encrypted message storage, attachment presigning/scanning, delivered/read states based on provider/client evidence.
-- Deterministic user-authorized health briefs with evidence range, missing-data disclosure, editable drafts, scopes, expiry, revocation and audit.
-- User notification inbox, read state, preferences, device registration/revocation, discreet-mode-safe payloads and delivery status.
-- Add approved worker/queue abstraction only when needed; maintain current API patterns and avoid faking delivery.
+- [x] Consultation-bound conversations with membership checks and cursor pagination.
+- [x] Encrypted message storage (AES-256-GCM, ciphertext and tag at rest), delivered/read states based on client evidence. Attachment presigning/scanning remains unimplemented.
+- [x] User-authorized health briefs with evidence range, scopes, expiry, revocation, and audit. free-text notes are excluded from the snapshot.
+- [x] User notification inbox, read state, preferences, device token registration/revocation with hashed tokens, discreet-mode-safe payloads, and honest delivery status.
+- [x] Reuse the existing notification outbox and internal worker; no parallel queue was added and unconfigured providers are marked failed, never sent.
 
 **Exit criteria:** Unauthorized conversation access and expired/revoked share tests pass; provider failure handling is visible and no private health detail leaks to locked-screen payloads.
 
 ## Milestone 5 — Safety, privacy and account controls (Sprint 5)
 
-**Priority:** P1 · **Status:** Partially implemented
+**Priority:** P1 · **Status:** Guardians, SOS delivery evidence, location sessions and privacy jobs implemented; operational and support gates remain
 
-- Extend existing SOS/PIN/incidents routes rather than creating parallel safety endpoints.
-- Guardian lifecycle: E.164 invites, one-time hashed token, explicit acceptance/identity confirmation, up to five contacts, scopes, resend/revoke and audit trail.
-- SOS event delivery attempts and partial/failure lifecycle; quiet check-ins and short TTL location sessions with explicit consent and reliable revoke.
-- Validated, localized emergency/domestic violence resources with freshness/verification records. SOS must not imply guaranteed rescue or government dispatch.
-- Extend existing export/deletion routes to asynchronous job/status/download and erasure workflows with documented retention exceptions; add privacy settings and consent revocation integration.
-- Support FAQ/ticket APIs with no unnecessary health-data exposure.
+- [x] Extend existing SOS/PIN/incidents routes rather than creating parallel safety endpoints.
+- [x] Guardian lifecycle: E.164 invites, one-time hashed token, explicit acceptance, up to five contacts, scopes, revoke and audit trail. Identity confirmation still requires an approved challenge channel, so acceptance does not verify identity.
+- [x] SOS delivery attempts with a partial/failure lifecycle that never claims delivery; quiet check-ins and short-TTL location sessions gated by explicit consent with immediate revoke.
+- [ ] Validated, localized emergency/domestic violence resources with freshness/verification records. SOS must not imply guaranteed rescue or government dispatch.
+- [x] Extend export/deletion routes with job records, owner-cancellable deletion, consultation-message export, and documented retention limits. Erasure execution is operator-managed pending retention approval.
+- [ ] Support FAQ/ticket APIs with no unnecessary health-data exposure.
 
 **Exit criteria:** Guardian/SOS delivery failures, no GPS, no network, partial delivery, revoke-mid-session, account export integrity, deletion cancellation/retention and role-isolation tests pass; operational safety plan is approved.
 
@@ -112,4 +113,4 @@
 
 ## Current next action
 
-Continue Milestone 2 by extending the existing daily-log and pregnancy APIs, then add home aggregation from persisted user data. In parallel, request remaining Milestone 1 product/privacy and OIDC decisions; label provisional options and do not claim clinical approval. Defer care/payments until practitioner policy, fee rules, cancellation/refund policy, and sandbox credentials are ready.
+Milestones 2–5 have backend slices implemented and covered by e2e tests. Remaining work is gated on decisions rather than code: product/privacy approval of consent semantics; Google OIDC provider/audience; practitioner verification policy, pricing, refunds, and Paystack sandbox credentials before checkout; approved message attachments/retention; an operational SOS delivery channel with validated per-country resources; and qualified erasure execution with documented retention exceptions. Do not enable payments, guardian messaging, or account erasure until those approvals and sandbox verifications exist.

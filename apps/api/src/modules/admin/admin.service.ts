@@ -1,10 +1,12 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { AuditLog, AuditLogDocument } from '../../database/schemas/audit-log.schema';
 import { User, UserDocument } from '../../database/schemas/user.schema';
 import { Pregnancy, PregnancyDocument } from '../../database/schemas/pregnancy.schema';
 import { DirectoryService, DirectoryServiceDocument } from '../../database/schemas/directory.schema';
+import { Clinician, ClinicianDocument } from '../../database/schemas/care.schema';
+import { Consultation, ConsultationDocument } from '../../database/schemas/communications.schema';
 
 const ADMIN_ROLES = ['super_admin', 'platform_admin'];
 
@@ -21,6 +23,8 @@ export class AdminService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Pregnancy.name) private pregnancyModel: Model<PregnancyDocument>,
     @InjectModel(DirectoryService.name) private directoryModel: Model<DirectoryServiceDocument>,
+    @InjectModel(Clinician.name) private clinicianModel: Model<ClinicianDocument>,
+    @InjectModel(Consultation.name) private consultationModel: Model<ConsultationDocument>,
   ) {}
 
   private meta() {
@@ -83,6 +87,94 @@ export class AdminService {
     const created = await this.directoryModel.create(dto);
     await this.logAdminAction(adminUser.sub, adminUser.roles?.[0] || 'unknown', 'UPSERT_DIRECTORY', 'directory', dto.record_id);
     return { success: true, data: created, meta: this.meta() };
+  }
+
+  async listClinicians(adminUser: any, query: { verificationStatus?: string; page: number; limit: number }) {
+    requireAdminRole(adminUser, ADMIN_ROLES);
+    const filter: Record<string, unknown> = {};
+    if (query.verificationStatus) filter.verificationStatus = query.verificationStatus;
+    const skip = (query.page - 1) * query.limit;
+    const [clinicians, total] = await Promise.all([
+      this.clinicianModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(query.limit)
+        .select('userId displayName specialties languages countryCode verificationStatus verificationEvidenceRef verificationNote reviewedAt reviewedBy active')
+        .lean()
+        .exec(),
+      this.clinicianModel.countDocuments(filter),
+    ]);
+    return { success: true, data: { clinicians, total, page: query.page, limit: query.limit }, meta: this.meta() };
+  }
+
+  /**
+   * Verification is an audited administrative decision. A clinician is never
+   * verified without a stored evidence reference, and only verified + active
+   * clinicians appear in the user catalog.
+   */
+  async verifyClinician(adminUser: any, clinicianId: string, dto: { verificationStatus: string; evidenceRef?: string; note?: string; active?: boolean }) {
+    requireAdminRole(adminUser, ADMIN_ROLES);
+    const clinician = await this.clinicianModel.findById(clinicianId);
+    if (!clinician) throw new NotFoundException('Clinician profile not found');
+    if (dto.verificationStatus === 'verified' && !dto.evidenceRef && !clinician.verificationEvidenceRef) {
+      throw new BadRequestException('An evidence reference is required before a clinician can be verified');
+    }
+    const targetUser = await this.userModel.findById(clinician.userId).select('roles status').lean().exec();
+    if (!targetUser) throw new UnprocessableEntityException('The clinician account no longer exists');
+    if (dto.verificationStatus === 'verified' && !targetUser.roles?.includes('clinician')) {
+      throw new UnprocessableEntityException('The linked account does not hold the clinician role');
+    }
+    clinician.verificationStatus = dto.verificationStatus;
+    if (dto.evidenceRef) clinician.verificationEvidenceRef = dto.evidenceRef;
+    if (dto.note !== undefined) clinician.verificationNote = dto.note;
+    clinician.active = dto.active ?? dto.verificationStatus === 'verified';
+    clinician.reviewedAt = new Date();
+    clinician.reviewedBy = new Types.ObjectId(adminUser.sub);
+    await clinician.save();
+    await this.logAdminAction(
+      adminUser.sub,
+      adminUser.roles?.[0] || 'unknown',
+      'VERIFY_CLINICIAN',
+      'care',
+      `Set clinician ${clinician._id} to ${clinician.verificationStatus} (active=${clinician.active})`,
+    );
+    return { success: true, data: clinician, meta: this.meta() };
+  }
+
+  /**
+   * A consultation is an administrative care-relationship record. It does not
+   * confirm a booking, payment, or appointment; messaging is membership-scoped.
+   */
+  async createConsultation(adminUser: any, dto: { patientUserId: string; clinicianId: string }) {
+    requireAdminRole(adminUser, ADMIN_ROLES);
+    const clinician = await this.clinicianModel.findOne({ _id: dto.clinicianId, verificationStatus: 'verified', active: true }).lean().exec();
+    if (!clinician) throw new NotFoundException('An active, verified clinician is required');
+    const patient = await this.userModel.findById(dto.patientUserId).select('status').lean().exec();
+    if (!patient || ['suspended', 'restricted', 'deleted'].includes(patient.status)) {
+      throw new NotFoundException('Usable patient account not found');
+    }
+    if (clinician.userId.toString() === dto.patientUserId) throw new BadRequestException('A patient cannot be their own clinician');
+    const existing = await this.consultationModel.findOne({
+      clinicianId: clinician._id,
+      patientUserId: new Types.ObjectId(dto.patientUserId),
+      status: 'open',
+    }).lean().exec();
+    if (existing) throw new ConflictException('An open consultation already exists for this patient and clinician');
+    const consultation = await this.consultationModel.create({
+      patientUserId: new Types.ObjectId(dto.patientUserId),
+      clinicianUserId: clinician.userId,
+      clinicianId: clinician._id,
+      participantUserIds: [new Types.ObjectId(dto.patientUserId), clinician.userId],
+      status: 'open',
+      lastMessageAt: new Date(),
+    });
+    await this.logAdminAction(adminUser.sub, adminUser.roles?.[0] || 'unknown', 'CREATE_CONSULTATION', 'care', `Created consultation ${consultation._id}`);
+    return {
+      success: true,
+      data: { id: consultation._id.toString(), status: consultation.status, participantCount: consultation.participantUserIds.length, bookingConfirmed: false, message: 'Care relationship recorded; no booking or payment was confirmed.' },
+      meta: this.meta(),
+    };
   }
 
   async getAuditLogs(adminUser: any) {
