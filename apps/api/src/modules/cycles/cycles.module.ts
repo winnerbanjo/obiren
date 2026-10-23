@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { CyclesController, DailyLogsController } from './cycles.controller';
+import { CyclesController, DailyLogsController, PeriodsController } from './cycles.controller';
 import { CyclesService } from './cycles.service';
 import { Cycle, CycleSchema, DailyLog, DailyLogSchema } from '../../database/schemas/cycle.schema';
 import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
@@ -13,7 +13,7 @@ import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
     ]),
     JwtAuthModule,
   ],
-  controllers: [CyclesController, DailyLogsController],
+  controllers: [CyclesController, DailyLogsController, PeriodsController],
   providers: [CyclesService],
   exports: [CyclesService],
 })

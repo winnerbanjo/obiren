@@ -9,6 +9,7 @@ module.exports = {
   coverageDirectory: './coverage',
   testEnvironment: 'node',
   globalSetup: '<rootDir>/test/setup.ts',
+  globalTeardown: '<rootDir>/test/teardown.ts',
   // Tests share one in-memory database; run serially to keep state predictable.
   maxWorkers: 1,
   testTimeout: 120000,

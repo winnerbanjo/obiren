@@ -1,16 +1,21 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { PregnancyController } from './pregnancy.controller';
+import { PregnancyController, PregnancyLogsController } from './pregnancy.controller';
 import { PregnancyService } from './pregnancy.service';
-import { Pregnancy, PregnancySchema } from '../../database/schemas/pregnancy.schema';
+import { Pregnancy, PregnancySchema, PregnancyLog, PregnancyLogSchema } from '../../database/schemas/pregnancy.schema';
+import { UserProfile, UserProfileSchema } from '../../database/schemas/user.schema';
 import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Pregnancy.name, schema: PregnancySchema }]),
+    MongooseModule.forFeature([
+      { name: Pregnancy.name, schema: PregnancySchema },
+      { name: PregnancyLog.name, schema: PregnancyLogSchema },
+      { name: UserProfile.name, schema: UserProfileSchema },
+    ]),
     JwtAuthModule,
   ],
-  controllers: [PregnancyController],
+  controllers: [PregnancyController, PregnancyLogsController],
   providers: [PregnancyService],
   exports: [PregnancyService],
 })

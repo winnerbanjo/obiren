@@ -1,7 +1,7 @@
 import * as request from 'supertest';
 import { INestApplication } from '@nestjs/common';
 import mongoose from 'mongoose';
-import { createTestApp, registerAndLogin, authHeader, getDb } from './helpers';
+import { createTestApp, registerAndLogin, authHeader, getDb, idempotencyHeader } from './helpers';
 
 describe('Safety PIN & SOS (e2e)', () => {
   let app: INestApplication;
@@ -42,6 +42,7 @@ describe('Safety PIN & SOS (e2e)', () => {
     const trigger = await request(server)
       .post('/api/v1/safety/sos/trigger')
       .set(authHeader(user.accessToken!))
+      .set(idempotencyHeader('sos-pin'))
       .send({ isTestMode: false });
     expect(trigger.status).toBe(201);
     expect(trigger.body.data.incident.status).toBe('active');
@@ -74,6 +75,7 @@ describe('Safety PIN & SOS (e2e)', () => {
     await request(server)
       .post('/api/v1/safety/sos/trigger')
       .set(authHeader(user.accessToken!))
+      .set(idempotencyHeader('sos-nopin'))
       .send({ isTestMode: true });
 
     const cancel = await request(server)
@@ -91,6 +93,7 @@ describe('Safety PIN & SOS (e2e)', () => {
     await request(server)
       .post('/api/v1/safety/sos/trigger')
       .set(authHeader(user.accessToken!))
+      .set(idempotencyHeader('sos-nopin'))
       .send({ isTestMode: true });
 
     for (let i = 0; i < 5; i++) {

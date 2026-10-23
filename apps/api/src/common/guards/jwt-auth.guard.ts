@@ -1,6 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { env } from '../../config/env.validation';
+import { normalizeRoles } from '../auth/roles';
 import { User, UserDocument } from '../../database/schemas/user.schema';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -47,7 +48,7 @@ export class JwtAuthGuard implements CanActivate {
     request.user = {
       sub: (user._id as any).toString(),
       email: user.email,
-      roles: user.roles,
+      roles: normalizeRoles(user.roles),
       status: user.status,
     };
     return true;

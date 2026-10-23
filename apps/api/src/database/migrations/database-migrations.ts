@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import * as crypto from 'crypto';
+import { backfillDailyLogNotes } from './backfill-daily-log-notes';
 
 /**
  * mongodb-memory-server is an optional devDependency used only when running
@@ -180,6 +181,251 @@ export async function runVersionedMigrations(dbUri?: string): Promise<{ success:
       console.log(`✅ Migration [${mig001Id}] Completed Successfully.`);
     } else {
       console.log(`Migration [${mig001Id}] already applied. Skipping.`);
+    }
+
+    const mig002Id = '002_onboarding_consent_indexes';
+    const mig002Name = 'Create unique onboarding draft and append-only consent history indexes';
+    const mig002Checksum = crypto.createHash('sha256').update(mig002Id + mig002Name).digest('hex');
+    const existing002 = await migrationsCollection.findOne({ migrationId: mig002Id, status: 'COMPLETED' });
+    if (!existing002) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig002Id },
+        { $set: { name: mig002Name, checksum: mig002Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('onboarding').createIndex({ userId: 1 }, { unique: true, name: 'uniq_onboarding_userId' });
+      await db.collection('consent_events').createIndex(
+        { userId: 1, purpose: 1, recordedAt: -1 },
+        { name: 'idx_consent_user_purpose_recorded' },
+      );
+      await migrationsCollection.updateOne(
+        { migrationId: mig002Id },
+        { $set: { completedAt: new Date(), status: 'COMPLETED' } },
+      );
+      appliedMigrations.push(mig002Id);
+    }
+
+    const mig004Id = '004_pregnancy_logs';
+    const mig004Name = 'Add owner/date pregnancy check-in indexes';
+    const mig004Checksum = crypto.createHash('sha256').update(mig004Id + mig004Name).digest('hex');
+    const existing004 = await migrationsCollection.findOne({ migrationId: mig004Id, status: 'COMPLETED' });
+    if (!existing004) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig004Id },
+        { $set: { name: mig004Name, checksum: mig004Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('pregnancy_logs').createIndex({ pregnancyId: 1, date: 1 }, { unique: true, name: 'uniq_pregnancy_log_parent_date' });
+      await db.collection('pregnancy_logs').createIndex({ userId: 1, date: 1 }, { name: 'idx_pregnancy_log_user_date' });
+      await migrationsCollection.updateOne(
+        { migrationId: mig004Id },
+        { $set: { completedAt: new Date(), status: 'COMPLETED' } },
+      );
+      appliedMigrations.push(mig004Id);
+    }
+
+    const mig005Id = '005_prd_milestones_2_5';
+    const mig005Name = 'Add provider-neutral home, care, communications, guardian, and privacy job storage indexes';
+    const mig005Checksum = crypto.createHash('sha256').update(mig005Id + mig005Name).digest('hex');
+    const existing005 = await migrationsCollection.findOne({ migrationId: mig005Id, status: 'COMPLETED' });
+    if (!existing005) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig005Id },
+        { $set: { name: mig005Name, checksum: mig005Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('clinicians').createIndex({ verificationStatus: 1, active: 1, countryCode: 1 }, { name: 'idx_clinician_verified_active_country' });
+      await db.collection('availability_slots').createIndex({ clinicianId: 1, startsAt: 1 }, { unique: true, name: 'uniq_clinician_slot_start' });
+      await db.collection('availability_slots').createIndex({ status: 1, startsAt: 1, holdExpiresAt: 1 }, { name: 'idx_availability_status_start_expiry' });
+      await db.collection('booking_holds').createIndex({ userId: 1, createdAt: -1 }, { name: 'idx_booking_hold_user_created' });
+      await db.collection('booking_holds').createIndex({ slotId: 1, status: 1 }, { name: 'idx_booking_hold_slot_status' });
+      await db.collection('booking_holds').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 2592000, name: 'ttl_booking_hold_retention' });
+      await db.collection('notification_preferences').createIndex({ userId: 1 }, { unique: true, name: 'uniq_notification_preference_user' });
+      await db.collection('consultation_messages').createIndex({ consultationId: 1, createdAt: -1 }, { name: 'idx_message_consultation_created' });
+      await db.collection('health_shares').createIndex({ recipientUserId: 1, expiresAt: 1, revokedAt: 1 }, { name: 'idx_share_recipient_expiry_revoked' });
+      await db.collection('privacy_jobs').createIndex({ userId: 1, type: 1, requestedAt: -1 }, { name: 'idx_privacy_job_owner_type_requested' });
+      await db.collection('privacy_jobs').createIndex({ status: 1, availableAt: 1 }, { name: 'idx_privacy_job_worker' });
+      await db.collection('guardian_contacts').createIndex({ ownerUserId: 1, phoneE164: 1 }, { unique: true, name: 'uniq_guardian_owner_phone' });
+      await db.collection('guardian_invites').createIndex({ ownerUserId: 1, status: 1 }, { name: 'idx_guardian_invite_owner_status' });
+      await db.collection('guardian_invites').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 2592000, name: 'ttl_guardian_invite_retention' });
+      // `idx_notif_userId_created` (migration 001) already covers this key;
+      // creating it again under a second name fails with IndexOptionsConflict.
+      await migrationsCollection.updateOne({ migrationId: mig005Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig005Id);
+    }
+
+    const mig006Id = '006_consultation_device_delivery_indexes';
+    const mig006Name = 'Add consultation, device token, and SOS delivery-attempt indexes';
+    const mig006Checksum = crypto.createHash('sha256').update(mig006Id + mig006Name).digest('hex');
+    const existing006 = await migrationsCollection.findOne({ migrationId: mig006Id, status: 'COMPLETED' });
+    if (!existing006) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig006Id },
+        { $set: { name: mig006Name, checksum: mig006Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('consultations').createIndex({ participantUserIds: 1, _id: -1 }, { name: 'idx_consultation_participant' });
+      await db.collection('consultations').createIndex({ patientUserId: 1, createdAt: -1 }, { name: 'idx_consultation_patient' });
+      await db.collection('consultations').createIndex({ clinicianUserId: 1, createdAt: -1 }, { name: 'idx_consultation_clinician' });
+      await db.collection('devices').createIndex({ tokenHash: 1 }, { unique: true, name: 'uniq_device_token_hash' });
+      await db.collection('devices').createIndex({ userId: 1, status: 1, lastSeenAt: -1 }, { name: 'idx_device_owner_status' });
+      await db.collection('safety_delivery_attempts').createIndex({ incidentId: 1, createdAt: 1 }, { name: 'idx_delivery_attempt_incident' });
+      await db.collection('safety_delivery_attempts').createIndex({ ownerUserId: 1, createdAt: -1 }, { name: 'idx_delivery_attempt_owner' });
+      await migrationsCollection.updateOne({ migrationId: mig006Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig006Id);
+    }
+
+    const mig007Id = '007_idempotency_records';
+    const mig007Name = 'Create persisted idempotency records with TTL and unique request scope';
+    const mig007Checksum = crypto.createHash('sha256').update(mig007Id + mig007Name).digest('hex');
+    const existing007 = await migrationsCollection.findOne({ migrationId: mig007Id, status: 'COMPLETED' });
+    if (!existing007) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig007Id },
+        { $set: { name: mig007Name, checksum: mig007Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('idempotency_records').createIndex(
+        { userId: 1, route: 1, key: 1 },
+        { unique: true, name: 'uniq_idempotency_user_route_key' },
+      );
+      await db.collection('idempotency_records').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl_idempotency_expiry' });
+      await migrationsCollection.updateOne({ migrationId: mig007Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig007Id);
+    }
+
+    const mig008Id = '008_daily_log_note_encryption';
+    const mig008Name = 'Encrypt legacy plaintext daily-log notes (idempotent)';
+    const mig008Checksum = crypto.createHash('sha256').update(mig008Id + mig008Name).digest('hex');
+    const existing008 = await migrationsCollection.findOne({ migrationId: mig008Id, status: 'COMPLETED' });
+    if (!existing008) {
+      if (!process.env.HEALTH_DATA_ENCRYPTION_KEY) {
+        // Do not mark complete: rerun with the key available so no plaintext note is left behind.
+        console.warn(`⚠️ Migration [${mig008Id}] skipped: HEALTH_DATA_ENCRYPTION_KEY is not configured. Re-run migrations after setting it.`);
+      } else {
+        await migrationsCollection.updateOne(
+          { migrationId: mig008Id },
+          { $set: { name: mig008Name, checksum: mig008Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+          { upsert: true },
+        );
+        const backfill = await backfillDailyLogNotes(db, { dryRun: false });
+        console.log(`   encrypted ${backfill.encrypted} daily-log note(s) from ${backfill.scanned} scanned.`);
+        await migrationsCollection.updateOne({ migrationId: mig008Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+        appliedMigrations.push(mig008Id);
+      }
+    }
+
+    const mig009Id = '009_bookings_payments_indexes';
+    const mig009Name = 'Add booking, payment and webhook replay-protection indexes';
+    const mig009Checksum = crypto.createHash('sha256').update(mig009Id + mig009Name).digest('hex');
+    const existing009 = await migrationsCollection.findOne({ migrationId: mig009Id, status: 'COMPLETED' });
+    if (!existing009) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig009Id },
+        { $set: { name: mig009Name, checksum: mig009Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('bookings').createIndex({ holdId: 1 }, { unique: true, name: 'uniq_booking_hold' });
+      await db.collection('bookings').createIndex({ reference: 1 }, { unique: true, sparse: true, name: 'uniq_booking_reference' });
+      await db.collection('bookings').createIndex({ userId: 1, createdAt: -1 }, { name: 'idx_booking_user_created' });
+      await db.collection('bookings').createIndex({ clinicianId: 1, startsAt: -1 }, { name: 'idx_booking_clinician_start' });
+      await db.collection('bookings').createIndex({ status: 1, expiresAt: 1 }, { name: 'idx_booking_status_expiry' });
+      await db.collection('payments').createIndex({ reference: 1 }, { unique: true, name: 'uniq_payment_reference' });
+      await db.collection('payments').createIndex({ bookingId: 1, createdAt: -1 }, { name: 'idx_payment_booking_created' });
+      await db.collection('payments').createIndex({ gateway: 1, status: 1 }, { name: 'idx_payment_gateway_status' });
+      await db.collection('payment_webhook_events').createIndex({ eventId: 1 }, { unique: true, name: 'uniq_payment_event_id' });
+      await db.collection('payment_webhook_events').createIndex({ reference: 1, createdAt: -1 }, { name: 'idx_payment_event_reference' });
+      await migrationsCollection.updateOne({ migrationId: mig009Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig009Id);
+    }
+
+    const mig010Id = '010_emergency_resource_review_indexes';
+    const mig010Name = 'Create unique emergency-resource review and freshness indexes';
+    const mig010Checksum = crypto.createHash('sha256').update(mig010Id + mig010Name).digest('hex');
+    const existing010 = await migrationsCollection.findOne({ migrationId: mig010Id, status: 'COMPLETED' });
+    if (!existing010) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig010Id },
+        { $set: { name: mig010Name, checksum: mig010Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('emergency_resource_reviews').createIndex({ recordId: 1 }, { unique: true, name: 'uniq_emergency_review_record' });
+      await db.collection('emergency_resource_reviews').createIndex({ nextReviewDueAt: 1 }, { name: 'idx_emergency_review_due' });
+      await db.collection('emergency_resource_reviews').createIndex(
+        { verificationStatus: 1, nextReviewDueAt: 1 },
+        { name: 'idx_emergency_review_status_due' },
+      );
+      await migrationsCollection.updateOne({ migrationId: mig010Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig010Id);
+    }
+
+    const mig011Id = '011_support_content_mfa_brief_indexes';
+    const mig011Name = 'Create support, article, brief, MFA, attachment and promo-code indexes';
+    const mig011Checksum = crypto.createHash('sha256').update(mig011Id + mig011Name).digest('hex');
+    const existing011 = await migrationsCollection.findOne({ migrationId: mig011Id, status: 'COMPLETED' });
+    if (!existing011) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig011Id },
+        { $set: { name: mig011Name, checksum: mig011Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('support_tickets').createIndex({ reference: 1 }, { unique: true, name: 'uniq_support_ticket_reference' });
+      await db.collection('support_tickets').createIndex({ userId: 1, createdAt: -1 }, { name: 'idx_support_ticket_owner_created' });
+      await db.collection('support_tickets').createIndex({ status: 1, createdAt: -1 }, { name: 'idx_support_ticket_status_created' });
+      await db.collection('articles').createIndex({ slug: 1 }, { unique: true, name: 'uniq_article_slug' });
+      await db.collection('articles').createIndex({ status: 1, publishedAt: -1 }, { name: 'idx_article_published' });
+      await db.collection('articles').createIndex({ category: 1, status: 1 }, { name: 'idx_article_category_status' });
+      await db.collection('health_briefs').createIndex({ ownerUserId: 1, createdAt: -1 }, { name: 'idx_brief_owner_created' });
+      await db.collection('health_briefs').createIndex({ recipientUserId: 1, expiresAt: 1 }, { name: 'idx_brief_recipient_expiry' });
+      await db.collection('mfa_credentials').createIndex({ userId: 1 }, { unique: true, name: 'uniq_mfa_user' });
+      await db.collection('consultation_attachments').createIndex({ consultationId: 1, createdAt: -1 }, { name: 'idx_attachment_consultation_created' });
+      await db.collection('promo_codes').createIndex({ code: 1 }, { unique: true, name: 'uniq_promo_code' });
+      await db.collection('promo_codes').createIndex({ active: 1, expiresAt: 1 }, { name: 'idx_promo_active_expiry' });
+      await migrationsCollection.updateOne({ migrationId: mig011Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig011Id);
+    }
+
+    const mig003Id = '003_cycle_period_query_index';
+    const mig003Name = 'Add cycle history date/status compound index';
+    const mig003Checksum = crypto.createHash('sha256').update(mig003Id + mig003Name).digest('hex');
+    const existing003 = await migrationsCollection.findOne({ migrationId: mig003Id, status: 'COMPLETED' });
+    if (!existing003) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig003Id },
+        { $set: { name: mig003Name, checksum: mig003Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('cycles').createIndex({ userId: 1, startedAt: 1, status: 1 }, { name: 'idx_cycle_user_started_status' });
+      await migrationsCollection.updateOne(
+        { migrationId: mig003Id },
+        { $set: { completedAt: new Date(), status: 'COMPLETED' } },
+      );
+      appliedMigrations.push(mig003Id);
+    }
+
+    const mig012Id = '012_google_identity_indexes';
+    const mig012Name = 'Add Google subject index and backfill sign-in providers';
+    const mig012Checksum = crypto.createHash('sha256').update(mig012Id + mig012Name).digest('hex');
+    const existing012 = await migrationsCollection.findOne({ migrationId: mig012Id, status: 'COMPLETED' });
+    if (!existing012) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig012Id },
+        { $set: { name: mig012Name, checksum: mig012Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      // Sparse + unique: many accounts have no Google subject, and a subject
+      // can never be claimed by two accounts.
+      await db.collection('users').createIndex(
+        { googleSub: 1 },
+        { unique: true, sparse: true, name: 'uniq_user_google_sub' },
+      );
+      // Existing accounts all signed in with a password before this migration.
+      await db.collection('users').updateMany(
+        { authProviders: { $exists: false } },
+        { $set: { authProviders: ['password'] } },
+      );
+      await migrationsCollection.updateOne({ migrationId: mig012Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig012Id);
     }
   } catch (err: any) {
     console.error('Migration failed:', err);

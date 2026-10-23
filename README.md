@@ -47,8 +47,15 @@ obiren/
 - **Validation:** every body, query, and route parameter is validated with Zod
   (`ZodValidationPipe` + `apps/api/src/common/validation/api-schemas.ts`);
   unknown fields are rejected.
-- **Rate limiting:** global 30 req/min/IP via `@nestjs/throttler`; the public
-  waitlist endpoint is limited to 10 req/min.
+- **Rate limiting:** `ThrottlerGuard` is registered globally via `APP_GUARD`.
+  The default limit is 120 req/min/IP (`THROTTLE_LIMIT`), backed by Redis when
+  `REDIS_URL` is set and by an in-process counter otherwise. Credential and
+  abuse-sensitive POSTs (`login`, `register`, `forgot-password`,
+  `reset-password`, `resend-verification`, `refresh`, guardian invites/resend
+  and SOS) get the stricter `THROTTLE_AUTH_LIMIT` (default 10 per 15 minutes),
+  additive to the global limit. The public waitlist signup is limited to 10
+  req/min. Blocked requests return `429` with `error.code = RATE_LIMITED` and
+  a `Retry-After` header.
 
 ### `apps/web` — User application
 Marketing landing page + authenticated app shell. Authentication is real:
@@ -95,10 +102,14 @@ list. Highlights:
 | `JWT_ACCESS_SECRET` | ✅ | ≥32 chars, must differ from refresh secret |
 | `JWT_REFRESH_SECRET` | ✅ | ≥32 chars |
 | `CORS_ORIGINS` | ✅ | Comma-separated allow-list |
-| `CRON_SECRET` | ✅ | Protects `/api/v1/internal/cron/*` |
+| `REDIS_URL` | ✅ | Distributed rate limiting (in-memory fallback only when unset) |
+| `CRON_SECRET` | ✅ | Protects `/api/v1/internal/cron/*` (denied when unset) |
+| `HEALTH_DATA_ENCRYPTION_KEY` | ✅ | 32-byte AES-256-GCM key for private health notes |
+| `RESEND_API_KEY` | ✅ | Verification and password-reset email delivery |
+| `EMAIL_FROM` | ✅ | Verified Resend sender address |
 | `CLOUDINARY_*` | recommended | Health Vault upload/download (503 without it) |
-| `TWILIO_*` | recommended | WhatsApp/SMS dispatch (simulated without it) |
-| `MAILTRAP_TOKEN` | recommended | Verification/reset email delivery |
+| `TWILIO_*` | recommended | WhatsApp dispatch and webhook signature checks (never faked) |
+| `PAYSTACK_SECRET_KEY` | when payments enabled | Payments stay disabled without an approved policy version |
 
 **Fail-fast rule:** in production the API refuses to start if any ✅ variable
 is missing or malformed. There are no secret fallbacks in any environment.
@@ -113,6 +124,12 @@ are enforced **at the database level**, not just in code:
 - `daily_logs`: compound unique index `(userId, date)`.
 - `sessions`: unique `refreshTokenHash` + TTL index on `expiresAt`.
 - `safety_pins`: unique per user; stores **only** an argon2id hash.
+- `emergency_resource_reviews`: unique per published resource; records staff
+  verification state, last check and next review date (freshness is never implied).
+- `mfa_credentials`: unique per user; the TOTP secret is stored **encrypted** and
+  recovery codes as SHA-256 hashes.
+- `support_tickets`, `articles`, `health_briefs`, `promo_codes`: unique reference,
+  slug, and code indexes where duplicates would be ambiguous.
 - `waitlist_entries`: unique `normalizedEmail`.
 
 `apps/api/src/database/migrations/database-migrations.ts` is a versioned
@@ -138,33 +155,56 @@ DB re-check on every request (status + roles)
   anti-enumeration responses.
 - **Password reset:** single-use hashed token, 1 h expiry, generic response
   regardless of account existence, revokes all sessions on success.
+- **Google sign-in:** `POST /auth/google` verifies a Google ID token
+  server-side (signature, issuer, expiry, audience allow-list from
+  `GOOGLE_CLIENT_ID`) and never trusts client-supplied profile claims. A
+  verified Google email creates an active account; an existing account is
+  linked only if its email is already verified (pre-hijack guard), and MFA is
+  still required. Optional: unset `GOOGLE_CLIENT_ID` returns 503 and leaves
+  password sign-in untouched. See `docs/DECISIONS.md`.
 
 ## API surface (summary)
 
 Base path `/api/v1`:
 
-- `auth/*` — register, login, refresh, logout, me, sessions, verify-email,
-  resend-verification, forgot-password, reset-password
+- `auth/*` — register, login, google, refresh, logout, me, sessions,
+  verify-email, resend-verification, forgot-password, reset-password
 - `users/me` — profile get/update, export (NDPR), request/cancel deletion
 - `cycles/*` — current, history, start-period, end-period
 - `daily-logs/:date` — get/upsert (validated `YYYY-MM-DD`)
 - `pregnancies` — create (one-active rule), current, `:id/end`, `:id/logs/:date`
-- `safety/*` — pin (create/change/status), sos/trigger, sos/cancel (PIN), incidents
+- `safety/*` — resources (public verified emergency directory with freshness),
+  pin (create/change/status), sos/trigger, sos/cancel (PIN), incidents,
+  `sos-events/:id`, guardian resend/scopes
+- `auth/mfa/*` — status, enrol, verify, disable, challenge (opt-in TOTP)
+- `support/*` — public FAQs, owner-scoped tickets and replies
+- `articles` — published, medically approved health education only
+- `privacy-settings` — consent purposes + non-legal preferences
+- `briefs` — deterministic health briefs for a verified clinician
+- `subscriptions/me`, `promo-codes/validate`, `consultations/:id/attachments`
+- `internal/cron/run-retention` — expired operational records only (secret-guarded)
 - `health-vault/*` — upload-intent, documents CRUD, signed download (5-min)
 - `directory/*` — search (text + filters + pagination), nearby (2dsphere `$near`), service by id
 - `notifications/*` — Twilio inbound/status webhooks (signature-validated), internal cron
 - `waitlist` — public signup (rate-limited, anti-enumeration), stats; admin listing
-- `admin/*` — metrics, users list/status, directory upsert, audit logs (role-guarded)
+- `admin/*` — metrics, users list/status, directory upsert, emergency-resource
+  reviews (audited, evidence-backed), audit logs (role-guarded)
 - `health` — liveness probe
 
-Regenerate `apps/api/openapi.json` via `npm run api:build` artifacts script
-(`apps/api/scripts/generate-artifacts.ts`).
+Regenerate `apps/api/openapi.json` via `npm --prefix apps/api run generate:openapi`.
+
+Sanitized role fixtures for local/staging checks (never production):
+
+```bash
+cd apps/api
+MONGODB_URI=<non-production uri> npx ts-node --transpile-only scripts/seed-demo.ts
+```
 
 ## Testing
 
 ```bash
 cd apps/api
-npm test          # 32 end-to-end tests, real Nest app + in-memory MongoDB
+npm test          # 154 end-to-end tests, real Nest app + in-memory MongoDB
 ```
 
 Tests boot the actual application (same security config as production) against
@@ -196,12 +236,12 @@ loudly rather than run with known-default secrets.
 | Path | Schedule | Purpose |
 | --- | --- | --- |
 | `/api/v1/internal/cron/process-notifications` | every 10 min | Outbox claim worker (atomic claims, retries, caps) |
-| `/api/v1/internal/cron/recalculate-predictions` | hourly | Cycle prediction recalculation |
-| `/api/v1/internal/cron/directory-reverification` | daily 03:00 | Emergency-resource reverification |
-| `/api/v1/internal/cron/data-retention` | daily 04:00 | NDPR retention enforcement |
+| `/api/v1/internal/cron/run-retention?dryRun=false` | daily 04:00 | NDPR retention of expired operational records (account health records are never purged) |
 
-All internal cron endpoints require `CRON_SECRET` (query or `x-cron-secret`
-header); without it they are denied in every environment.
+Both routes accept `X-Cron-Secret: <CRON_SECRET>` or the
+`Authorization: Bearer <CRON_SECRET>` header that Vercel Cron sends, and are
+denied when `CRON_SECRET` is unset. Retention previews by default; deletion also
+requires `RETENTION_EXECUTION_ENABLED=true`.
 
 ## Security assumptions
 

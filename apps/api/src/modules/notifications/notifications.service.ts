@@ -137,14 +137,16 @@ export class NotificationsService {
             claimedNotif.failedAt = new Date();
           }
         } else {
-          // Simulation fallback when live credentials are not set
-          claimedNotif.providerMessageId = `sim_tw_${Date.now()}`;
-          claimedNotif.status = 'sent';
-          claimedNotif.sentAt = new Date();
+          // Never mark an unconfigured external delivery as sent.
+          claimedNotif.status = 'failed';
+          claimedNotif.failedAt = new Date();
+          claimedNotif.providerStatus = 'provider_not_configured';
         }
       } else {
-        claimedNotif.status = 'sent';
-        claimedNotif.sentAt = new Date();
+        // Email/SMS providers are not configured; do not claim a delivery succeeded.
+        claimedNotif.status = 'failed';
+        claimedNotif.failedAt = new Date();
+        claimedNotif.providerStatus = 'provider_not_configured';
       }
 
       await claimedNotif.save();

@@ -2,6 +2,8 @@
 
 export type UserRole =
   | "USER"
+  | "GUARDIAN"
+  | "CLINICIAN"
   | "TRUSTED_CONTACT"
   | "HEALTHCARE_PROFESSIONAL"
   | "SUPPORT_AGENT"
