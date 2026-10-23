@@ -10,6 +10,7 @@ import { RedisThrottlerStorage } from './redis-throttler.storage';
  */
 const AUTH_SENSITIVE_PATHS = [
   /\/auth\/login$/,
+  /\/auth\/google$/,
   /\/auth\/register$/,
   /\/auth\/forgot-password$/,
   /\/auth\/reset-password$/,

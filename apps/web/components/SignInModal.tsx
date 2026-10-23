@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { LoginSchema } from "@obiren/validation";
 import { authApi, ApiError, AuthUser } from "@obiren/api-client";
+import GoogleSignInButton from "./GoogleSignInButton";
 
 interface SignInModalProps {
   isOpen: boolean;
@@ -227,6 +228,17 @@ export default function SignInModal({
                 )}
               </button>
             </form>
+          )}
+
+          {/* Google sign-in (only when NEXT_PUBLIC_GOOGLE_CLIENT_ID is set) */}
+          {authMode === "password" && (
+            <GoogleSignInButton
+              onSuccess={(user) => {
+                onSuccess(user);
+                onClose();
+              }}
+              onError={(message) => setErrorMsg(message)}
+            />
           )}
 
           {/* 2. FORGOT PASSWORD FORM */}

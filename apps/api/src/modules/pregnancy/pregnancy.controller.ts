@@ -22,17 +22,17 @@ import {
 export class PregnancyController {
   constructor(private readonly pregnancyService: PregnancyService) {}
 
-  @Get('current')
-  @ApiOperation({ summary: 'Get the active pregnancy', description: 'Returns the current pregnancy with estimated gestational age and milestone, or `data: null` when no active pregnancy exists.' })
+  @Get('active')
+  @ApiOperation({ summary: 'Get the active pregnancy', description: 'PRD path. Returns the current pregnancy with trimester, gestational age, days to due date and milestone, or `data: null` when no active pregnancy exists. Timezone-consistent and explicitly not a substitute for clinical dating.' })
   @ApiResponse({ status: 200, description: 'Active pregnancy or null.' })
-  async getCurrentPregnancy(@Req() req: any) {
+  async getActivePregnancy(@Req() req: any) {
     return this.pregnancyService.getCurrentPregnancy(req.user.sub);
   }
 
-  @Get('active')
-  @ApiOperation({ summary: 'Get the active pregnancy (PRD alias)', description: 'Alias of `GET /pregnancies/current`. Returns the current pregnancy with trimester, gestational age and milestone, or `data: null` when no active pregnancy exists.' })
+  @Get('current')
+  @ApiOperation({ summary: 'Get the active pregnancy (alias of /pregnancies/active)', description: 'Alias of `GET /pregnancies/active`; both paths call the same service. Kept for the earlier web client. New clients should use `/pregnancies/active`.', deprecated: true })
   @ApiResponse({ status: 200, description: 'Active pregnancy or null.' })
-  async getActivePregnancy(@Req() req: any) {
+  async getCurrentPregnancy(@Req() req: any) {
     return this.pregnancyService.getCurrentPregnancy(req.user.sub);
   }
 
@@ -44,7 +44,7 @@ export class PregnancyController {
   }
 
   @Get('logs/:date')
-  @ApiOperation({ summary: 'Get the pregnancy check-in for a date', description: 'Returns the authenticated user’s saved pregnancy log or a default empty log for the date.' })
+  @ApiOperation({ summary: 'Get the pregnancy check-in for a date (alias of /pregnancy-logs/:date)', description: 'Alias of `GET /pregnancy-logs/:date`; saves call the same implementation. Returns the authenticated user’s saved pregnancy log or a default empty log for the date. New clients should use `/pregnancy-logs/:date`, which resolves the active pregnancy server-side.', deprecated: true })
   @ApiParam({ name: 'date', description: 'Local calendar date in YYYY-MM-DD format.' })
   @ApiResponse({ status: 200, description: 'Saved check-in or default empty check-in.' })
   async getPregnancyLog(@Req() req: any, @Param('date', new ZodValidationPipe(PregnancyLogDateParam)) date: string) {

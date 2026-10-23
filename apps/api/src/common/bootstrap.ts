@@ -3,6 +3,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser = require('cookie-parser');
 import { env } from '../config/env.validation';
+import { logConfigurationReport } from './config/configuration-report';
 import { requestIdMiddleware } from './http/request-id.middleware';
 
 /**
@@ -13,6 +14,10 @@ import { requestIdMiddleware } from './http/request-id.middleware';
  */
 export function configureApp(app: INestApplication): void {
   const config = env();
+
+  // One readable configuration report per process: what is missing and what it
+  // disables. Degraded staging deployments are loud in the logs, never silent.
+  logConfigurationReport(config);
 
   // Every response and error carries a request identifier.
   app.use(requestIdMiddleware);

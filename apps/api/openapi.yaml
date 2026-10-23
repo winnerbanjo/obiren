@@ -144,6 +144,74 @@ paths:
       summary: Sign in
       tags:
         - Authentication
+  /auth/google:
+    post:
+      description: >-
+        Exchanges a Google ID token for an Obiren session. The token is verified server-side against Google’s published
+        keys, issuer and the configured client ID audience; profile claims in the request body are ignored. A verified
+        Google email with no existing account creates an active, email-verified account. MFA-enabled accounts still
+        receive an mfaRequired challenge. Returns 503 when GOOGLE_CLIENT_ID is not configured.
+      operationId: AuthController_googleSignIn
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - idToken
+              properties:
+                idToken:
+                  type: string
+                  minLength: 20
+                  maxLength: 4096
+                  description: Google ID token issued to the Obiren client (web, iOS or Android).
+                  example: eyJhbGciOiJSUzI1NiIsImtpZCI6...
+                platform:
+                  type: string
+                  enum:
+                    - web
+                    - ios
+                    - android
+                  default: web
+      responses:
+        '200':
+          description: >-
+            Authenticated, or an MFA challenge when the account has a second factor enabled. Same payload as POST
+            /auth/login.
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  user:
+                    id: 66a0b6f3e5f21c8e7a112233
+                    email: maya@example.com
+                    countryCode: NG
+                    roles:
+                      - user
+                    status: active
+                    emailVerified: true
+                  tokens:
+                    accessToken: <jwt-access-token>
+                    accessTokenExpiresIn: 15m
+                    refreshToken: <opaque-refresh-token>
+                    refreshTokenExpiresIn: 30d
+                meta:
+                  requestId: req_1729339200000
+        '401':
+          description: The Google credential is invalid, expired, or its email is unverified.
+        '403':
+          description: Account disabled, or an unverified local account already uses the email.
+        '409':
+          description: The email is linked to a different Google account.
+        '503':
+          description: Google sign-in is not configured in this environment.
+      summary: Sign in with Google
+      tags:
+        - Authentication
   /auth/refresh:
     post:
       description: >-
@@ -506,9 +574,10 @@ paths:
         - Authentication
   /users/me:
     get:
+      deprecated: true
       description: >-
-        Returns the authenticated account and profile summary. The user is derived from the access token; no user ID is
-        accepted from the client.
+        Deprecated: use `GET /me`, the PRD path. Both paths call the same service. Returns the authenticated account and
+        profile summary; no user ID is accepted from the client.
       operationId: UsersController_getProfile
       parameters: []
       responses:
@@ -518,11 +587,14 @@ paths:
           description: Missing, expired, or invalid access token.
       security:
         - accessToken: []
-      summary: Get the current user profile
+      summary: Get the current user profile (deprecated)
       tags:
         - Users
     patch:
-      description: 'Partial update: include only fields to change. Dates use YYYY-MM-DD. Unknown fields are rejected.'
+      deprecated: true
+      description: >-
+        Deprecated: use `PATCH /me`, the PRD path. Both paths call the same service. Partial update: include only fields
+        to change. Unknown fields are rejected.
       operationId: UsersController_updateProfile
       parameters: []
       requestBody:
@@ -577,14 +649,15 @@ paths:
           description: Missing, expired, or invalid access token.
       security:
         - accessToken: []
-      summary: Update the current user profile
+      summary: Update the current user profile (deprecated)
       tags:
         - Users
   /users/onboarding:
     get:
+      deprecated: true
       description: >-
-        Returns the authenticated user’s resumable onboarding state. A user identifier is never accepted from the
-        client.
+        Deprecated: use `GET /onboarding`, the PRD path. Both paths call the same service. Returns the authenticated
+        user’s resumable onboarding state.
       operationId: UsersController_getOnboarding
       parameters: []
       responses:
@@ -592,13 +665,14 @@ paths:
           description: Onboarding draft or an empty first-step draft.
       security:
         - accessToken: []
-      summary: Get the current user’s onboarding draft
+      summary: Get the onboarding draft (deprecated)
       tags:
         - Users
     patch:
+      deprecated: true
       description: >-
-        Partially updates the current user’s onboarding draft. Canonical steps are numbered 1 through 8; the draft can
-        be resumed or rewound.
+        Deprecated: use `PATCH /onboarding`, the PRD path. Both paths call the same service. Canonical steps are
+        numbered 1 through 8; the draft can be resumed or rewound.
       operationId: UsersController_updateOnboarding
       parameters: []
       requestBody:
@@ -650,14 +724,15 @@ paths:
           description: Onboarding draft saved.
       security:
         - accessToken: []
-      summary: Save onboarding progress
+      summary: Save onboarding progress (deprecated)
       tags:
         - Users
   /users/onboarding/complete:
     post:
+      deprecated: true
       description: >-
-        Completes the user’s onboarding after all eight steps and the required objective have been saved. The server
-        sets onboardingStatus; it is not client-editable.
+        Deprecated: use `POST /onboarding/complete`, the PRD path. Both paths call the same service. Completes
+        onboarding after all eight steps and the required objective are saved; the server sets onboardingStatus.
       operationId: UsersController_completeOnboarding
       parameters: []
       responses:
@@ -667,7 +742,7 @@ paths:
           description: Onboarding draft is incomplete or already in an invalid state.
       security:
         - accessToken: []
-      summary: Complete onboarding
+      summary: Complete onboarding (deprecated)
       tags:
         - Users
   /users/me/privacy-jobs:
@@ -728,9 +803,7 @@ paths:
         - Users
   /me:
     get:
-      description: >-
-        Alias of `GET /users/me`. The account is derived from the access token; no user identifier is accepted from the
-        client.
+      description: PRD path. The account is derived from the access token; no user identifier is accepted from the client.
       operationId: AccountAliasesController_getMe
       parameters: []
       responses:
@@ -744,9 +817,7 @@ paths:
       tags:
         - Users
     patch:
-      description: >-
-        Alias of `PATCH /users/me`. Partial update: include only fields to change. Dates use YYYY-MM-DD; unknown fields
-        are rejected.
+      description: 'PRD path. Partial update: include only fields to change. Dates use YYYY-MM-DD; unknown fields are rejected.'
       operationId: AccountAliasesController_patchMe
       parameters: []
       responses:
@@ -759,7 +830,7 @@ paths:
         - Users
   /onboarding:
     get:
-      description: Alias of `GET /users/onboarding`. Resumable, owner-scoped onboarding state.
+      description: PRD path. Resumable, owner-scoped onboarding state.
       operationId: AccountAliasesController_getOnboarding
       parameters: []
       responses:
@@ -771,9 +842,7 @@ paths:
       tags:
         - Users
     patch:
-      description: >-
-        Alias of `PATCH /users/onboarding`. Canonical steps are numbered 1 through 8; the draft can be resumed or
-        rewound.
+      description: PRD path. Canonical steps are numbered 1 through 8; the draft can be resumed or rewound.
       operationId: AccountAliasesController_patchOnboarding
       parameters: []
       responses:
@@ -787,8 +856,8 @@ paths:
   /onboarding/complete:
     post:
       description: >-
-        Alias of `POST /users/onboarding/complete`. Completes onboarding only after all eight steps and the required
-        objective are saved. The server sets onboardingStatus; it is not client-editable.
+        PRD path. Completes onboarding only after all eight steps and the required objective are saved. The server sets
+        onboardingStatus; it is not client-editable.
       operationId: AccountAliasesController_completeOnboarding
       parameters: []
       responses:
@@ -1498,12 +1567,13 @@ paths:
       summary: Edit a recorded period
       tags:
         - Periods
-  /pregnancies/current:
+  /pregnancies/active:
     get:
       description: >-
-        Returns the current pregnancy with estimated gestational age and milestone, or `data: null` when no active
-        pregnancy exists.
-      operationId: PregnancyController_getCurrentPregnancy
+        PRD path. Returns the current pregnancy with trimester, gestational age, days to due date and milestone, or
+        `data: null` when no active pregnancy exists. Timezone-consistent and explicitly not a substitute for clinical
+        dating.
+      operationId: PregnancyController_getActivePregnancy
       parameters: []
       responses:
         '200':
@@ -1513,19 +1583,20 @@ paths:
       summary: Get the active pregnancy
       tags:
         - Pregnancy
-  /pregnancies/active:
+  /pregnancies/current:
     get:
+      deprecated: true
       description: >-
-        Alias of `GET /pregnancies/current`. Returns the current pregnancy with trimester, gestational age and
-        milestone, or `data: null` when no active pregnancy exists.
-      operationId: PregnancyController_getActivePregnancy
+        Alias of `GET /pregnancies/active`; both paths call the same service. Kept for the earlier web client. New
+        clients should use `/pregnancies/active`.
+      operationId: PregnancyController_getCurrentPregnancy
       parameters: []
       responses:
         '200':
           description: Active pregnancy or null.
       security:
         - accessToken: []
-      summary: Get the active pregnancy (PRD alias)
+      summary: Get the active pregnancy (alias of /pregnancies/active)
       tags:
         - Pregnancy
   /pregnancies/history:
@@ -1543,7 +1614,11 @@ paths:
         - Pregnancy
   /pregnancies/logs/{date}:
     get:
-      description: Returns the authenticated user’s saved pregnancy log or a default empty log for the date.
+      deprecated: true
+      description: >-
+        Alias of `GET /pregnancy-logs/:date`; saves call the same implementation. Returns the authenticated user’s saved
+        pregnancy log or a default empty log for the date. New clients should use `/pregnancy-logs/:date`, which
+        resolves the active pregnancy server-side.
       operationId: PregnancyController_getPregnancyLog
       parameters:
         - name: date
@@ -1557,7 +1632,7 @@ paths:
           description: Saved check-in or default empty check-in.
       security:
         - accessToken: []
-      summary: Get the pregnancy check-in for a date
+      summary: Get the pregnancy check-in for a date (alias of /pregnancy-logs/:date)
       tags:
         - Pregnancy
   /pregnancies:
@@ -2194,15 +2269,15 @@ paths:
   /internal/cron/process-notifications:
     get:
       description: >-
-        Internal scheduler operation that atomically claims and processes up to 20 due notifications. Supply the
-        configured secret in the X-Cron-Secret header; query-string secrets are supported for compatibility but
-        discouraged because URLs may be logged. Not a mobile-client operation.
+        Internal scheduler operation that atomically claims and processes up to 20 due notifications. Authenticates with
+        X-Cron-Secret, Authorization: Bearer <CRON_SECRET> (Vercel Cron), or the legacy query parameter. Denied when
+        CRON_SECRET is unset. Not a mobile-client operation.
       operationId: NotificationsController_processNotificationOutbox
       parameters:
         - name: cronSecret
           required: false
           in: query
-          description: Legacy secret transport. Prefer X-Cron-Secret header.
+          description: Legacy secret transport. Prefer X-Cron-Secret or a Bearer header.
           schema:
             type: string
         - name: x-cron-secret
@@ -2210,15 +2285,22 @@ paths:
           in: header
           schema:
             type: string
+        - name: authorization
+          required: true
+          in: header
+          schema:
+            type: string
         - name: X-Cron-Secret
           in: header
-          description: Value configured by the operator as CRON_SECRET.
-          required: true
+          description: 'Value configured by the operator as CRON_SECRET. `Authorization: Bearer <CRON_SECRET>` is also accepted.'
+          required: false
           schema:
             type: string
       responses:
         '200':
           description: Processing result, including claimedCount and processedAt.
+        '401':
+          description: Missing or invalid cron credential.
       summary: Process pending notification outbox (internal)
       tags:
         - Notifications and webhooks
@@ -2679,9 +2761,11 @@ paths:
         - Safety
   /safety/sos/{id}/deliveries:
     get:
+      deprecated: true
       description: >-
-        Owner-scoped delivery evidence. Attempts are only marked sent when an approved provider confirms delivery;
-        deliveryConfirmed is false otherwise. This is not a guarantee of rescue or dispatch.
+        Deprecated: use `GET /safety/sos-events/:id`. Owner-scoped delivery evidence read from the same implementation.
+        Attempts are only marked sent when an approved provider confirms delivery; deliveryConfirmed is false otherwise
+        and this is not a guarantee of rescue or dispatch.
       operationId: SafetyController_getSosDeliveries
       parameters:
         - name: id
@@ -2697,7 +2781,7 @@ paths:
           description: Incident not found for this account.
       security:
         - accessToken: []
-      summary: List recorded SOS delivery attempts
+      summary: List recorded SOS delivery attempts (deprecated)
       tags:
         - Safety
   /safety/sos-events/{id}:
@@ -3309,22 +3393,40 @@ paths:
     get:
       description: >-
         Lightweight liveness probe. A successful response confirms the HTTP service is running; it does not guarantee
-        downstream dependencies are healthy.
+        downstream dependencies are healthy. The `configuration` block lists every missing environment variable and what
+        it disables, so a deployment started with `ALLOW_DEGRADED_STARTUP=true` reports `status: "degraded"` instead of
+        failing silently. Variable names only — never values.
       operationId: HealthController_health
       parameters: []
       responses:
         '200':
-          description: Service liveness and server timestamp.
+          description: Service liveness, configuration state and server timestamp.
           content:
             application/json:
               example:
                 success: true
                 data:
-                  status: ok
+                  status: degraded
                   service: obiren-api
                   version: 1.0.0
-                  timestamp: '2026-10-19T12:00:00.000Z'
-      summary: Check API liveness
+                  environment: production
+                  timestamp: '2026-10-23T12:00:00.000Z'
+                  configuration:
+                    degraded: true
+                    environment: production
+                    requiredMissing: 1
+                    missing:
+                      - variable: HEALTH_DATA_ENCRYPTION_KEY
+                        feature: Private health notes
+                        impact: >-
+                          Daily-log notes, pregnancy notes and consultation messages return 503 instead of being stored
+                          in plaintext.
+                        required: true
+                    docs: docs/DEPLOYMENT_ENV_STAGING.md
+                    note: >-
+                      This API is running in degraded staging mode. Missing required settings are listed above; gated
+                      features fail closed with 503 instead of pretending to work.
+      summary: Check API liveness and configuration state
       tags:
         - Health
   /home:
@@ -3374,31 +3476,42 @@ paths:
       summary: List daily logs for a calendar range
       tags:
         - Home
-  /care/clinicians:
-    get:
-      description: Unverified or inactive clinicians are never exposed in the user catalog.
-      operationId: CareController_listClinicians
-      parameters: []
-      responses:
-        '200':
-          description: Verified clinician catalog.
-      summary: List active verified specialists
-      tags:
-        - Care
   /care/availability:
     get:
-      description: Only slots owned by active verified clinicians are returned. Expired holds are treated as open.
+      deprecated: true
+      description: >-
+        Deprecated: use `GET /specialists/:id/slots` for a specialist-scoped view or `GET /specialists` to discover
+        specialists. Returns open slots for verified clinicians in a country; expired holds count as available.
       operationId: CareController_listAvailability
       parameters: []
       responses:
         '200':
           description: Verified specialist availability.
-      summary: List available specialist slots
+      summary: List available slots across specialists (deprecated)
       tags:
         - Care
+  /clinician/slots:
+    get:
+      description: >-
+        Returns future slots for the signed-in clinician only, ordered by start time. Requires the clinician role and an
+        active, verified clinician profile.
+      operationId: ClinicianSlotsController_list
+      parameters: []
+      responses:
+        '200':
+          description: Own availability slots.
+        '403':
+          description: No active, verified clinician profile for this account.
+      security:
+        - accessToken: []
+      summary: List the caller’s availability slots
+      tags:
+        - Bookings
     post:
-      description: Only a verified clinician may publish future availability. No price or booking entitlement is created.
-      operationId: CareController_createAvailability
+      description: >-
+        Publishes one future slot for the signed-in clinician. No price or booking entitlement is created: an unpriced
+        session type still fails closed at checkout.
+      operationId: ClinicianSlotsController_create
       parameters: []
       requestBody:
         required: true
@@ -3430,72 +3543,83 @@ paths:
           description: Availability slot published.
         '403':
           description: Active verified clinician profile required.
+        '409':
+          description: A slot already exists at that start time.
       security:
         - accessToken: []
-      summary: Publish a clinician availability slot
+      summary: Publish an availability slot
       tags:
-        - Care
-  /care/holds:
-    get:
-      description: Returns only non-expired holds owned by the authenticated user. Holds do not confirm appointments or payments.
-      operationId: CareController_listMyHolds
-      parameters: []
-      responses:
-        '200':
-          description: Active temporary holds.
-      security:
-        - accessToken: []
-      summary: List the caller’s active temporary holds
-      tags:
-        - Care
-    post:
-      description: Atomically holds one slot for 10 minutes. This is not a booking, payment, or confirmed appointment.
-      operationId: CareController_holdSlot
-      parameters: []
+        - Bookings
+  /clinician/slots/{id}:
+    patch:
+      description: >-
+        Owner-scoped partial update of start, end or session type. Only open (or expired-hold) slots can be changed; a
+        held or booked slot returns 409.
+      operationId: ClinicianSlotsController_update
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character availability slot identifier.
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - slotId
               additionalProperties: false
               properties:
-                slotId:
+                startsAt:
                   type: string
-                  pattern: ^[0-9a-fA-F]{24}$
+                  format: date-time
+                endsAt:
+                  type: string
+                  format: date-time
+                sessionType:
+                  type: string
+                  enum:
+                    - clinic
+                    - audio
+                    - video
+                    - text
       responses:
-        '201':
-          description: Temporary hold created; no booking or payment confirmed.
+        '200':
+          description: Slot updated.
+        '404':
+          description: No such slot for this clinician.
         '409':
-          description: Slot has already been held or booked.
+          description: Slot is held or booked.
       security:
         - accessToken: []
-      summary: Create a temporary slot hold
+      summary: Update an availability slot
       tags:
-        - Care
-  /care/holds/{id}:
+        - Bookings
     delete:
-      description: Only the hold owner can release it. Confirmed booking cancellation is not implemented.
-      operationId: CareController_cancelHold
+      description: >-
+        Owner-scoped removal of an open slot. A held or booked slot cannot be deleted (409); cancel the booking instead.
+        Nothing that has been paid for is removed.
+      operationId: ClinicianSlotsController_remove
       parameters:
         - name: id
           required: true
           in: path
-          description: 24-character booking hold identifier.
+          description: 24-character availability slot identifier.
           schema:
             type: string
       responses:
         '200':
-          description: Temporary hold cancelled.
+          description: Slot deleted.
         '404':
-          description: Active hold not found for this account.
+          description: No such slot for this clinician.
+        '409':
+          description: Slot is held or booked.
       security:
         - accessToken: []
-      summary: Cancel a temporary hold
+      summary: Delete an availability slot
       tags:
-        - Care
+        - Bookings
   /specialists:
     get:
       description: >-
@@ -4787,12 +4911,56 @@ paths:
       tags:
         - Health briefs
   /internal/cron/run-retention:
+    get:
+      description: >-
+        Scheduler-facing variant of `POST /internal/cron/run-retention`, for hosts whose cron only issues GET. Previews
+        by default; send `?dryRun=false` (and set RETENTION_EXECUTION_ENABLED=true) to delete expired operational
+        records. Account health records are never purged.
+      operationId: RetentionController_runScheduled
+      parameters:
+        - name: x-cron-secret
+          required: true
+          in: header
+          schema:
+            type: string
+        - name: authorization
+          required: true
+          in: header
+          schema:
+            type: string
+        - name: cronSecret
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: dryRun
+          required: false
+          in: query
+          description: Preview unless explicitly false.
+          schema:
+            enum:
+              - 'true'
+              - 'false'
+            type: string
+        - name: X-Cron-Secret
+          in: header
+          description: 'Value configured by the operator as CRON_SECRET. `Authorization: Bearer <CRON_SECRET>` is also accepted.'
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Per-collection counts plus the explicit dry-run/executed state.
+        '401':
+          description: Missing or invalid cron credential.
+      summary: Run retention housekeeping (internal, scheduler)
+      tags:
+        - Notifications and webhooks
     post:
       description: >-
-        Internal scheduler operation that previews, or deletes, expired operational records (sessions, expired
-        invitations, location sessions, expired shares/briefs, idempotency rows, old webhook audit rows). Deletion
-        requires `dryRun=false` and `RETENTION_EXECUTION_ENABLED=true`; account health records are never purged here.
-        Not a mobile-client operation.
+        Previews by default; send `?dryRun=false` with `RETENTION_EXECUTION_ENABLED=true` to delete expired operational
+        records (sessions, expired invitations, location sessions, expired shares/briefs, idempotency rows, old webhook
+        audit rows). Account health records are never purged here. Not a mobile-client operation.
       operationId: RetentionController_run
       parameters:
         - name: x-cron-secret
@@ -4800,10 +4968,29 @@ paths:
           in: header
           schema:
             type: string
+        - name: authorization
+          required: true
+          in: header
+          schema:
+            type: string
+        - name: cronSecret
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: dryRun
+          required: false
+          in: query
+          description: Preview unless explicitly false.
+          schema:
+            enum:
+              - 'true'
+              - 'false'
+            type: string
         - name: X-Cron-Secret
           in: header
-          description: Value configured by the operator as CRON_SECRET.
-          required: true
+          description: 'Value configured by the operator as CRON_SECRET. `Authorization: Bearer <CRON_SECRET>` is also accepted.'
+          required: false
           schema:
             type: string
       responses:
@@ -4811,7 +4998,7 @@ paths:
           description: Per-collection counts plus the explicit dry-run/executed state.
         '401':
           description: Missing or invalid cron credential.
-      summary: Run retention housekeeping (internal)
+      summary: Run retention housekeeping (internal, operator)
       tags:
         - Notifications and webhooks
 info:

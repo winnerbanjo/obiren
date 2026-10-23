@@ -13,7 +13,7 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
-  @ApiOperation({ summary: 'Get the current user profile', description: 'Returns the authenticated account and profile summary. The user is derived from the access token; no user ID is accepted from the client.' })
+  @ApiOperation({ summary: 'Get the current user profile (deprecated)', description: 'Deprecated: use `GET /me`, the PRD path. Both paths call the same service. Returns the authenticated account and profile summary; no user ID is accepted from the client.', deprecated: true })
   @ApiResponse({ status: 200, description: 'Profile returned.' })
   @ApiResponse({ status: 401, description: 'Missing, expired, or invalid access token.' })
   async getProfile(@Req() req: any) {
@@ -21,14 +21,14 @@ export class UsersController {
   }
 
   @Get('onboarding')
-  @ApiOperation({ summary: 'Get the current user’s onboarding draft', description: 'Returns the authenticated user’s resumable onboarding state. A user identifier is never accepted from the client.' })
+  @ApiOperation({ summary: 'Get the onboarding draft (deprecated)', description: 'Deprecated: use `GET /onboarding`, the PRD path. Both paths call the same service. Returns the authenticated user’s resumable onboarding state.', deprecated: true })
   @ApiResponse({ status: 200, description: 'Onboarding draft or an empty first-step draft.' })
   async getOnboarding(@Req() req: any) {
     return this.usersService.getOnboarding(req.user.sub);
   }
 
   @Patch('onboarding')
-  @ApiOperation({ summary: 'Save onboarding progress', description: 'Partially updates the current user’s onboarding draft. Canonical steps are numbered 1 through 8; the draft can be resumed or rewound.' })
+  @ApiOperation({ summary: 'Save onboarding progress (deprecated)', description: 'Deprecated: use `PATCH /onboarding`, the PRD path. Both paths call the same service. Canonical steps are numbered 1 through 8; the draft can be resumed or rewound.', deprecated: true })
   @ApiBody({ schema: { type: 'object', additionalProperties: false, properties: { step: { type: 'integer', minimum: 1, maximum: 8 }, objective: { type: 'string', enum: ['CYCLE_TRACKING', 'PREGNANCY', 'FERTILITY', 'GENERAL_WELLNESS'] }, lastMenstrualPeriod: { type: 'string', format: 'date' }, cycleLengthDays: { type: 'integer', minimum: 20, maximum: 45 }, bleedingDays: { type: 'integer', minimum: 1, maximum: 15 }, conditions: { type: 'array', maxItems: 30, items: { type: 'string', maxLength: 80 } }, concerns: { type: 'array', maxItems: 30, items: { type: 'string', maxLength: 120 } }, notificationsEnabled: { type: 'boolean' } } } })
   @ApiResponse({ status: 200, description: 'Onboarding draft saved.' })
   async updateOnboarding(@Req() req: any, @Body(new ZodValidationPipe(OnboardingPatchSchema)) body) {
@@ -36,7 +36,7 @@ export class UsersController {
   }
 
   @Post('onboarding/complete')
-  @ApiOperation({ summary: 'Complete onboarding', description: 'Completes the user’s onboarding after all eight steps and the required objective have been saved. The server sets onboardingStatus; it is not client-editable.' })
+  @ApiOperation({ summary: 'Complete onboarding (deprecated)', description: 'Deprecated: use `POST /onboarding/complete`, the PRD path. Both paths call the same service. Completes onboarding after all eight steps and the required objective are saved; the server sets onboardingStatus.', deprecated: true })
   @ApiResponse({ status: 201, description: 'Onboarding completed and profile preferences committed.' })
   @ApiResponse({ status: 422, description: 'Onboarding draft is incomplete or already in an invalid state.' })
   async completeOnboarding(@Req() req: any) {
@@ -44,7 +44,7 @@ export class UsersController {
   }
 
   @Patch('me')
-  @ApiOperation({ summary: 'Update the current user profile', description: 'Partial update: include only fields to change. Dates use YYYY-MM-DD. Unknown fields are rejected.' })
+  @ApiOperation({ summary: 'Update the current user profile (deprecated)', description: 'Deprecated: use `PATCH /me`, the PRD path. Both paths call the same service. Partial update: include only fields to change. Unknown fields are rejected.', deprecated: true })
   @ApiBody({ schema: { type: 'object', additionalProperties: false, properties: { firstName: { type: 'string', maxLength: 80 }, lastName: { type: 'string', maxLength: 80 }, displayName: { type: 'string', maxLength: 120 }, dateOfBirth: { type: 'string', format: 'date' }, phoneNumber: { type: 'string', maxLength: 32 }, countryCode: { type: 'string', enum: ['NG', 'GH', 'GB', 'US'] }, timeZone: { type: 'string', maxLength: 64, example: 'Africa/Lagos' }, trackingGoal: { type: 'string', enum: ['CYCLE_TRACKING', 'PREGNANCY', 'FERTILITY', 'GENERAL_WELLNESS'] }, preferredLanguage: { type: 'string', minLength: 2, maxLength: 8 } } } })
   @ApiResponse({ status: 200, description: 'Profile updated.' })
   @ApiResponse({ status: 401, description: 'Missing, expired, or invalid access token.' })

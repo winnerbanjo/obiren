@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CareController } from './care.controller';
 import { CareService } from './care.service';
+import { ClinicianSlotsController } from './clinician-slots.controller';
 import { SpecialistsController } from './specialists.controller';
 import {
   BookingsController,
@@ -50,6 +51,7 @@ import { PaystackProvider } from '../../common/payments/paystack.provider';
   ],
   controllers: [
     CareController,
+    ClinicianSlotsController,
     SpecialistsController,
     BookingsController,
     ClinicianBookingsController,

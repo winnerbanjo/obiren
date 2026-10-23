@@ -167,6 +167,14 @@ export interface LoginResult {
   tokens: { accessToken: string; refreshToken?: string };
 }
 
+/** Returned instead of tokens when the account has a second factor enabled. */
+export interface MfaChallengeResult {
+  mfaRequired: true;
+  mfaToken: string;
+  methods: string[];
+  message: string;
+}
+
 export const authApi = {
   async register(input: {
     email: string;
@@ -189,6 +197,21 @@ export const authApi = {
   async login(email: string, password: string) {
     const data = await request<LoginResult>('POST', '/auth/login', { email, password, platform: 'web' });
     setAccessToken(data.tokens.accessToken);
+    return data;
+  },
+
+  /**
+   * Sign in with a Google ID token obtained by the client SDK
+   * (Google Identity Services on web, the Google Sign-In SDK on mobile).
+   * The API verifies the token server-side; the client sends no profile data.
+   */
+  async googleSignIn(idToken: string): Promise<LoginResult | MfaChallengeResult> {
+    const data = await request<LoginResult | MfaChallengeResult>('POST', '/auth/google', {
+      idToken,
+      platform: 'web',
+    });
+    // Never store a token for an MFA challenge; it has no session yet.
+    if ('tokens' in data) setAccessToken(data.tokens.accessToken);
     return data;
   },
 
@@ -261,8 +284,8 @@ export interface PrivacyJobData {
 }
 
 export const usersApi = {
-  getProfile: () => request<UserProfileData>('GET', '/users/me'),
-  updateProfile: (updates: Record<string, unknown>) => request<UserProfileData>('PATCH', '/users/me', updates),
+  getProfile: () => request<UserProfileData>('GET', '/me'),
+  updateProfile: (updates: Record<string, unknown>) => request<UserProfileData>('PATCH', '/me', updates),
   exportData: () => request<Record<string, unknown>>('GET', '/users/me/export'),
   getPrivacyJobs: () => request<PrivacyJobData[]>('GET', '/users/me/privacy-jobs'),
   requestDeletion: () => request<{ jobId: string; deletionScheduledFor: string; erasureCompleted: false }>('POST', '/users/me/request-deletion', {}),
@@ -542,9 +565,7 @@ export interface PregnancyData {
 }
 
 export const pregnancyApi = {
-  getCurrent: () => request<PregnancyData | null>('GET', '/pregnancies/current'),
-  /** PRD alias of `getCurrent`. */
-  getActive: () => request<PregnancyData | null>('GET', '/pregnancies/active'),
+  getCurrent: () => request<PregnancyData | null>('GET', '/pregnancies/active'),
   create: (input: { lastMenstrualPeriod?: string; estimatedDueDate?: string; calculationSource?: string; multiplePregnancy?: boolean }) =>
     request<PregnancyData>('POST', '/pregnancies', input),
   end: (id: string, reason: string) => request<PregnancyData>('POST', `/pregnancies/${id}/end`, { reason }),
@@ -650,6 +671,7 @@ export const safetyApi = {
   revokeGuardian: (id: string) => request<{ id: string; status: string }>('DELETE', `/safety/guardians/${id}`),
   startLocationSession: (expiresAt: string) => request<{ sessionId: string; status: string; expiresAt: string }>('POST', '/safety/location-sessions', { expiresAt }),
   revokeLocationSession: (id: string) => request<{ sessionId: string; status: string }>('DELETE', `/safety/location-sessions/${id}`),
+  /** Deprecated: use `getSosEvent`. */
   getSosDeliveries: (incidentId: string) =>
     request<{
       incidentId: string;
@@ -671,50 +693,6 @@ export const safetyApi = {
 // ---------------------------------------------------------------------------
 // Care API (verified specialists, availability, temporary holds)
 // ---------------------------------------------------------------------------
-
-export interface ClinicianData {
-  _id: string;
-  displayName: string;
-  specialties: string[];
-  languages: string[];
-  countryCode: string;
-}
-
-export interface AvailabilitySlotData {
-  _id: string;
-  clinicianId: string;
-  startsAt: string;
-  endsAt: string;
-  sessionType: 'clinic' | 'audio' | 'video' | 'text';
-  status: string;
-  clinician?: ClinicianData;
-}
-
-export interface BookingHoldData {
-  holdId: string;
-  slotId: string;
-  status: string;
-  expiresAt: string;
-  bookingEnabled: false;
-  message: string;
-}
-
-export const careApi = {
-  listClinicians: (query: { countryCode?: string; specialty?: string; language?: string } = {}) => {
-    const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
-    const suffix = params.size ? `?${params.toString()}` : '';
-    return request<ClinicianData[]>('GET', `/care/clinicians${suffix}`);
-  },
-  listAvailability: (query: { from: string; to: string; countryCode?: string }) => {
-    const params = new URLSearchParams({ from: query.from, to: query.to });
-    if (query.countryCode) params.set('countryCode', query.countryCode);
-    return request<AvailabilitySlotData[]>('GET', `/care/availability?${params.toString()}`);
-  },
-  holdSlot: (slotId: string) => request<BookingHoldData>('POST', '/care/holds', { slotId }),
-  listHolds: () => request<Array<{ _id: string; slotId: string; status: string; expiresAt: string }>>('GET', '/care/holds'),
-  cancelHold: (id: string) => request<{ holdId: string; status: string }>('DELETE', `/care/holds/${id}`),
-};
 
 // ---------------------------------------------------------------------------
 // Specialists · bookings · payments

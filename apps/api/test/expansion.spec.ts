@@ -647,8 +647,10 @@ describe('Expanded API surface (e2e)', () => {
           createdAt: new Date(),
           updatedAt: new Date(),
         });
+        // Execution is double-gated: the caller must ask for it explicitly and
+        // the deployment must enable it.
         const res = await request(server)
-          .post('/api/v1/internal/cron/run-retention')
+          .post('/api/v1/internal/cron/run-retention?dryRun=false')
           .set('X-Cron-Secret', 'test-retention-secret');
         expect(res.status).toBe(201);
         expect(res.body.data.executed).toBe(true);

@@ -123,16 +123,26 @@ export class CyclesService {
     };
   }
 
-  /** Validates and stores a period end date on an existing cycle. */
-  private async applyPeriodEnd(cycle: CycleDocument, endDate: string) {    if (endDate < cycle.startedAt.toISOString().slice(0, 10)) {
+  /**
+   * Single source of truth for a period end date: it may not precede the
+   * cycle start and may not overlap the next recorded cycle. Shared by the
+   * `/periods` and `/cycles/end-period` surfaces so both reject the same input.
+   */
+  private async assertPeriodEndAllowed(cycle: CycleDocument, endDate: Date) {
+    if (endDate.getTime() < utcMidnight(cycle.startedAt.toISOString().slice(0, 10)).getTime()) {
       throw new BadRequestException('endDate must be on or after startDate');
     }
     const nextCycle = await this.cycleModel
       .findOne({ _id: { $ne: cycle._id }, userId: cycle.userId, status: { $ne: 'deleted' }, startedAt: { $gt: cycle.startedAt } })
       .sort({ startedAt: 1 });
-    if (nextCycle && utcMidnight(endDate) >= nextCycle.startedAt) {
+    if (nextCycle && endDate >= nextCycle.startedAt) {
       throw new BadRequestException('Period end cannot overlap the next recorded cycle');
     }
+  }
+
+  /** Validates and stores a period end date on an existing cycle. */
+  private async applyPeriodEnd(cycle: CycleDocument, endDate: string) {
+    await this.assertPeriodEndAllowed(cycle, utcMidnight(endDate));
     cycle.periodEndedAt = utcMidnight(endDate);
     cycle.periodLength = daysBetween(cycle.startedAt.toISOString().slice(0, 10), endDate) + 1;
   }
@@ -420,15 +430,9 @@ export class CyclesService {
       throw new NotFoundException('No active cycle found to end period');
     }
 
+    await this.assertPeriodEndAllowed(activeCycle, endDate);
     const start = activeCycle.startedAt.getTime();
     const end = endDate.getTime();
-    if (endDate < new Date(`${activeCycle.startedAt.toISOString().slice(0, 10)}T00:00:00.000Z`)) {
-      throw new BadRequestException('Period end date cannot be before its start date');
-    }
-    const nextCycle = await this.cycleModel.findOne({ userId: userObjectId, status: { $ne: 'deleted' }, startedAt: { $gt: activeCycle.startedAt } }).sort({ startedAt: 1 });
-    if (nextCycle && endDate >= nextCycle.startedAt) {
-      throw new BadRequestException('Period end date cannot overlap the next recorded cycle');
-    }
     const periodLength = Math.floor((end - start) / 86400000) + 1;
 
     activeCycle.periodEndedAt = endDate;

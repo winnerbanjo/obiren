@@ -402,6 +402,31 @@ export async function runVersionedMigrations(dbUri?: string): Promise<{ success:
       );
       appliedMigrations.push(mig003Id);
     }
+
+    const mig012Id = '012_google_identity_indexes';
+    const mig012Name = 'Add Google subject index and backfill sign-in providers';
+    const mig012Checksum = crypto.createHash('sha256').update(mig012Id + mig012Name).digest('hex');
+    const existing012 = await migrationsCollection.findOne({ migrationId: mig012Id, status: 'COMPLETED' });
+    if (!existing012) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig012Id },
+        { $set: { name: mig012Name, checksum: mig012Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      // Sparse + unique: many accounts have no Google subject, and a subject
+      // can never be claimed by two accounts.
+      await db.collection('users').createIndex(
+        { googleSub: 1 },
+        { unique: true, sparse: true, name: 'uniq_user_google_sub' },
+      );
+      // Existing accounts all signed in with a password before this migration.
+      await db.collection('users').updateMany(
+        { authProviders: { $exists: false } },
+        { $set: { authProviders: ['password'] } },
+      );
+      await migrationsCollection.updateOne({ migrationId: mig012Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig012Id);
+    }
   } catch (err: any) {
     console.error('Migration failed:', err);
     throw err;

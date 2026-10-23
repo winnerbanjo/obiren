@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as crypto from 'crypto';
 import { env } from '../../config/env.validation';
+import { missingConfigurationDetails } from '../../common/config/configuration-report';
 import { AvailabilitySlot, AvailabilitySlotDocument, BookingHold, BookingHoldDocument, Clinician, ClinicianDocument } from '../../database/schemas/care.schema';
 
 @Injectable()
@@ -131,23 +132,102 @@ export class CareService {
     return { amountMinor: amountMinor as number, currency: this.currencyFor(clinician.countryCode) };
   }
 
-  async listClinicians(filter: { countryCode?: string; specialty?: string; language?: string }) {
-    const query: Record<string, unknown> = { active: true, verificationStatus: 'verified' };
-    if (filter.countryCode) query.countryCode = filter.countryCode;
-    if (filter.specialty) query.specialties = filter.specialty;
-    if (filter.language) query.languages = filter.language;
-    const clinicians = await this.clinicianModel.find(query).select('displayName specialties languages countryCode').sort({ displayName: 1 }).limit(100).lean().exec();
-    return { success: true, data: clinicians, meta: this.meta() };
+  // ---------------- clinician-owned availability ----------------
+
+  /** The caller's own active, verified clinician profile. */
+  private async ownClinician(userId: string) {
+    const clinician = await this.clinicianModel
+      .findOne({ userId: new Types.ObjectId(userId), active: true, verificationStatus: 'verified' })
+      .lean()
+      .exec();
+    if (!clinician) throw new ForbiddenException('An active, verified clinician profile is required');
+    return clinician;
   }
 
-  async createAvailability(userId: string, input: { startsAt: string; endsAt: string; sessionType: string }) {
-    const clinician = await this.clinicianModel.findOne({ userId: new Types.ObjectId(userId), active: true, verificationStatus: 'verified' }).lean().exec();
-    if (!clinician) throw new ForbiddenException('An active, verified clinician profile is required');
+  private presentSlot(slot: any) {
+    return {
+      id: slot._id.toString(),
+      startsAt: new Date(slot.startsAt).toISOString(),
+      endsAt: new Date(slot.endsAt).toISOString(),
+      sessionType: slot.sessionType,
+      status: slot.status,
+      holdExpiresAt: slot.holdExpiresAt ? new Date(slot.holdExpiresAt).toISOString() : null,
+    };
+  }
+
+  /** A slot can only be changed while it is unbooked and not actively held. */
+  private assertSlotEditable(slot: { status: string; holdExpiresAt?: Date | null }) {
+    const holdExpired = Boolean(slot.holdExpiresAt && new Date(slot.holdExpiresAt).getTime() <= Date.now());
+    if (slot.status !== 'open' && !(slot.status === 'held' && holdExpired)) {
+      throw new ConflictException('Only open availability can be changed while a slot is held or booked');
+    }
+  }
+
+  async listClinicianSlots(
+    userId: string,
+    query: { from?: string; to?: string; status?: string; limit: number },
+  ): Promise<Record<string, unknown>> {
+    const clinician = await this.ownClinician(userId);
+    const startsAt: Record<string, Date> = { $gte: query.from ? new Date(query.from) : new Date() };
+    if (query.to) startsAt.$lte = new Date(query.to);
+    const filter: Record<string, unknown> = { clinicianId: clinician._id, startsAt };
+    if (query.status) filter.status = query.status;
+    const slots = await this.slotModel.find(filter).sort({ startsAt: 1 }).limit(query.limit).lean().exec();
+    return {
+      success: true,
+      data: { specialistId: clinician._id.toString(), slots: slots.map((slot) => this.presentSlot(slot)) },
+      meta: this.meta(),
+    };
+  }
+
+  async createClinicianSlot(userId: string, input: { startsAt: string; endsAt: string; sessionType: string }) {
+    const clinician = await this.ownClinician(userId);
     const startsAt = new Date(input.startsAt); const endsAt = new Date(input.endsAt);
     if (startsAt <= new Date()) throw new BadRequestException('Availability must start in the future');
     if (startsAt.getTime() % 60000 || endsAt.getTime() % 60000) throw new BadRequestException('Availability must use whole-minute boundaries');
     const slot = await this.slotModel.create({ clinicianId: clinician._id, startsAt, endsAt, sessionType: input.sessionType, status: 'open' });
-    return { success: true, data: slot, meta: this.meta() };
+    return { success: true, data: this.presentSlot(slot.toObject()), meta: this.meta() };
+  }
+
+  async updateClinicianSlot(
+    userId: string,
+    slotId: string,
+    input: { startsAt?: string; endsAt?: string; sessionType?: string },
+  ): Promise<Record<string, unknown>> {
+    const clinician = await this.ownClinician(userId);
+    const slot = await this.slotModel.findOne({ _id: new Types.ObjectId(slotId), clinicianId: clinician._id }).exec();
+    if (!slot) throw new NotFoundException('Availability slot not found for this clinician');
+    this.assertSlotEditable(slot);
+
+    const startsAt = input.startsAt ? new Date(input.startsAt) : new Date(slot.startsAt);
+    const endsAt = input.endsAt ? new Date(input.endsAt) : new Date(slot.endsAt);
+    if (startsAt <= new Date()) throw new BadRequestException('Availability must start in the future');
+    if (endsAt <= startsAt) throw new BadRequestException('endsAt must follow startsAt');
+    if (startsAt.getTime() % 60000 || endsAt.getTime() % 60000) throw new BadRequestException('Availability must use whole-minute boundaries');
+    if (endsAt.getTime() - startsAt.getTime() > 8 * 60 * 60 * 1000) throw new BadRequestException('Slot duration cannot exceed eight hours');
+
+    slot.startsAt = startsAt;
+    slot.endsAt = endsAt;
+    if (input.sessionType) slot.sessionType = input.sessionType;
+    // A previously held (now expired) slot becomes bookable again.
+    slot.status = 'open';
+    slot.heldBy = undefined;
+    slot.holdExpiresAt = undefined;
+    slot.holdId = undefined;
+    await slot.save();
+
+    return { success: true, data: this.presentSlot(slot.toObject()), meta: this.meta() };
+  }
+
+  async deleteClinicianSlot(userId: string, slotId: string): Promise<Record<string, unknown>> {
+    const clinician = await this.ownClinician(userId);
+    const slot = await this.slotModel.findOne({ _id: new Types.ObjectId(slotId), clinicianId: clinician._id }).exec();
+    if (!slot) throw new NotFoundException('Availability slot not found for this clinician');
+    this.assertSlotEditable(slot);
+    // Hard delete: the slot never held a booking, and the unique
+    // (clinicianId, startsAt) index must be freed so the time can be republished.
+    await this.slotModel.deleteOne({ _id: slot._id, clinicianId: clinician._id });
+    return { success: true, data: { slotId, deleted: true }, meta: this.meta() };
   }
 
   async listAvailability(filter: { from: Date; to: Date; countryCode?: string }): Promise<Record<string, unknown>> {
@@ -180,11 +260,6 @@ export class CareService {
     }
   }
 
-  async listMyHolds(userId: string) {
-    const holds = await this.holdModel.find({ userId: new Types.ObjectId(userId), status: 'held', expiresAt: { $gt: new Date() } }).sort({ createdAt: -1 }).limit(50).lean().exec();
-    return { success: true, data: holds, meta: this.meta() };
-  }
-
   async cancelHold(userId: string, holdId: string) {
     const hold = await this.holdModel.findOneAndUpdate({ _id: new Types.ObjectId(holdId), userId: new Types.ObjectId(userId), status: 'held', expiresAt: { $gt: new Date() } }, { $set: { status: 'cancelled' } }, { new: true }).exec();
     if (!hold) throw new NotFoundException('Active booking hold not found');
@@ -193,7 +268,19 @@ export class CareService {
   }
 
   async initializePayment(): Promise<never> {
-    if (!env().paymentEnabled || !process.env.PAYSTACK_SECRET_KEY) throw new ServiceUnavailableException('Checkout is disabled until payment credentials and approved pricing/refund policy are configured');
+    if (!env().paymentEnabled || !process.env.PAYSTACK_SECRET_KEY) {
+      throw new ServiceUnavailableException({
+        success: false,
+        error: {
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Checkout is disabled until payment credentials and an approved pricing/refund policy are configured.',
+          details: missingConfigurationDetails(
+            ['PAYMENT_ENABLED', 'PAYMENT_POLICY_VERSION', 'PAYSTACK_SECRET_KEY'],
+            'Checkout and payments',
+          ),
+        },
+      });
+    }
     throw new ServiceUnavailableException('Checkout integration is not enabled; no payment was attempted');
   }
 

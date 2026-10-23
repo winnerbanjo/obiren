@@ -155,13 +155,20 @@ DB re-check on every request (status + roles)
   anti-enumeration responses.
 - **Password reset:** single-use hashed token, 1 h expiry, generic response
   regardless of account existence, revokes all sessions on success.
+- **Google sign-in:** `POST /auth/google` verifies a Google ID token
+  server-side (signature, issuer, expiry, audience allow-list from
+  `GOOGLE_CLIENT_ID`) and never trusts client-supplied profile claims. A
+  verified Google email creates an active account; an existing account is
+  linked only if its email is already verified (pre-hijack guard), and MFA is
+  still required. Optional: unset `GOOGLE_CLIENT_ID` returns 503 and leaves
+  password sign-in untouched. See `docs/DECISIONS.md`.
 
 ## API surface (summary)
 
 Base path `/api/v1`:
 
-- `auth/*` — register, login, refresh, logout, me, sessions, verify-email,
-  resend-verification, forgot-password, reset-password
+- `auth/*` — register, login, google, refresh, logout, me, sessions,
+  verify-email, resend-verification, forgot-password, reset-password
 - `users/me` — profile get/update, export (NDPR), request/cancel deletion
 - `cycles/*` — current, history, start-period, end-period
 - `daily-logs/:date` — get/upsert (validated `YYYY-MM-DD`)
@@ -197,7 +204,7 @@ MONGODB_URI=<non-production uri> npx ts-node --transpile-only scripts/seed-demo.
 
 ```bash
 cd apps/api
-npm test          # 128 end-to-end tests, real Nest app + in-memory MongoDB
+npm test          # 154 end-to-end tests, real Nest app + in-memory MongoDB
 ```
 
 Tests boot the actual application (same security config as production) against
@@ -229,12 +236,12 @@ loudly rather than run with known-default secrets.
 | Path | Schedule | Purpose |
 | --- | --- | --- |
 | `/api/v1/internal/cron/process-notifications` | every 10 min | Outbox claim worker (atomic claims, retries, caps) |
-| `/api/v1/internal/cron/recalculate-predictions` | hourly | Cycle prediction recalculation |
-| `/api/v1/internal/cron/directory-reverification` | daily 03:00 | Emergency-resource reverification |
-| `/api/v1/internal/cron/data-retention` | daily 04:00 | NDPR retention enforcement |
+| `/api/v1/internal/cron/run-retention?dryRun=false` | daily 04:00 | NDPR retention of expired operational records (account health records are never purged) |
 
-All internal cron endpoints require `CRON_SECRET` (query or `x-cron-secret`
-header); without it they are denied in every environment.
+Both routes accept `X-Cron-Secret: <CRON_SECRET>` or the
+`Authorization: Bearer <CRON_SECRET>` header that Vercel Cron sends, and are
+denied when `CRON_SECRET` is unset. Retention previews by default; deletion also
+requires `RETENTION_EXECUTION_ENABLED=true`.
 
 ## Security assumptions
 

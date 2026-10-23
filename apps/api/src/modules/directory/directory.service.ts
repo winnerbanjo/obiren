@@ -18,7 +18,7 @@ export class DirectoryServiceBackend implements OnModuleInit {
   async seedVerifiedRecords() {
     const count = await this.directoryModel.countDocuments();
     if (count === 0) {
-      console.log('Seeding 31 Verified Emergency Records into MongoDB Atlas...');
+      console.log('Seeding the verified emergency directory (first run against this database)...');
       const recordsToInsert = VERIFIED_EMERGENCY_DATASET.map((r) => ({
         ...r,
         geoLocation: {
@@ -27,7 +27,7 @@ export class DirectoryServiceBackend implements OnModuleInit {
         },
       }));
       await this.directoryModel.insertMany(recordsToInsert);
-      console.log('Seeded 31 Verified Emergency Directory Records cleanly.');
+      console.log(`Seeded ${recordsToInsert.length} verified emergency directory records.`);
     }
   }
 

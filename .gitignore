@@ -18,7 +18,9 @@ node_modules/
 # misc & OS
 .DS_Store
 *.pem
-*.log
+*.log.
+docs/*
+
 
 # env files
 .env*

@@ -36,6 +36,30 @@ describe('Notification delivery truth and webhook security (e2e)', () => {
     expect(stored.providerStatus).toBe('provider_not_configured');
   });
 
+  it('authenticates scheduler calls with a Bearer CRON_SECRET', async () => {
+    process.env.CRON_SECRET = 'test-cron-secret';
+
+    // Vercel Cron sends Authorization: Bearer <CRON_SECRET> on a GET.
+    await request(app.getHttpServer())
+      .get('/api/v1/internal/cron/process-notifications')
+      .set('Authorization', `Bearer ${process.env.CRON_SECRET}`)
+      .expect(200);
+
+    // Retention is a preview by default, so a scheduled call cannot delete.
+    const preview = await request(app.getHttpServer())
+      .get('/api/v1/internal/cron/run-retention')
+      .set('Authorization', `Bearer ${process.env.CRON_SECRET}`)
+      .expect(200);
+    expect(preview.body.data.dryRun).toBe(true);
+    expect(preview.body.data.executed).toBe(false);
+
+    // A wrong secret is rejected on both transports.
+    await request(app.getHttpServer())
+      .get('/api/v1/internal/cron/run-retention')
+      .set('Authorization', 'Bearer not-the-secret')
+      .expect(401);
+  });
+
   it('accepts a correctly signed Twilio status callback', async () => {
     const token = 'twilio-test-auth-secret'; process.env.TWILIO_AUTH_TOKEN = token;
     const body = { MessageSid: 'SM123456789', MessageStatus: 'delivered' };

@@ -41,11 +41,29 @@ export class ApiExceptionFilter implements ExceptionFilter {
     };
 
     const mongoError = exception as { code?: unknown; name?: unknown } | null;
-    if (mongoError?.code === 11000 || (mongoError?.name === 'MongoServerError' && mongoError?.code === 11000)) {
+    // A database that cannot be reached is a deployment problem, not an
+    // internal bug: say so in the response so the caller knows to escalate to
+    // the operator instead of retrying blindly.
+    const mongoConnectionErrorNames = new Set([
+      'MongoServerSelectionError',
+      'MongooseServerSelectionError',
+      'MongoNetworkError',
+      'MongoNetworkTimeoutError',
+      'MongoTimeoutError',
+    ]);
+    if (mongoError?.code === 11000) {
       status = HttpStatus.CONFLICT;
       normalised = {
         code: ERROR_CODES.CONFLICT,
         message: 'A resource with this unique key already exists.',
+      };
+    } else if (typeof mongoError?.name === 'string' && mongoConnectionErrorNames.has(mongoError.name)) {
+      status = HttpStatus.SERVICE_UNAVAILABLE;
+      normalised = {
+        code: ERROR_CODES.PROVIDER_UNAVAILABLE,
+        message:
+          'The database is unreachable, so this request could not be served. Check MONGODB_URI and the server network allow-list.',
+        details: { provider: 'database', requiredEnv: ['MONGODB_URI'], retryable: true },
       };
     } else if (exception instanceof HttpException) {
       status = exception.getStatus();

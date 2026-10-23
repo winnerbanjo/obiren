@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "ts-node src/main.ts",
+    "dev:memory": "ts-node --transpile-only scripts/dev-with-memory-mongo.ts",
     "build": "tsc",
     "start": "ts-node src/main.ts",
     "test": "jest",
@@ -11,6 +12,7 @@
     "test:cov": "jest --coverage",
     "lint": "eslint",
     "generate:openapi": "ts-node scripts/generate-openapi.ts",
+    "verify:sandbox": "ts-node scripts/verify-sandbox-integrations.ts",
     "migrate": "ts-node src/database/migrations/database-migrations.ts",
     "backfill:daily-log-notes": "ts-node scripts/backfill-daily-log-notes.ts"
   },
@@ -37,6 +39,7 @@
     "cookie-parser": "^1.4.7",
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
+    "google-auth-library": "^11.3.1",
     "helmet": "^8.0.0",
     "ioredis": "^6.0.0",
     "mongoose": "^8.9.5",

@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { env } from '../../config/env.validation';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { GoogleTokenVerifier } from './google-token-verifier';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { User, UserSchema, UserProfile, UserProfileSchema } from '../../database/schemas/user.schema';
 import { Session, SessionSchema } from '../../database/schemas/session.schema';
@@ -23,7 +24,7 @@ import { MfaCredential, MfaCredentialSchema } from '../../database/schemas/mfa.s
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard],
+  providers: [AuthService, JwtAuthGuard, GoogleTokenVerifier],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

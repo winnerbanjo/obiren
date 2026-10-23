@@ -11,8 +11,24 @@ export class User {
   @Prop({ required: true, lowercase: true, trim: true }) // Single canonical unique index
   emailNormalized: string;
 
+  /**
+   * Absent for accounts created through Google sign-in until the user sets a
+   * password. `POST /auth/login` refuses password-less accounts instead of
+   * attempting an Argon2 verification against a missing hash.
+   */
   @Prop({ required: false })
   passwordHash: string;
+
+  /**
+   * Google account subject (`sub`). Written only after the server verifies a
+   * Google ID token; never accepted from a client request body.
+   */
+  @Prop({ type: String })
+  googleSub?: string;
+
+  /** Sign-in methods this account has: `password`, `google`. */
+  @Prop({ type: [String], default: ['password'] })
+  authProviders: string[];
 
   @Prop({
     type: String,
@@ -67,6 +83,8 @@ export class User {
 export const UserSchema = SchemaFactory.createForClass(User);
 UserSchema.index({ emailNormalized: 1 }, { unique: true });
 UserSchema.index({ status: 1, createdAt: -1 });
+// Sparse so locally registered accounts without a Google subject stay valid.
+UserSchema.index({ googleSub: 1 }, { unique: true, sparse: true });
 
 export type UserProfileDocument = UserProfile & Document;
 

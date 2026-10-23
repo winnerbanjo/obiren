@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as crypto from 'crypto';
 import { env } from '../../config/env.validation';
+import { missingConfigurationDetails } from '../../common/config/configuration-report';
 import { HealthVaultDoc, HealthVaultDocDocument, HealthVaultAccessLog, HealthVaultAccessLogDocument } from '../../database/schemas/health-vault.schema';
 
 @Injectable()
@@ -30,9 +31,17 @@ export class HealthVaultService {
    */
   async generateUploadIntent(userId: string, dto: any) {
     if (!this.cloudinaryConfigured()) {
-      throw new ServiceUnavailableException(
-        'Health Vault storage is not configured. Ask the operator to set Cloudinary credentials.',
-      );
+      throw new ServiceUnavailableException({
+        success: false,
+        error: {
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Health Vault storage is not configured. Ask the operator to set Cloudinary credentials.',
+          details: missingConfigurationDetails(
+            ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'],
+            'Health Vault storage',
+          ),
+        },
+      });
     }
 
     const { cloudName, apiKey, apiSecret } = env().cloudinary;
@@ -118,9 +127,17 @@ export class HealthVaultService {
     }
 
     if (!this.cloudinaryConfigured()) {
-      throw new ServiceUnavailableException(
-        'Health Vault storage is not configured. Ask the operator to set Cloudinary credentials.',
-      );
+      throw new ServiceUnavailableException({
+        success: false,
+        error: {
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Health Vault storage is not configured. Ask the operator to set Cloudinary credentials.',
+          details: missingConfigurationDetails(
+            ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'],
+            'Health Vault storage',
+          ),
+        },
+      });
     }
 
     const expiresAt = Math.floor(Date.now() / 1000) + 300; // 5 minutes

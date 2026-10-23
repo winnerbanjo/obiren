@@ -74,8 +74,8 @@ describe('Consultations, devices and SOS delivery evidence (e2e)', () => {
     expect(verified.body.data.verificationStatus).toBe('verified');
     expect(verified.body.data.active).toBe(true);
 
-    const catalog = await request(server()).get('/api/v1/care/clinicians').expect(200);
-    expect(catalog.body.data.map((item: any) => item.displayName)).toContain('Dr Ada Obi');
+    const catalog = await request(server()).get('/api/v1/specialists').expect(200);
+    expect(catalog.body.data.specialists.map((item: any) => item.displayName)).toContain('Dr Ada Obi');
 
     // Rejection hides the clinician again and the decision is audited.
     await request(server())
@@ -83,10 +83,10 @@ describe('Consultations, devices and SOS delivery evidence (e2e)', () => {
       .set(authHeader(admin.accessToken!))
       .send({ verificationStatus: 'rejected', note: 'Licence expired' })
       .expect(200);
-    const afterReject = await request(server()).get('/api/v1/care/clinicians').expect(200);
+    const afterReject = await request(server()).get('/api/v1/specialists').expect(200);
     // The shared test database may hold other verified clinicians; assert on
     // this record only.
-    expect(afterReject.body.data.map((item: any) => item.displayName)).not.toContain('Dr Ada Obi');
+    expect(afterReject.body.data.specialists.map((item: any) => item.displayName)).not.toContain('Dr Ada Obi');
     const audit = await getDb(app)
       .collection('audit_logs')
       .find({ action: 'VERIFY_CLINICIAN' })

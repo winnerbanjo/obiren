@@ -82,10 +82,25 @@ describe('Cross-user access (IDOR) coverage (e2e)', () => {
     const db = getDb(app);
     const now = new Date();
 
-    // The catalog is shared test state: create only the slot, pointing at an
-    // arbitrary clinician id, so other specs still see an empty catalog.
+    // A booked hold needs a verified, priced clinician. The record is removed at
+    // the end of this test so the shared catalog assertions in other specs stay
+    // valid.
+    const clinicianId = new Types.ObjectId();
+    await db.collection('clinicians').insertOne({
+      _id: clinicianId,
+      userId: new Types.ObjectId(),
+      displayName: 'IDOR Fixture Clinician',
+      countryCode: 'NG',
+      specialties: ['obgyn'],
+      languages: ['en'],
+      verificationStatus: 'verified',
+      active: true,
+      feeBySessionType: { video: 2500000 },
+      createdAt: now,
+      updatedAt: now,
+    });
     const slot = await db.collection('availability_slots').insertOne({
-      clinicianId: new Types.ObjectId(),
+      clinicianId,
       startsAt: new Date(now.getTime() + 60 * 60 * 1000),
       endsAt: new Date(now.getTime() + 90 * 60 * 1000),
       sessionType: 'video',
@@ -95,18 +110,23 @@ describe('Cross-user access (IDOR) coverage (e2e)', () => {
     });
 
     const hold = await request(server())
-      .post('/api/v1/care/holds')
+      .post('/api/v1/bookings/hold')
       .set(authHeader(owner.accessToken!))
       .set(idempotencyHeader('hold'))
       .send({ slotId: slot.insertedId.toString() })
       .expect(201);
-    const holdId = hold.body.data.holdId;
+    const bookingId = hold.body.data.booking.id as string;
+    expect(hold.body.data.booking.status).toBe('held');
 
-    const otherHolds = await request(server()).get('/api/v1/care/holds').set(authHeader(other.accessToken!)).expect(200);
-    expect(otherHolds.body.data).toHaveLength(0);
-    await request(server()).delete(`/api/v1/care/holds/${holdId}`).set(authHeader(other.accessToken!)).expect(404);
-    const stillHeld = await request(server()).get('/api/v1/care/holds').set(authHeader(owner.accessToken!)).expect(200);
-    expect((stillHeld.body.data as Array<{ _id: string }>).map((item) => item._id)).toContain(holdId);
+    const otherBookings = await request(server()).get('/api/v1/bookings?status=held').set(authHeader(other.accessToken!)).expect(200);
+    expect(otherBookings.body.data.bookings).toHaveLength(0);
+    await request(server())
+      .post(`/api/v1/bookings/${bookingId}/cancel`)
+      .set(authHeader(other.accessToken!))
+      .send({ reason: 'IDOR check' })
+      .expect(404);
+    const stillHeld = await request(server()).get('/api/v1/bookings?status=held').set(authHeader(owner.accessToken!)).expect(200);
+    expect((stillHeld.body.data.bookings as Array<{ id: string }>).map((item) => item.id)).toContain(bookingId);
 
     const guardian = await request(server())
       .post('/api/v1/safety/guardians')
@@ -119,6 +139,12 @@ describe('Cross-user access (IDOR) coverage (e2e)', () => {
     const otherGuardians = await request(server()).get('/api/v1/safety/guardians').set(authHeader(other.accessToken!)).expect(200);
     expect(JSON.stringify(otherGuardians.body)).not.toContain('Owner contact');
     await request(server()).delete(`/api/v1/safety/guardians/${guardianId}`).set(authHeader(other.accessToken!)).expect(404);
+
+    // Leave the shared catalog exactly as it was found.
+    await db.collection('bookings').deleteMany({ slotId: slot.insertedId });
+    await db.collection('booking_holds').deleteMany({ slotId: slot.insertedId });
+    await db.collection('availability_slots').deleteOne({ _id: slot.insertedId });
+    await db.collection('clinicians').deleteOne({ _id: clinicianId });
   });
 
   it('does not expose another user’s devices, notifications or consultation messages', async () => {
@@ -247,7 +273,7 @@ describe('Cross-user access (IDOR) coverage (e2e)', () => {
     // The role passes the roles guard, but publishing availability requires a
     // verified clinician profile, which this account does not have.
     const availability = await request(server())
-      .post('/api/v1/care/availability')
+      .post('/api/v1/clinician/slots')
       .set(clinicianHeaders)
       .send({
         startsAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
@@ -260,7 +286,7 @@ describe('Cross-user access (IDOR) coverage (e2e)', () => {
     // Without the role the same call is denied by the roles guard.
     const { user: plainUser } = await registerAndLogin(app);
     const denied = await request(server())
-      .post('/api/v1/care/availability')
+      .post('/api/v1/clinician/slots')
       .set(authHeader(plainUser.accessToken!))
       .send({
         startsAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),

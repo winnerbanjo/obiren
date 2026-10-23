@@ -12,6 +12,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as crypto from 'crypto';
 import { env } from '../../config/env.validation';
+import { missingConfigurationDetails } from '../../common/config/configuration-report';
 import {
   AvailabilitySlot,
   AvailabilitySlotDocument,
@@ -148,9 +149,18 @@ export class BookingsService {
    */
   async createPaymentIntent(userId: string, bookingId: string) {
     if (!this.paystack.isEnabled()) {
-      throw new ServiceUnavailableException(
-        'Checkout is disabled until payment credentials and an approved pricing/refund policy are configured. No payment was attempted.',
-      );
+      throw new ServiceUnavailableException({
+        success: false,
+        error: {
+          code: 'PROVIDER_UNAVAILABLE',
+          message:
+            'Checkout is disabled until payment credentials and an approved pricing/refund policy are configured. No payment was attempted.',
+          details: missingConfigurationDetails(
+            ['PAYMENT_ENABLED', 'PAYMENT_POLICY_VERSION', 'PAYSTACK_SECRET_KEY'],
+            'Checkout and payments',
+          ),
+        },
+      });
     }
 
     const booking = await this.bookingModel.findOne({ _id: new Types.ObjectId(bookingId), userId: new Types.ObjectId(userId) });

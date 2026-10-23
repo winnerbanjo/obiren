@@ -129,7 +129,7 @@ export class SafetyController {
 
   @Get('sos/:id/deliveries')
   @ApiParam({ name: 'id', description: '24-character SOS incident identifier.' })
-  @ApiOperation({ summary: 'List recorded SOS delivery attempts', description: 'Owner-scoped delivery evidence. Attempts are only marked sent when an approved provider confirms delivery; deliveryConfirmed is false otherwise. This is not a guarantee of rescue or dispatch.' })
+  @ApiOperation({ summary: 'List recorded SOS delivery attempts (deprecated)', description: 'Deprecated: use `GET /safety/sos-events/:id`. Owner-scoped delivery evidence read from the same implementation. Attempts are only marked sent when an approved provider confirms delivery; deliveryConfirmed is false otherwise and this is not a guarantee of rescue or dispatch.', deprecated: true })
   @ApiResponse({ status: 200, description: 'Recorded delivery attempts and dispatch status.' })
   @ApiResponse({ status: 404, description: 'Incident not found for this account.' })
   async getSosDeliveries(@Req() req: any, @Param('id', new ZodValidationPipe(MongoIdParam)) id: string): Promise<Record<string, unknown>> {

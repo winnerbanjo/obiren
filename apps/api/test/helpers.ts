@@ -11,10 +11,20 @@ import { configureApp } from '../src/common/bootstrap';
  * request IDs, error envelope, idempotency, throttling) against the
  * in-memory MongoDB for genuine end-to-end tests.
  */
-export async function createTestApp(): Promise<INestApplication> {
-  const moduleRef = await Test.createTestingModule({
+export async function createTestApp(
+  options: {
+    overrides?: Array<{ provide: string | symbol | (new (...args: never[]) => unknown); useValue: unknown }>;
+  } = {},
+): Promise<INestApplication> {
+  const builder = Test.createTestingModule({
     imports: [AppModule],
-  }).compile();
+  });
+  // Test-only seams (e.g. a fake Google token verifier) so no external
+  // provider is contacted during tests.
+  for (const override of options.overrides ?? []) {
+    builder.overrideProvider(override.provide).useValue(override.useValue);
+  }
+  const moduleRef = await builder.compile();
 
   // rawBody mirrors the production bootstrap so provider webhook signatures
   // can be verified against the exact bytes the client sent.

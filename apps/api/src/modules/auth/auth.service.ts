@@ -20,6 +20,7 @@ import { shouldExposeDevTokens } from '../../common/auth/token-exposure';
 import { MfaCredential, MfaCredentialDocument } from '../../database/schemas/mfa.schema';
 import { decryptHealthNote, encryptHealthNote } from '../../common/crypto/health-data-crypto';
 import { buildOtpauthUrl, generateRecoveryCodes, generateTotpSecret, hashRecoveryCode, verifyTotp } from '../../common/auth/totp';
+import { GoogleTokenVerifier } from './google-token-verifier';
 
 const ACCESS_TTL_SECONDS = 15 * 60;
 const REFRESH_TTL_DAYS = 30;
@@ -37,6 +38,7 @@ export class AuthService {
     @InjectModel(MfaCredential.name) private mfaModel: Model<MfaCredentialDocument>,
     private jwtService: JwtService,
     private readonly mail: MailService,
+    private readonly googleVerifier: GoogleTokenVerifier,
   ) {}
 
   // ---------------- helpers ----------------
@@ -113,7 +115,9 @@ export class AuthService {
   async login(dto: { email: string; password: string; platform: string }) {
     const user = await this.userModel.findOne({ emailNormalized: dto.email });
 
-    if (!user || !(await argon2.verify(user.passwordHash ?? '', dto.password))) {
+    // Google-only accounts have no password hash. Treat them as a failed
+    // password sign-in instead of asking Argon2 to verify against nothing.
+    if (!user || !user.passwordHash || !(await argon2.verify(user.passwordHash, dto.password))) {
       throw new UnauthorizedException({
         success: false,
         error: { code: 'AUTH_INVALID_CREDENTIALS', message: 'The email address or password is incorrect.' },
@@ -129,6 +133,114 @@ export class AuthService {
 
     // Opt-in staff MFA: passwords are verified first, then a short-lived
     // challenge token is returned instead of session tokens.
+    const credential = await this.mfaModel.findOne({ userId: user._id, status: 'enabled' }).lean().exec();
+    if (credential) {
+      return {
+        success: true,
+        data: {
+          mfaRequired: true,
+          mfaToken: this.signMfaToken((user._id as Types.ObjectId).toString()),
+          methods: ['totp'],
+          message: 'Enter the 6-digit authenticator code, or a recovery code, to finish signing in.',
+        },
+        meta: this.meta(),
+      };
+    }
+
+    return this.issueSession(user, dto.platform);
+  }
+
+  /**
+   * Sign in with Google.
+   *
+   * The ID token is verified server-side before anything is read or written:
+   * signature, issuer, expiry and audience. Consequences are deliberate and
+   * recorded in docs/DECISIONS.md:
+   *   - a first-time verified Google email creates an active account (Google
+   *     has already proven control of the address);
+   *   - a matching locally registered account is linked only when that account
+   *     already has a verified email, which blocks pre-registration hijacking;
+   *   - an account with MFA enabled still needs its second factor, so Google
+   *     sign-in cannot bypass it.
+   */
+  async googleLogin(dto: { idToken: string; platform: string }) {
+    const identity = await this.googleVerifier.verify(dto.idToken);
+
+    if (!identity.emailVerified) {
+      throw new UnauthorizedException({
+        success: false,
+        error: {
+          code: 'AUTH_GOOGLE_EMAIL_UNVERIFIED',
+          message: 'Google has not verified this email address, so it cannot be used to sign in.',
+        },
+      });
+    }
+
+    let user = await this.userModel.findOne({ googleSub: identity.subject });
+
+    if (!user) {
+      const existing = await this.userModel.findOne({ emailNormalized: identity.email });
+
+      if (existing) {
+        if (existing.googleSub && existing.googleSub !== identity.subject) {
+          throw new ConflictException({
+            success: false,
+            error: {
+              code: 'AUTH_GOOGLE_ACCOUNT_CONFLICT',
+              message: 'This email is already linked to a different Google account.',
+            },
+          });
+        }
+
+        if (!existing.emailVerifiedAt) {
+          // Linking here would hand an account that someone else registered
+          // (but never proved ownership of) to the Google account holder.
+          throw new ForbiddenException({
+            success: false,
+            error: {
+              code: 'AUTH_GOOGLE_ACCOUNT_UNVERIFIED',
+              message:
+                'An unverified account already uses this email. Claim it with “forgot password”, then link Google from settings.',
+            },
+          });
+        }
+
+        existing.googleSub = identity.subject;
+        existing.authProviders = Array.from(new Set([...(existing.authProviders ?? ['password']), 'google']));
+        await existing.save();
+        user = existing;
+      } else {
+        user = await this.userModel.create({
+          email: identity.email,
+          emailNormalized: identity.email,
+          googleSub: identity.subject,
+          authProviders: ['google'],
+          // Google proved control of the address, so no verification email is
+          // required and the account can be used immediately.
+          status: 'active',
+          emailVerifiedAt: new Date(),
+          roles: ['user'],
+        });
+
+        await this.userProfileModel.create({
+          userId: user._id,
+          firstName: identity.firstName ?? '',
+          lastName: identity.lastName ?? '',
+          displayName:
+            [identity.firstName, identity.lastName].filter(Boolean).join(' ') || identity.email.split('@')[0],
+        });
+      }
+    }
+
+    if (['suspended', 'restricted', 'deleted'].includes(user.status)) {
+      throw new ForbiddenException({
+        success: false,
+        error: { code: 'AUTH_ACCOUNT_DISABLED', message: 'This account is not permitted to sign in.' },
+      });
+    }
+
+    // Signing in with Google must never skip a second factor that the account
+    // owner enabled for password sign-in.
     const credential = await this.mfaModel.findOne({ userId: user._id, status: 'enabled' }).lean().exec();
     if (credential) {
       return {

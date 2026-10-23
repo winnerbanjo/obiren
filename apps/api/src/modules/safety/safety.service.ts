@@ -345,27 +345,20 @@ export class SafetyService {
     };
   }
 
+  /**
+   * Compatibility view over `getSosEvent`: the delivery list and the SOS event
+   * state are read from one implementation so the two can never disagree.
+   */
   async getSosDeliveries(userId: string, incidentId: string): Promise<Record<string, unknown>> {
-    const incident = await this.incidentModel
-      .findOne({ _id: new Types.ObjectId(incidentId), userId: new Types.ObjectId(userId) })
-      .select('status dispatchStatus isTestMode triggeredAt')
-      .lean()
-      .exec();
-    if (!incident) throw new NotFoundException('SOS incident not found for this account');
-    const attempts = await this.deliveryAttemptModel
-      .find({ incidentId: incident._id, ownerUserId: new Types.ObjectId(userId) })
-      .select('guardianContactId channel status failureCode attemptedAt providerMessageId')
-      .sort({ attemptedAt: 1, _id: 1 })
-      .limit(50)
-      .lean()
-      .exec();
+    const event = await this.getSosEvent(userId, incidentId);
+    const data = event.data as { attempts: unknown[]; dispatchStatus: string; deliveryConfirmed: boolean };
     return {
       success: true,
       data: {
         incidentId,
-        dispatchStatus: incident.dispatchStatus,
-        deliveryConfirmed: attempts.some((attempt) => attempt.status === 'sent'),
-        attempts: attempts.map((attempt) => ({ ...attempt, id: attempt._id.toString() })),
+        dispatchStatus: data.dispatchStatus,
+        deliveryConfirmed: data.deliveryConfirmed,
+        attempts: data.attempts,
       },
       meta: this.meta(),
     };

@@ -16,9 +16,9 @@ describe('Care, communications, guardians and privacy jobs (e2e)', () => {
     await setUserRole(app, clinician.userId!, 'clinician');
     const db = getDb(app);
     const clinicianId = new mongoose.Types.ObjectId();
-    await db.collection('clinicians').insertOne({ _id: clinicianId, userId: new mongoose.Types.ObjectId(clinician.userId!), displayName: 'Unverified Provider', countryCode: 'NG', specialties: ['obgyn'], languages: ['en'], verificationStatus: 'pending', active: true });
-    const hidden = await request(app.getHttpServer()).get('/api/v1/care/clinicians').expect(200);
-    expect(hidden.body.data).toHaveLength(0);
+    await db.collection('clinicians').insertOne({ _id: clinicianId, userId: new mongoose.Types.ObjectId(clinician.userId!), displayName: 'Unverified Provider', countryCode: 'NG', specialties: ['obgyn'], languages: ['en'], verificationStatus: 'pending', active: true, feeBySessionType: { video: 2500000 } });
+    const hidden = await request(app.getHttpServer()).get('/api/v1/specialists').expect(200);
+    expect(hidden.body.data.specialists).toHaveLength(0);
 
     await db.collection('clinicians').updateOne({ _id: clinicianId }, { $set: { verificationStatus: 'verified' } });
     const slot = await db.collection('availability_slots').insertOne({ clinicianId, startsAt: new Date(Date.now() + 60 * 60 * 1000), endsAt: new Date(Date.now() + 90 * 60 * 1000), sessionType: 'video', status: 'open' });
@@ -26,23 +26,29 @@ describe('Care, communications, guardians and privacy jobs (e2e)', () => {
     expect(available.body.data).toHaveLength(1);
 
     const responses = await Promise.all([
-      request(app.getHttpServer()).post('/api/v1/care/holds').set(authHeader(first.accessToken!)).set(idempotencyHeader('hold-first')).send({ slotId: slot.insertedId.toString() }),
-      request(app.getHttpServer()).post('/api/v1/care/holds').set(authHeader(second.accessToken!)).set(idempotencyHeader('hold-second')).send({ slotId: slot.insertedId.toString() }),
+      request(app.getHttpServer()).post('/api/v1/bookings/hold').set(authHeader(first.accessToken!)).set(idempotencyHeader('hold-first')).send({ slotId: slot.insertedId.toString() }),
+      request(app.getHttpServer()).post('/api/v1/bookings/hold').set(authHeader(second.accessToken!)).set(idempotencyHeader('hold-second')).send({ slotId: slot.insertedId.toString() }),
     ]);
     expect(responses.filter((response) => response.status === 201)).toHaveLength(1);
     expect(responses.filter((response) => response.status === 409)).toHaveLength(1);
     const winningUser = responses[0].status === 201 ? first : second;
     const losingUser = responses[0].status === 201 ? second : first;
-    const listed = await request(app.getHttpServer()).get('/api/v1/care/holds').set(authHeader(winningUser.accessToken!)).expect(200);
-    expect(listed.body.data).toHaveLength(1);
-    const other = await request(app.getHttpServer()).get('/api/v1/care/holds').set(authHeader(losingUser.accessToken!)).expect(200);
-    expect(other.body.data).toHaveLength(0);
-    expect(responses.find((response) => response.status === 201)!.body.data.bookingEnabled).toBe(false);
+    const won = responses.find((response) => response.status === 201)!;
+    // Server-priced, held booking; checkout stays disabled without credentials.
+    expect(won.body.data.booking.status).toBe('held');
+    expect(won.body.data.booking.amountMinor).toBe(2500000);
+    expect(won.body.data.booking.currency).toBe('NGN');
+    expect(won.body.data.checkoutEnabled).toBe(false);
+
+    const listed = await request(app.getHttpServer()).get('/api/v1/bookings?status=held').set(authHeader(winningUser.accessToken!)).expect(200);
+    expect(listed.body.data.bookings).toHaveLength(1);
+    const other = await request(app.getHttpServer()).get('/api/v1/bookings?status=held').set(authHeader(losingUser.accessToken!)).expect(200);
+    expect(other.body.data.bookings).toHaveLength(0);
   });
 
   it('fails closed for checkout and blocks arbitrary users from publishing clinician slots', async () => {
     const { user } = await registerAndLogin(app);
-    await request(app.getHttpServer()).post('/api/v1/care/availability').set(authHeader(user.accessToken!)).send({ startsAt: new Date(Date.now()+3600000).toISOString(), endsAt: new Date(Date.now()+7200000).toISOString(), sessionType: 'video' }).expect(403);
+    await request(app.getHttpServer()).post('/api/v1/clinician/slots').set(authHeader(user.accessToken!)).send({ startsAt: new Date(Date.now()+3600000).toISOString(), endsAt: new Date(Date.now()+7200000).toISOString(), sessionType: 'video' }).expect(403);
   });
 
   it('keeps notification content discreet by default and owner-scopes reads/preferences', async () => {

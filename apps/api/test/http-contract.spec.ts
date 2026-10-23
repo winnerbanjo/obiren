@@ -24,6 +24,19 @@ describe('HTTP contract and idempotency (e2e)', () => {
     expect(res.body).toMatchObject({ data: { status: 'ok' }, requestId: 'caller-request-123' });
     expect(res.body).not.toHaveProperty('success');
     expect(res.headers['x-request-id']).toBe('caller-request-123');
+
+    // The deployment configuration state is readable without shell access: a
+    // degraded staging deployment reports `status: 'degraded'` plus the exact
+    // missing variables (names only, never values).
+    expect(res.body.data.configuration).toMatchObject({
+      degraded: false,
+      environment: 'test',
+      docs: 'docs/DEPLOYMENT_ENV_STAGING.md',
+    });
+    expect(Array.isArray(res.body.data.configuration.missing)).toBe(true);
+    for (const issue of res.body.data.configuration.missing) {
+      expect(Object.keys(issue).sort()).toEqual(['feature', 'impact', 'required', 'variable']);
+    }
   });
 
   it('generates a request id when none is supplied and rejects unsafe ids', async () => {

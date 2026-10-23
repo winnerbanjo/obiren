@@ -47,6 +47,15 @@ export const LoginSchema = z
   })
   .strict();
 
+export const GoogleSignInSchema = z
+  .object({
+    // A Google-issued ID token (JWT). Verified server-side against Google's
+    // published keys; the API never trusts profile fields sent alongside it.
+    idToken: z.string().trim().min(20, 'A Google ID token is required').max(4096),
+    platform: z.enum(['web', 'ios', 'android']).default('web'),
+  })
+  .strict();
+
 export const RefreshSchema = z.object({ refreshToken: z.string().min(20).max(256) }).strict();
 
 export const LogoutSchema = RefreshSchema;
@@ -475,6 +484,26 @@ export const CreateAvailabilitySchema = z.object({ startsAt: z.string().datetime
   .refine((v) => new Date(v.endsAt) > new Date(v.startsAt), 'endsAt must follow startsAt')
   .refine((v) => new Date(v.endsAt).getTime() - new Date(v.startsAt).getTime() <= 8 * 60 * 60 * 1000, 'Slot duration cannot exceed eight hours');
 export const HoldSlotSchema = z.object({ slotId: MongoIdParam }).strict();
+
+// Clinician-owned availability (PRD `CLINICIAN /clinician/slots`).
+export const ClinicianSlotListQuerySchema = z
+  .object({
+    from: z.string().datetime({ offset: true }).optional(),
+    to: z.string().datetime({ offset: true }).optional(),
+    status: z.enum(['open', 'held', 'booked', 'cancelled']).optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+  })
+  .strict()
+  .refine((value) => !value.from || !value.to || new Date(value.from) <= new Date(value.to), 'from must be on or before to');
+
+export const UpdateClinicianSlotSchema = z
+  .object({
+    startsAt: z.string().datetime({ offset: true }).optional(),
+    endsAt: z.string().datetime({ offset: true }).optional(),
+    sessionType: z.enum(['clinic', 'audio', 'video', 'text']).optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, 'Provide at least one field to update');
 
 // ---------------- Specialists / bookings / payments ----------------
 export const SpecialistQuerySchema = z

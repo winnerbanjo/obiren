@@ -1,5 +1,8 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { ServiceUnavailableException } from '@nestjs/common';
+import { missingConfigurationDetails } from '../config/configuration-report';
+
+const ENCRYPTION_DETAILS = missingConfigurationDetails(['HEALTH_DATA_ENCRYPTION_KEY'], 'Private health notes');
 
 export interface EncryptedHealthNote {
   ciphertext: string;
@@ -11,14 +14,29 @@ export interface EncryptedHealthNote {
 function encryptionKey(): Buffer {
   const configured = process.env.HEALTH_DATA_ENCRYPTION_KEY;
   if (!configured) {
-    throw new ServiceUnavailableException('Sensitive-note encryption is not configured');
+    throw new ServiceUnavailableException({
+      success: false,
+      error: {
+        code: 'PROVIDER_UNAVAILABLE',
+        message:
+          'Sensitive-note encryption is not configured, so private notes cannot be stored. Nothing was saved.',
+        details: ENCRYPTION_DETAILS,
+      },
+    });
   }
 
   const key = /^[0-9a-f]{64}$/i.test(configured)
     ? Buffer.from(configured, 'hex')
     : Buffer.from(configured, 'base64');
   if (key.length !== 32) {
-    throw new ServiceUnavailableException('Sensitive-note encryption key must be 32 bytes (64 hex or base64 encoded)');
+    throw new ServiceUnavailableException({
+      success: false,
+      error: {
+        code: 'PROVIDER_UNAVAILABLE',
+        message: 'Sensitive-note encryption key must be 32 bytes (64 hex or base64 encoded), so private notes cannot be stored.',
+        details: ENCRYPTION_DETAILS,
+      },
+    });
   }
   return key;
 }

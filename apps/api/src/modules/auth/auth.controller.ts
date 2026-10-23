@@ -16,11 +16,23 @@ import {
   MfaVerifySchema,
   MfaDisableSchema,
   MfaLoginVerifySchema,
+  GoogleSignInSchema,
 } from '../../common/validation/api-schemas';
 
 export const REFRESH_COOKIE = 'obiren_refresh';
 
 const isProd = () => process.env.NODE_ENV === 'production';
+
+/** Browser session cookie; the JSON body still carries the token for native clients. */
+function setRefreshCookie(res: Response, refreshToken: string): void {
+  res.cookie(REFRESH_COOKIE, refreshToken, {
+    httpOnly: true,
+    secure: isProd(),
+    sameSite: 'lax',
+    path: '/api/v1/auth',
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
+}
 
 const RequireEmailSchema = z.string().email('A valid email is required');
 
@@ -50,15 +62,24 @@ export class AuthController {
     const result = await this.authService.login(body);
     // MFA-enabled accounts receive only a short-lived challenge token here.
     if ('tokens' in result.data) {
-      // Refresh token in an HTTP-only cookie (browser clients). The JSON body
-      // also carries it for non-browser clients; browsers use the cookie.
-      res.cookie(REFRESH_COOKIE, result.data.tokens.refreshToken, {
-        httpOnly: true,
-        secure: isProd(),
-        sameSite: 'lax',
-        path: '/api/v1/auth',
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-      });
+      setRefreshCookie(res, result.data.tokens.refreshToken);
+    }
+    return result;
+  }
+
+  @Post('google')
+  @ApiOperation({ summary: 'Sign in with Google', description: 'Exchanges a Google ID token for an Obiren session. The token is verified server-side against Google’s published keys, issuer and the configured client ID audience; profile claims in the request body are ignored. A verified Google email with no existing account creates an active, email-verified account. MFA-enabled accounts still receive an mfaRequired challenge. Returns 503 when GOOGLE_CLIENT_ID is not configured.' })
+  @ApiBody({ schema: { type: 'object', additionalProperties: false, required: ['idToken'], properties: { idToken: { type: 'string', minLength: 20, maxLength: 4096, description: 'Google ID token issued to the Obiren client (web, iOS or Android).', example: 'eyJhbGciOiJSUzI1NiIsImtpZCI6...' }, platform: { type: 'string', enum: ['web', 'ios', 'android'], default: 'web' } } } })
+  @ApiResponse({ status: 200, description: 'Authenticated, or an MFA challenge when the account has a second factor enabled. Same payload as POST /auth/login.', content: { 'application/json': { example: { success: true, data: { user: { id: '66a0b6f3e5f21c8e7a112233', email: 'maya@example.com', countryCode: 'NG', roles: ['user'], status: 'active', emailVerified: true }, tokens: { accessToken: '<jwt-access-token>', accessTokenExpiresIn: '15m', refreshToken: '<opaque-refresh-token>', refreshTokenExpiresIn: '30d' } }, meta: { requestId: 'req_1729339200000' } } } } })
+  @ApiResponse({ status: 401, description: 'The Google credential is invalid, expired, or its email is unverified.' })
+  @ApiResponse({ status: 403, description: 'Account disabled, or an unverified local account already uses the email.' })
+  @ApiResponse({ status: 409, description: 'The email is linked to a different Google account.' })
+  @ApiResponse({ status: 503, description: 'Google sign-in is not configured in this environment.' })
+  @HttpCode(HttpStatus.OK)
+  async googleSignIn(@Res({ passthrough: true }) res: Response, @Body(new ZodValidationPipe(GoogleSignInSchema)) body) {
+    const result = await this.authService.googleLogin(body);
+    if ('tokens' in result.data) {
+      setRefreshCookie(res, result.data.tokens.refreshToken);
     }
     return result;
   }
@@ -80,13 +101,7 @@ export class AuthController {
       throw new BadRequestException('A refresh token is required.');
     }
     const result = await this.authService.refreshToken(token);
-    res.cookie(REFRESH_COOKIE, result.data.refreshToken, {
-      httpOnly: true,
-      secure: isProd(),
-      sameSite: 'lax',
-      path: '/api/v1/auth',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
+    setRefreshCookie(res, result.data.refreshToken);
     return result;
   }
 
@@ -175,13 +190,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async mfaChallenge(@Res({ passthrough: true }) res: Response, @Body(new ZodValidationPipe(MfaLoginVerifySchema)) body) {
     const result = await this.authService.mfaChallenge(body);
-    res.cookie(REFRESH_COOKIE, result.data.tokens.refreshToken, {
-      httpOnly: true,
-      secure: isProd(),
-      sameSite: 'lax',
-      path: '/api/v1/auth',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
+    setRefreshCookie(res, result.data.tokens.refreshToken);
     return result;
   }
 
