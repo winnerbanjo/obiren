@@ -43,6 +43,43 @@ const FEATURES = [
   },
 ];
 
+const STEPS = [
+  {
+    step: "01",
+    title: "Join the waitlist",
+    copy: "Leave your email and we send your App Store or Google Play link the day Obiren is live in your country.",
+  },
+  {
+    step: "02",
+    title: "Set up in minutes",
+    copy: "Tell the app where you are in your journey - cycle, trying to conceive or pregnancy - and it adapts around you.",
+  },
+  {
+    step: "03",
+    title: "Track, learn, get care",
+    copy: "Log how you feel, follow your timeline, and book a verified clinician when you need one.",
+  },
+];
+
+const FAQ = [
+  [
+    "When does Obiren launch?",
+    "Nigeria is first, with Ghana, the United Kingdom and the United States to follow. Join the waitlist and you will get your download link and launch date by email.",
+  ],
+  [
+    "Do I create an account on this website?",
+    "No. Patients use the Obiren mobile app, so nothing about your health is ever entered here. This site explains the product, collects waitlist emails, and gives clinicians a door to their portal.",
+  ],
+  [
+    "How is my health information protected?",
+    "Private notes are encrypted at rest, transport is TLS, and records are limited to you and the people you explicitly choose to share them with. You can export or delete your data from inside the app.",
+  ],
+  [
+    "Is Obiren a replacement for emergency care?",
+    "No. Obiren supports your care: it does not replace emergency services. If you are in danger, contact the official emergency service for your location.",
+  ],
+];
+
 const PRIVACY_POINTS = [
   ["Your notes stay private", "Free-text health notes are encrypted at rest and never appear in notifications or logs."],
   ["You decide who sees what", "Share a health brief with a named clinician, for a set period, and revoke it whenever you want."],
@@ -169,12 +206,6 @@ export default function LandingPage({ doctorPortalUrl, iosAppUrl, androidAppUrl 
               >
                 Doctor login
               </a>
-              <a
-                href="/user"
-                className="inline-flex h-10 items-center justify-center rounded-full text-sm font-medium text-[#6E6875]"
-              >
-                Admin console
-              </a>
             </div>
           </div>
         )}
@@ -262,8 +293,35 @@ export default function LandingPage({ doctorPortalUrl, iosAppUrl, androidAppUrl 
           </div>
         </section>
 
+        {/* ---------------------------- how it works ---------------------------- */}
+        <section className="border-y border-[#EDE9F2] bg-[#FBFAFD] py-16 sm:py-24">
+          <div className="mx-auto max-w-6xl px-5 sm:px-8">
+            <div className="max-w-2xl">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#6D4AFF]">How it works</p>
+              <h2 className="mt-4 text-2xl font-semibold tracking-[-0.01em] sm:text-3xl">
+                From the waitlist to real care, in three steps.
+              </h2>
+            </div>
+
+            <ol className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-3 sm:gap-6">
+              {STEPS.map((item) => (
+                <li
+                  key={item.step}
+                  className="rounded-2xl border border-[#EDE9F2] bg-white p-6 sm:p-7"
+                >
+                  <span className="text-[11px] font-semibold tracking-[0.18em] text-[#9B94A3]">
+                    {item.step}
+                  </span>
+                  <h3 className="mt-3 text-base font-semibold">{item.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-[#5F5867]">{item.copy}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
         {/* ----------------------------- clinicians ----------------------------- */}
-        <section id="clinicians" className="border-y border-[#EDE9F2] bg-[#FBFAFD] py-16 sm:py-24">
+        <section id="clinicians" className="bg-white py-16 sm:py-24">
           <div className="mx-auto grid max-w-6xl gap-10 px-5 sm:px-8 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#6D4AFF]">
@@ -331,6 +389,42 @@ export default function LandingPage({ doctorPortalUrl, iosAppUrl, androidAppUrl 
           </div>
         </section>
 
+        {/* -------------------------------- FAQ --------------------------------- */}
+        <section id="faq" className="border-t border-[#EDE9F2] bg-white py-16 sm:py-24">
+          <div className="mx-auto grid max-w-6xl gap-10 px-5 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#6D4AFF]">Questions</p>
+              <h2 className="mt-4 text-2xl font-semibold tracking-[-0.01em] sm:text-3xl">Good to know.</h2>
+              <p className="mt-4 text-[15px] leading-relaxed text-[#5F5867]">
+                Still unsure about something? Write to{" "}
+                <a href="mailto:support@obiren.com" className="font-semibold text-[#17131D] underline underline-offset-2">
+                  support@obiren.com
+                </a>
+                .
+              </p>
+            </div>
+
+            <div className="divide-y divide-[#EDE9F2] border-y border-[#EDE9F2]">
+              {FAQ.map(([question, answer]) => (
+                <details key={question} className="group py-5">
+                  <summary
+                    className={`flex cursor-pointer list-none items-start justify-between gap-4 text-left text-sm font-semibold text-[#17131D] rounded ${focusRing}`}
+                  >
+                    <span>{question}</span>
+                    <span
+                      aria-hidden="true"
+                      className="mt-0.5 shrink-0 text-[#9B94A3] transition-transform group-open:rotate-45"
+                    >
+                      +{" "}
+                    </span>
+                  </summary>
+                  <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#5F5867]">{answer}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ------------------------------ download ------------------------------ */}
         <section id="download" className="border-t border-[#EDE9F2] bg-[#FBFAFD] py-16 sm:py-24">
           <div className="mx-auto max-w-3xl px-5 text-center sm:px-8">
@@ -395,11 +489,6 @@ export default function LandingPage({ doctorPortalUrl, iosAppUrl, androidAppUrl 
                 <li>
                   <a href={doctorPortalUrl} className="transition-colors hover:text-[#17131D]">
                     Doctor portal
-                  </a>
-                </li>
-                <li>
-                  <a href="/user" className="transition-colors hover:text-[#17131D]">
-                    Admin console
                   </a>
                 </li>
               </ul>
