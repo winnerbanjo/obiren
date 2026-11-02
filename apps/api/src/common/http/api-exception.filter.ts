@@ -70,6 +70,19 @@ export class ApiExceptionFilter implements ExceptionFilter {
       normalised = this.normaliseHttpException(exception, status);
     }
 
+    // A throttled caller needs an actionable message, not the framework's raw
+    // "Too Many Requests". The ThrottlerGuard has already set `Retry-After`.
+    if (status === HttpStatus.TOO_MANY_REQUESTS) {
+      const retryAfter = Number(response.getHeader('Retry-After'));
+      normalised = {
+        code: ERROR_CODES.RATE_LIMITED,
+        message: 'Too many attempts. Please wait a moment and try again.',
+        ...(Number.isFinite(retryAfter) && retryAfter > 0
+          ? { details: { retryAfterSeconds: Math.ceil(retryAfter) } }
+          : {}),
+      };
+    }
+
     response.setHeader('X-Request-Id', requestId);
     response.status(status).json({ error: normalised, requestId });
 

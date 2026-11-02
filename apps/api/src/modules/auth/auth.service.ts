@@ -26,6 +26,7 @@ const ACCESS_TTL_SECONDS = 15 * 60;
 const REFRESH_TTL_DAYS = 30;
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+const DOCTOR_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class AuthService {
@@ -629,6 +630,67 @@ export class AuthService {
     return {
       success: true,
       data: { message: 'If an account exists for that email, password reset instructions have been sent.' },
+      meta: this.meta(),
+    };
+  }
+
+  // ---------------- doctor invitation / activation ----------------
+
+  /**
+   * Issues a single-use, 7-day doctor activation token. The doctor — never an
+   * administrator — chooses the password. Returns the raw token to the caller
+   * for email delivery; only its SHA-256 hash is stored.
+   */
+  async issueDoctorInvitation(user: UserDocument): Promise<string> {
+    const raw = crypto.randomBytes(32).toString('hex');
+    user.passwordResetTokenHash = this.hashToken(raw);
+    user.passwordResetExpiresAt = new Date(Date.now() + DOCTOR_INVITE_TTL_MS);
+    await user.save();
+    return raw;
+  }
+
+  /**
+   * Completes a doctor invitation: sets the chosen password, marks the email
+   * verified, activates the account and revokes every prior session.
+   */
+  async activateDoctor(dto: { token: string; password: string }) {
+    const user = await this.userModel.findOne({
+      passwordResetTokenHash: this.hashToken(dto.token),
+      passwordResetExpiresAt: { $gt: new Date() },
+    });
+    if (!user || !(user.roles || []).includes('clinician')) {
+      throw new BadRequestException({
+        success: false,
+        error: {
+          code: 'AUTH_INVITATION_INVALID',
+          message: 'This invitation link is invalid or has expired. Ask Obiren to send a new one.',
+        },
+      });
+    }
+
+    user.passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
+    user.passwordResetTokenHash = undefined;
+    user.passwordResetExpiresAt = undefined;
+    user.emailVerifiedAt = user.emailVerifiedAt || new Date();
+    user.status = 'active';
+    if (!user.authProviders?.includes('password')) user.authProviders = [...(user.authProviders || []), 'password'];
+
+    await this.sessionModel.updateMany(
+      { userId: user._id, revokedAt: { $exists: false } },
+      { $set: { revokedAt: new Date(), revokeReason: 'DOCTOR_ACTIVATION' } },
+    );
+    await user.save();
+
+    // A verified doctor becomes bookable once they take control of the account.
+    // An unverified or deliberately de-listed doctor stays hidden.
+    await this.userModel.db.collection('clinicians').updateOne(
+      { userId: user._id, verificationStatus: 'verified' },
+      { $set: { active: true, updatedAt: new Date() } },
+    );
+
+    return {
+      success: true,
+      data: { email: user.email, activated: true, message: 'Account activated. You can sign in to the Doctor Portal.' },
       meta: this.meta(),
     };
   }

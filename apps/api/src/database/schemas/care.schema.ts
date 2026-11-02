@@ -10,11 +10,31 @@ export class Clinician {
   @Prop({ type: [String], default: [] }) languages: string[];
   @Prop({ required: true, enum: ['NG', 'GH', 'GB', 'US'] }) countryCode: string;
   @Prop({ type: String, maxlength: 120 }) profession?: string;
+  @Prop({ type: String, maxlength: 60 }) professionalTitle?: string;
+  @Prop({ type: String, maxlength: 40 }) licenceNumber?: string;
+  @Prop({ type: Number, min: 0, max: 70 }) yearsOfExperience?: number;
+  @Prop({ type: String, maxlength: 160 }) clinicName?: string;
+  @Prop({ type: String, maxlength: 300 }) clinicAddress?: string;
+  @Prop({ type: String, maxlength: 40 }) phoneNumber?: string;
+  @Prop({ type: String, maxlength: 500 }) photoUrl?: string;
+  @Prop({ type: String, maxlength: 80 }) timeZone?: string;
+  @Prop({ type: Number, min: 10, max: 240, default: 45 }) consultationDurationMinutes: number;
+  @Prop({ type: Number, min: 0, max: 120, default: 0 }) bufferMinutes: number;
+  /** instant = paid booking is confirmed automatically; manual = doctor confirms. */
+  @Prop({ required: true, enum: ['instant', 'manual'], default: 'instant' }) bookingApprovalMode: string;
+  @Prop({ type: Types.ObjectId, ref: 'User' }) createdByUserId?: Types.ObjectId;
+  @Prop({ type: String, maxlength: 500 }) suspensionReason?: string;
+  @Prop({ type: String, maxlength: 500 }) adminNote?: string;
+  @Prop({ type: Boolean, default: false }) credentialReviewRequired: boolean;
   @Prop({ type: String, maxlength: 2000 }) bio?: string;
   @Prop({ type: [String], default: [] }) certifications: string[];
   // Session prices in the minor unit of the country currency (e.g. kobo).
   // Absent means no approved price exists and checkout must fail closed.
   @Prop({
+    // Prices are a plain map, not a subdocument: without `_id: false` Mongoose
+    // injects an `_id` key that then renders as a phantom "_id" session fee and
+    // can be copied back by the admin fee editor.
+    _id: false,
     type: {
       clinic: { type: Number, min: 0 },
       audio: { type: Number, min: 0 },
@@ -32,6 +52,8 @@ export class Clinician {
 }
 export const ClinicianSchema = SchemaFactory.createForClass(Clinician);
 ClinicianSchema.index({ verificationStatus: 1, active: 1, countryCode: 1 });
+// Sparse so existing profiles and doctors without a recorded licence stay valid.
+ClinicianSchema.index({ licenceNumber: 1 }, { unique: true, sparse: true, name: 'uniq_clinician_licence' });
 
 export type AvailabilitySlotDocument = AvailabilitySlot & Document;
 @Schema({ timestamps: true, collection: 'availability_slots' })
@@ -81,11 +103,39 @@ export class Booking {
   @Prop({ type: String }) timeZone: string;
   @Prop({
     required: true,
-    enum: ['held', 'pending_payment', 'confirmed', 'cancelled', 'completed', 'expired'],
+    enum: [
+      'held',
+      'pending_payment',
+      'pending',
+      'confirmed',
+      'reschedule_requested',
+      'rejected',
+      'cancelled',
+      'completed',
+      'no_show',
+      'expired',
+    ],
     default: 'held',
     index: true,
   })
   status: string;
+  /** Patient-supplied reason for the appointment. Never a clinical record. */
+  @Prop({ type: String, maxlength: 1000 }) patientNote?: string;
+  /** Immutable, append-only lifecycle trail used by the Doctor Portal and Admin. */
+  @Prop({
+    type: [
+      {
+        from: { type: String, default: null },
+        to: { type: String, required: true },
+        actorUserId: { type: Types.ObjectId, ref: 'User' },
+        actorRole: { type: String, required: true },
+        reason: { type: String, maxlength: 500 },
+        at: { type: Date, required: true },
+      },
+    ],
+    default: [],
+  })
+  statusHistory: Array<{ from?: string | null; to: string; actorUserId?: Types.ObjectId; actorRole: string; reason?: string; at: Date }>;
   @Prop({ required: true, min: 0 }) amountMinor: number;
   @Prop({ required: true, uppercase: true, minlength: 3, maxlength: 3 }) currency: string;
   @Prop({ type: String }) pricePolicyVersion?: string;
@@ -95,7 +145,23 @@ export class Booking {
   @Prop({ type: Date }) confirmedAt?: Date;
   @Prop({ type: Date }) completedAt?: Date;
   @Prop({ type: Date }) cancelledAt?: Date;
+  @Prop({ type: Date }) rejectedAt?: Date;
+  @Prop({ type: Date }) noShowAt?: Date;
+  @Prop({ type: Date }) rescheduledAt?: Date;
   @Prop({ type: String, maxlength: 300 }) cancellationReason?: string;
+  @Prop({ type: String, maxlength: 500 }) rejectionReason?: string;
+  @Prop({
+    type: [
+      {
+        slotId: { type: Types.ObjectId, ref: 'AvailabilitySlot' },
+        startsAt: Date,
+        endsAt: Date,
+        at: Date,
+      },
+    ],
+    default: [],
+  })
+  rescheduledFrom: Array<{ slotId?: Types.ObjectId; startsAt: Date; endsAt: Date; at: Date }>;
   @Prop({ type: String, enum: ['none', 'not_required', 'pending_policy', 'refunded'], default: 'none' }) refundStatus: string;
   @Prop({ type: Number, default: 1 }) version: number;
 }
@@ -163,3 +229,37 @@ export class PaymentWebhookEvent {
 }
 export const PaymentWebhookEventSchema = SchemaFactory.createForClass(PaymentWebhookEvent);
 PaymentWebhookEventSchema.index({ reference: 1, createdAt: -1 }, { name: 'idx_payment_event_reference' });
+
+/**
+ * A doctor's recurring weekly availability. Concrete bookable slots are
+ * materialised from these rules by AvailabilityService, so the user app and
+ * the Doctor Portal always share one server-side calculation.
+ *
+ * Times are minutes from local midnight (0-1439) in the doctor's own timezone.
+ * `dayOfWeek` is 0 = Sunday .. 6 = Saturday, matching JavaScript's getDay().
+ */
+export type DoctorAvailabilityRuleDocument = DoctorAvailabilityRule & Document;
+@Schema({ timestamps: true, collection: 'doctor_availability_rules' })
+export class DoctorAvailabilityRule {
+  @Prop({ type: Types.ObjectId, ref: 'Clinician', required: true, index: true }) clinicianId: Types.ObjectId;
+  @Prop({ required: true, min: 0, max: 6 }) dayOfWeek: number;
+  @Prop({ required: true, min: 0, max: 1439 }) startMinutes: number;
+  @Prop({ required: true, min: 1, max: 1440 }) endMinutes: number;
+  @Prop({ required: true, enum: ['clinic', 'audio', 'video', 'text'], default: 'video' }) sessionType: string;
+  @Prop({ type: Boolean, default: true }) active: boolean;
+}
+export const DoctorAvailabilityRuleSchema = SchemaFactory.createForClass(DoctorAvailabilityRule);
+DoctorAvailabilityRuleSchema.index({ clinicianId: 1, dayOfWeek: 1, startMinutes: 1 }, { name: 'idx_rule_doctor_day' });
+
+/** Blocked dates and leave. Overlapping confirmed bookings are reported, never removed. */
+export type DoctorTimeOffDocument = DoctorTimeOff & Document;
+@Schema({ timestamps: true, collection: 'doctor_time_off' })
+export class DoctorTimeOff {
+  @Prop({ type: Types.ObjectId, ref: 'Clinician', required: true, index: true }) clinicianId: Types.ObjectId;
+  @Prop({ required: true }) startsAt: Date;
+  @Prop({ required: true }) endsAt: Date;
+  @Prop({ type: String, maxlength: 300 }) reason?: string;
+  @Prop({ type: Types.ObjectId, ref: 'User' }) createdByUserId?: Types.ObjectId;
+}
+export const DoctorTimeOffSchema = SchemaFactory.createForClass(DoctorTimeOff);
+DoctorTimeOffSchema.index({ clinicianId: 1, startsAt: 1 }, { name: 'idx_time_off_doctor_start' });

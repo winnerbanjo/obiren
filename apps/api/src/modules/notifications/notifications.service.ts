@@ -2,13 +2,25 @@ import { Injectable, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import twilio = require('twilio');
-import { NotificationOutbox, NotificationOutboxDocument } from '../../database/schemas/notification.schema';
+import {
+  InAppNotification,
+  InAppNotificationDocument,
+  NotificationOutbox,
+  NotificationOutboxDocument,
+} from '../../database/schemas/notification.schema';
+import { Booking, BookingDocument, Clinician, ClinicianDocument } from '../../database/schemas/care.schema';
 
 @Injectable()
 export class NotificationsService {
   constructor(
     @InjectModel(NotificationOutbox.name)
     private outboxModel: Model<NotificationOutboxDocument>,
+    @InjectModel(InAppNotification.name)
+    private inAppModel: Model<InAppNotificationDocument>,
+    @InjectModel(Booking.name)
+    private bookingModel: Model<BookingDocument>,
+    @InjectModel(Clinician.name)
+    private clinicianModel: Model<ClinicianDocument>,
   ) {}
 
   // PRD Section 22.3 Requirement: Twilio Webhook X-Twilio-Signature validation
@@ -155,6 +167,80 @@ export class NotificationsService {
     return {
       success: true,
       claimedCount,
+      processedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Creates one in-app reminder per confirmed appointment entering the next
+   * 24-hour window. `dedupeKey` is unique in the feed, so repeated cron runs
+   * (or overlapping deployments) can never duplicate a reminder. No patient or
+   * clinical detail is included, and a provider outage cannot affect the
+   * appointment itself.
+   */
+  async processAppointmentReminders() {
+    const now = new Date();
+    const until = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const bookings = await this.bookingModel
+      .find({ status: 'confirmed', startsAt: { $gt: now, $lte: until } })
+      .select('_id userId clinicianId startsAt sessionType timeZone')
+      .sort({ startsAt: 1 })
+      .limit(200)
+      .lean()
+      .exec();
+
+    let created = 0;
+    let skipped = 0;
+    for (const booking of bookings) {
+      const clinician = await this.clinicianModel
+        .findById(booking.clinicianId)
+        .select('userId')
+        .lean()
+        .exec();
+      if (!clinician?.userId) {
+        skipped += 1;
+        continue;
+      }
+      const timeZone = booking.timeZone || 'UTC';
+      let when = booking.startsAt.toISOString();
+      try {
+        when = new Intl.DateTimeFormat('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+          timeZone,
+        }).format(booking.startsAt);
+      } catch {
+        // An invalid stored timezone must not stop the reminder batch.
+      }
+
+      const result = await this.inAppModel.updateOne(
+        { dedupeKey: `doctor_appointment_reminder:${booking._id.toString()}` },
+        {
+          $setOnInsert: {
+            userId: clinician.userId,
+            type: 'APPOINTMENT_REMINDER',
+            title: 'Upcoming appointment',
+            body: `You have a ${booking.sessionType} appointment on ${when} (${timeZone}).`,
+            deepLink: `/doctor/appointments/${booking._id.toString()}`,
+            objectType: 'booking',
+            objectId: booking._id.toString(),
+            dedupeKey: `doctor_appointment_reminder:${booking._id.toString()}`,
+          },
+        },
+        { upsert: true },
+      );
+      if (result.upsertedCount > 0) created += 1;
+      else skipped += 1;
+    }
+
+    return {
+      success: true,
+      candidates: bookings.length,
+      created,
+      skipped,
       processedAt: new Date().toISOString(),
     };
   }

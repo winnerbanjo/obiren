@@ -87,9 +87,11 @@ describe('Consultations, devices and SOS delivery evidence (e2e)', () => {
     // The shared test database may hold other verified clinicians; assert on
     // this record only.
     expect(afterReject.body.data.specialists.map((item: any) => item.displayName)).not.toContain('Dr Ada Obi');
+    // Other suites in the shared test database may also record verification
+    // decisions, so count only the two decisions made for this clinician.
     const audit = await getDb(app)
       .collection('audit_logs')
-      .find({ action: 'VERIFY_CLINICIAN' })
+      .find({ action: 'VERIFY_CLINICIAN', details: { $regex: clinicianId } })
       .toArray();
     expect(audit.length).toBe(2);
   });

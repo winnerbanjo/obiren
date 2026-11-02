@@ -427,6 +427,50 @@ export async function runVersionedMigrations(dbUri?: string): Promise<{ success:
       await migrationsCollection.updateOne({ migrationId: mig012Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
       appliedMigrations.push(mig012Id);
     }
+
+    const mig013Id = '013_doctor_portal_indexes';
+    const mig013Name = 'Add doctor availability, time-off and licence uniqueness indexes';
+    const mig013Checksum = crypto.createHash('sha256').update(mig013Id + mig013Name).digest('hex');
+    const existing013 = await migrationsCollection.findOne({ migrationId: mig013Id, status: 'COMPLETED' });
+    if (!existing013) {
+      await migrationsCollection.updateOne(
+        { migrationId: mig013Id },
+        { $set: { name: mig013Name, checksum: mig013Checksum, startedAt: new Date(), status: 'PENDING', appVersion: '1.0.0' } },
+        { upsert: true },
+      );
+      await db.collection('doctor_availability_rules').createIndex(
+        { clinicianId: 1, dayOfWeek: 1, startMinutes: 1 },
+        { name: 'idx_rule_doctor_day' },
+      );
+      await db.collection('doctor_time_off').createIndex(
+        { clinicianId: 1, startsAt: 1 },
+        { name: 'idx_time_off_doctor_start' },
+      );
+      // A unique licence index is a correctness guarantee, but historical data
+      // may already contain duplicates. Never fail the whole migration on that;
+      // report it loudly so an operator can reconcile the records first.
+      const duplicateLicence = await db
+        .collection('clinicians')
+        .aggregate([
+          { $match: { licenceNumber: { $exists: true, $nin: [null, ''] } } },
+          { $group: { _id: '$licenceNumber', count: { $sum: 1 } } },
+          { $match: { count: { $gt: 1 } } },
+          { $limit: 1 },
+        ])
+        .toArray();
+      if (duplicateLicence.length > 0) {
+        console.warn(
+          `⚠️ Migration [${mig013Id}]: duplicate clinician licence numbers exist (e.g. ${duplicateLicence[0]._id}). Unique licence index not created; reconcile data and re-run.`,
+        );
+      } else {
+        await db.collection('clinicians').createIndex(
+          { licenceNumber: 1 },
+          { unique: true, sparse: true, name: 'uniq_clinician_licence' },
+        );
+      }
+      await migrationsCollection.updateOne({ migrationId: mig013Id }, { $set: { completedAt: new Date(), status: 'COMPLETED' } });
+      appliedMigrations.push(mig013Id);
+    }
   } catch (err: any) {
     console.error('Migration failed:', err);
     throw err;

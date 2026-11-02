@@ -62,7 +62,9 @@ describe('Rate limiting', () => {
     expect(isAuthSensitiveRequest(fakeContext('POST', '/api/v1/auth/register'))).toBe(true);
     expect(isAuthSensitiveRequest(fakeContext('POST', '/api/v1/auth/forgot-password'))).toBe(true);
     expect(isAuthSensitiveRequest(fakeContext('POST', '/api/v1/auth/reset-password'))).toBe(true);
-    expect(isAuthSensitiveRequest(fakeContext('POST', '/api/v1/auth/refresh'))).toBe(true);
+    // Session refresh happens on ordinary page loads; it must not consume the
+    // credential-attempt budget. It stays covered by the global limit.
+    expect(isAuthSensitiveRequest(fakeContext('POST', '/api/v1/auth/refresh'))).toBe(false);
     expect(isAuthSensitiveRequest(fakeContext('POST', '/api/v1/safety/guardians'))).toBe(true);
     expect(isAuthSensitiveRequest(fakeContext('POST', '/api/v1/safety/guardians/abc/resend'))).toBe(true);
     expect(isAuthSensitiveRequest(fakeContext('POST', '/api/v1/safety/sos/trigger'))).toBe(true);

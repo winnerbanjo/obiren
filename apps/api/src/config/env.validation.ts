@@ -272,11 +272,20 @@ export function validateEnv(env: Record<string, string | undefined> = process.en
   }
 
   // --- Throttling / idempotency ---
+  // Local development and tests share one loopback IP, so the production
+  // credential budget (10 attempts / 15 minutes) locks developers out after a
+  // handful of legitimate sign-ins. Production keeps the strict default;
+  // deployments behind a shared NAT can raise THROTTLE_AUTH_LIMIT explicitly.
+  const defaultAuthAttempts = isProd(env) ? 10 : 50;
+  // Staging/dev traffic often shares one NAT address between browsers and mobile
+  // devices, so a production-sized per-IP global budget throttles ordinary
+  // dashboard use. Production keeps 120/min; non-production gets headroom.
+  const defaultGlobalLimit = isProd(env) ? 120 : 600;
   const throttle = {
     ttlMs: positiveInt(env.THROTTLE_TTL_MS, 60_000, 'THROTTLE_TTL_MS'),
-    limit: positiveInt(env.THROTTLE_LIMIT, 120, 'THROTTLE_LIMIT'),
+    limit: positiveInt(env.THROTTLE_LIMIT, defaultGlobalLimit, 'THROTTLE_LIMIT'),
     authTtlMs: positiveInt(env.THROTTLE_AUTH_TTL_MS, 15 * 60_000, 'THROTTLE_AUTH_TTL_MS'),
-    authLimit: positiveInt(env.THROTTLE_AUTH_LIMIT, 10, 'THROTTLE_AUTH_LIMIT'),
+    authLimit: positiveInt(env.THROTTLE_AUTH_LIMIT, defaultAuthAttempts, 'THROTTLE_AUTH_LIMIT'),
   };
   const idempotencyTtlSeconds = positiveInt(env.IDEMPOTENCY_TTL_SECONDS, 86_400, 'IDEMPOTENCY_TTL_SECONDS');
 

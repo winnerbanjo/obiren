@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import { env } from '../../config/env.validation';
 import { missingConfigurationDetails } from '../../common/config/configuration-report';
 import { AvailabilitySlot, AvailabilitySlotDocument, BookingHold, BookingHoldDocument, Clinician, ClinicianDocument } from '../../database/schemas/care.schema';
+import { AvailabilityService } from './availability.service';
 
 @Injectable()
 export class CareService {
@@ -12,6 +13,7 @@ export class CareService {
     @InjectModel(Clinician.name) private readonly clinicianModel: Model<ClinicianDocument>,
     @InjectModel(AvailabilitySlot.name) private readonly slotModel: Model<AvailabilitySlotDocument>,
     @InjectModel(BookingHold.name) private readonly holdModel: Model<BookingHoldDocument>,
+    private readonly availabilityService: AvailabilityService,
   ) {}
   private meta() { return { requestId: `req_${Date.now()}` }; }
 
@@ -86,6 +88,16 @@ export class CareService {
       .lean()
       .exec();
     if (!clinician) throw new NotFoundException('Specialist not found');
+
+    // The catalogue and the Doctor Portal share one server-side calculation:
+    // materialise any missing slots from the doctor's recurring schedule before
+    // answering, so browser-side guesses are never the source of truth.
+    await this.availabilityService.generateSlots(
+      clinician as unknown as ClinicianDocument,
+      filter.from,
+      filter.to,
+      { sessionTypes: filter.sessionType ? [filter.sessionType] : undefined },
+    );
 
     const slots = await this.slotModel
       .find({

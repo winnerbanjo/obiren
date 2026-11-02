@@ -4,9 +4,11 @@ import { CareController } from './care.controller';
 import { CareService } from './care.service';
 import { ClinicianSlotsController } from './clinician-slots.controller';
 import { SpecialistsController } from './specialists.controller';
+import { DoctorController } from './doctor.controller';
+import { DoctorService } from './doctor.service';
+import { AvailabilityService } from './availability.service';
 import {
   BookingsController,
-  ClinicianBookingsController,
   PaymentsController,
   PaystackWebhookController,
 } from './bookings.controller';
@@ -22,6 +24,10 @@ import {
   BookingSchema,
   Clinician,
   ClinicianSchema,
+  DoctorAvailabilityRule,
+  DoctorAvailabilityRuleSchema,
+  DoctorTimeOff,
+  DoctorTimeOffSchema,
   Payment,
   PaymentSchema,
   PaymentWebhookEvent,
@@ -29,7 +35,9 @@ import {
   PromoCode,
   PromoCodeSchema,
 } from '../../database/schemas/care.schema';
-import { User, UserSchema } from '../../database/schemas/user.schema';
+import { User, UserProfile, UserProfileSchema, UserSchema } from '../../database/schemas/user.schema';
+import { AuditLog, AuditLogSchema } from '../../database/schemas/audit-log.schema';
+import { InAppNotification, InAppNotificationSchema } from '../../database/schemas/notification.schema';
 import { IdempotencyModule } from '../../common/idempotency/idempotency.module';
 import { JwtAuthModule } from '../../common/guards/jwt-auth.module';
 import { PaystackProvider } from '../../common/payments/paystack.provider';
@@ -45,23 +53,28 @@ import { PaystackProvider } from '../../common/payments/paystack.provider';
       { name: PaymentWebhookEvent.name, schema: PaymentWebhookEventSchema },
       { name: PromoCode.name, schema: PromoCodeSchema },
       { name: User.name, schema: UserSchema },
+      { name: UserProfile.name, schema: UserProfileSchema },
+      { name: DoctorAvailabilityRule.name, schema: DoctorAvailabilityRuleSchema },
+      { name: DoctorTimeOff.name, schema: DoctorTimeOffSchema },
+      { name: InAppNotification.name, schema: InAppNotificationSchema },
+      { name: AuditLog.name, schema: AuditLogSchema },
     ]),
     JwtAuthModule,
     IdempotencyModule,
   ],
   controllers: [
     CareController,
+    DoctorController,
     ClinicianSlotsController,
     SpecialistsController,
     BookingsController,
-    ClinicianBookingsController,
     PaymentsController,
     PaystackWebhookController,
     PromoCodesController,
     AdminPromoCodesController,
     SubscriptionsController,
   ],
-  providers: [CareService, BookingsService, PromotionsService, PaystackProvider],
-  exports: [CareService, BookingsService, PromotionsService],
+  providers: [CareService, AvailabilityService, DoctorService, BookingsService, PromotionsService, PaystackProvider],
+  exports: [CareService, AvailabilityService, DoctorService, BookingsService, PromotionsService],
 })
 export class CareModule {}

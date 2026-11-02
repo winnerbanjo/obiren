@@ -15,18 +15,9 @@ import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiParam, ApiResponse,
 import type { Request } from 'express';
 import { BookingsService } from './bookings.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { ROLES } from '../../common/auth/roles';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { Idempotent } from '../../common/idempotency/idempotent.decorator';
-import {
-  BookingListQuerySchema,
-  CancelBookingSchema,
-  ClinicianBookingQuerySchema,
-  HoldSlotSchema,
-  MongoIdParam,
-} from '../../common/validation/api-schemas';
+import { BookingListQuerySchema, CancelBookingSchema, HoldSlotSchema, MongoIdParam } from '../../common/validation/api-schemas';
 
 @ApiTags('Bookings')
 @ApiBearerAuth('accessToken')
@@ -48,13 +39,13 @@ export class BookingsController {
     summary: 'Hold a slot and quote the server-calculated price',
     description: 'Atomically reserves one slot for 10 minutes and records a `held` booking with the server-side price. A hold is not a confirmed appointment; an unpriced session type is refused before inventory is reserved.',
   })
-  @ApiBody({ schema: { type: 'object', required: ['slotId'], additionalProperties: false, properties: { slotId: { type: 'string', pattern: '^[0-9a-fA-F]{24}$' } } } })
+  @ApiBody({ schema: { type: 'object', required: ['slotId'], additionalProperties: false, properties: { slotId: { type: 'string', pattern: '^[0-9a-fA-F]{24}$' }, note: { type: 'string', maxLength: 1000, description: 'Optional reason for the visit. Shown to the doctor; not a clinical record.' } } } })
   @ApiResponse({ status: 201, description: 'Held booking with amount, currency and hold expiry.' })
   @ApiResponse({ status: 404, description: 'Slot not found.' })
   @ApiResponse({ status: 409, description: 'Slot is already held or booked.' })
   @ApiResponse({ status: 503, description: 'No approved price exists for this session type.' })
   async hold(@Req() req: any, @Body(new ZodValidationPipe(HoldSlotSchema)) body) {
-    return this.bookingsService.createHold(req.user.sub, body.slotId);
+    return this.bookingsService.createHold(req.user.sub, body.slotId, body.note);
   }
 
   @Get(':id')
@@ -124,36 +115,6 @@ export class PaymentsController {
   @ApiResponse({ status: 422, description: 'The booking is not confirmed or has no verified payment.' })
   async getReceipt(@Req() req: any, @Param('bookingId', new ZodValidationPipe(MongoIdParam)) bookingId: string) {
     return this.bookingsService.getReceipt(req.user.sub, bookingId);
-  }
-}
-
-/** PRD clinician-side booking read. Scoped to the caller's own clinician profile. */
-@ApiTags('Bookings')
-@ApiBearerAuth('accessToken')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(ROLES.CLINICIAN)
-@Controller('clinician')
-export class ClinicianBookingsController {
-  constructor(private readonly bookingsService: BookingsService) {}
-
-  @Get('bookings')
-  @ApiOperation({ summary: 'List bookings for the signed-in clinician', description: 'Returns bookings for the caller’s own clinician profile only. Requires the clinician role and an existing clinician profile.' })
-  @ApiResponse({ status: 200, description: 'Clinician bookings and next cursor.' })
-  @ApiResponse({ status: 403, description: 'No clinician profile for this account.' })
-  async list(@Req() req: any, @Query(new ZodValidationPipe(ClinicianBookingQuerySchema)) query) {
-    return this.bookingsService.listClinicianBookings(req.user.sub, query);
-  }
-
-  @Post('bookings/:id/complete')
-  @ApiParam({ name: 'id', description: '24-character booking identifier.' })
-  @ApiOperation({ summary: 'Mark a confirmed session completed', description: 'Scoped to the caller’s own clinician profile. Only a confirmed session that has already started can be completed; payment and refund state are left untouched.' })
-  @ApiResponse({ status: 201, description: 'Booking completed.' })
-  @ApiResponse({ status: 403, description: 'No clinician profile for this account.' })
-  @ApiResponse({ status: 404, description: 'Booking does not belong to this clinician.' })
-  @ApiResponse({ status: 409, description: 'Booking is not confirmed.' })
-  @ApiResponse({ status: 422, description: 'The session has not started yet.' })
-  async complete(@Req() req: any, @Param('id', new ZodValidationPipe(MongoIdParam)) id: string) {
-    return this.bookingsService.completeClinicianBooking(req.user.sub, id);
   }
 }
 

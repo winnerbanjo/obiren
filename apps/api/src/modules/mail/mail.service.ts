@@ -55,6 +55,45 @@ export class MailService {
     });
   }
 
+  /**
+   * Doctor invitation / activation link. The token is single-use and expiring;
+   * no password is ever created or shared by an administrator.
+   */
+  async sendDoctorInvitationEmail(to: string, token: string, displayName: string): Promise<void> {
+    const base = (process.env.DOCTOR_PORTAL_URL || 'http://localhost:3003').replace(/\/$/, '');
+    const link = `${base}/doctor/activate?token=${encodeURIComponent(token)}`;
+    await this.provider.send({
+      to,
+      subject: 'Your Obiren Doctor Portal invitation',
+      text: [
+        `Hello ${displayName},`,
+        '',
+        'An Obiren account has been created for you as a doctor.',
+        'Set your password and open your Doctor Portal here:',
+        link,
+        '',
+        'This link expires in 7 days and can be used once.',
+        'Obiren staff will never ask you for your password.',
+      ].join('\n'),
+      html: `<p>Hello ${displayName},</p><p>An Obiren account has been created for you as a doctor.</p><p><a href="${link}">Set your password and open your Doctor Portal</a></p><p>This link expires in 7 days and can be used once. Obiren staff will never ask you for your password.</p>`,
+    });
+  }
+
+  /**
+   * Appointment notice. Deliberately free of clinical detail so it is safe on a
+   * locked screen and in a shared inbox.
+   */
+  async sendAppointmentEmail(to: string, title: string, body: string, deepLink?: string): Promise<void> {
+    const base = (process.env.DOCTOR_PORTAL_URL || 'http://localhost:3003').replace(/\/$/, '');
+    const link = deepLink ? `${base}${deepLink}` : base;
+    await this.provider.send({
+      to,
+      subject: `Obiren: ${title}`,
+      text: [body, '', 'Open Obiren:', link, '', 'This message contains no clinical detail. Sign in to see the appointment.'].join('\n'),
+      html: `<p>${body}</p><p><a href="${link}">Open Obiren</a></p><p>This message contains no clinical detail. Sign in to see the appointment.</p>`,
+    });
+  }
+
   /** Fire-and-forget wrapper: an email outage must not fail registration. */
   async trySend(label: string, send: () => Promise<void>): Promise<boolean> {
     try {
