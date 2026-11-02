@@ -1,384 +1,466 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Phone, RefreshCw, ShieldAlert, X } from "lucide-react";
 import {
-  ShieldAlert,
-  Radio,
-  Plus,
-  PhoneCall,
-  MapPin,
-  CheckCircle2,
-  AlertCircle,
-  X,
-  Hospital,
-  Building2,
-  ExternalLink,
-  Search,
-  Users,
-} from "lucide-react";
-import { VERIFIED_EMERGENCY_DATASET, VerifiedEmergencyRecord } from "@obiren/localization";
+  adminApi,
+  ApiError,
+  AdminSafetyIncidentData,
+  EmergencyResourceFreshness,
+  EmergencyVerificationStatus,
+} from "@obiren/api-client";
+import {
+  EmptyState,
+  ErrorBanner,
+  InfoBanner,
+  NoticeBanner,
+  StatusPill,
+  TableSkeleton,
+  formatDateTime,
+} from "./admin-ui";
 
 interface AdminSafetyViewProps {
   selectedCountry: string;
   activeTabId?: string;
 }
 
+interface ResourceRow {
+  recordId: string;
+  organisationName: string;
+  countryCode: string;
+  category: string;
+  phone: string;
+  sourceUrl: string;
+  editorialFollowUp: string;
+  verificationStatus: string;
+  operationallyConfirmed: boolean;
+  lastCheckedAt: string | null;
+  nextReviewDueAt: string | null;
+  evidenceRef: string | null;
+  note: string | null;
+  freshness: string;
+}
+
+const INCIDENT_STATUSES = ["all", "active", "triggered", "completed", "cancelled"] as const;
+
 export default function AdminSafetyView({ selectedCountry, activeTabId }: AdminSafetyViewProps) {
-  let defaultTab: "directory" | "incidents" | "trusted_circle" = "directory";
-  if (activeTabId === "safety_incidents") defaultTab = "incidents";
-  else if (activeTabId === "trusted_circle") defaultTab = "trusted_circle";
+  return activeTabId === "safety_incidents" ? (
+    <SosRegister />
+  ) : (
+    <ResourceDirectory selectedCountry={selectedCountry} />
+  );
+}
 
-  const [activeTab, setActiveTab] = useState<"directory" | "incidents" | "trusted_circle">(defaultTab);
+/* -------------------------------------------------------------------------- */
+/* SOS incidents                                                              */
+/* -------------------------------------------------------------------------- */
 
-  // Keep internal tab in sync if sidebar changes
+function SosRegister() {
+  const [incidents, setIncidents] = useState<AdminSafetyIncidentData[]>([]);
+  const [statusFilter, setStatusFilter] = useState<(typeof INCIDENT_STATUSES)[number]>("all");
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const load = useCallback(async (status = statusFilter) => {
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      const data = await adminApi.listSafetyIncidents({
+        status: status === "all" ? undefined : status,
+        limit: 50,
+      });
+      setIncidents(data.incidents ?? []);
+    } catch (err) {
+      setErrorMsg(
+        err instanceof ApiError && err.status === 403
+          ? "Your role does not grant access to the SOS register."
+          : err instanceof ApiError
+            ? err.message
+            : "Could not load SOS incidents.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter]);
+
   useEffect(() => {
-    if (activeTabId === "safety_incidents") setActiveTab("incidents");
-    else if (activeTabId === "emergency_resources") setActiveTab("directory");
-    else if (activeTabId === "trusted_circle") setActiveTab("trusted_circle");
-  }, [activeTabId]);
-  
-  const [searchQuery, setSearchQuery] = useState("");
-
-  // Initial Emergency Resources Directory populated with 31 verified records
-  const [resources, setResources] = useState<VerifiedEmergencyRecord[]>(VERIFIED_EMERGENCY_DATASET);
-
-  const [showAddResource, setShowAddResource] = useState(false);
-  const [newResource, setNewResource] = useState({
-    name: "",
-    country: "Nigeria",
-    countryCode: "NG" as "NG" | "GH" | "GB" | "US",
-    category: "Emergency services",
-    phone: "",
-    city: "",
-    address: "",
-    summary: "",
-  });
-
-  const filteredResources = resources.filter((r) => {
-    const matchesCountry = selectedCountry === "ALL" || r.countryCode === selectedCountry;
-    const matchesQuery =
-      r.organisation_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.service_summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.top_category.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCountry && matchesQuery;
-  });
-
-  const handleAddResource = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newRecord: VerifiedEmergencyRecord = {
-      record_id: `${newResource.countryCode}-${Date.now().toString().slice(-3)}`,
-      organisation_name: newResource.name,
-      top_category: newResource.category,
-      service_category: "General Emergency",
-      country: newResource.country,
-      countryCode: newResource.countryCode,
-      region: newResource.city || "Nationwide",
-      city: newResource.city,
-      phone: newResource.phone,
-      whatsapp_or_text: "",
-      email: "",
-      service_summary: newResource.summary || "Emergency service contact.",
-      hours: "24/7",
-      cost: "Free",
-      organisation_type: "Government / NGO",
-      verification_status: "Source verified",
-      obiren_follow_up: "Operational confirmation",
-      source_url: "",
-    };
-
-    setResources([newRecord, ...resources]);
-    setShowAddResource(false);
-    setNewResource({ name: "", country: "Nigeria", countryCode: "NG", category: "Emergency services", phone: "", city: "", address: "", summary: "" });
-  };
-
-  const incidents = [
-    {
-      id: "inc-9921",
-      user: "Ella Vance",
-      country: "NG",
-      flag: "🇳🇬",
-      type: "Web SOS Panic Button (Test)",
-      time: "Today at 02:15 PM",
-      gps: "6.5244° N, 3.3792° E",
-      guardiansNotified: 4,
-      status: "RESOLVED",
-    },
-    {
-      id: "inc-9922",
-      user: "Chloe Vance",
-      country: "GB",
-      flag: "🇬🇧",
-      type: "Web SOS Panic Button",
-      time: "Yesterday at 11:40 PM",
-      gps: "51.5074° N, 0.1278° W",
-      guardiansNotified: 2,
-      status: "RESOLVED",
-    },
-  ];
-
-  const trustedCircles = [
-    { id: "TC-101", user: "Ella Vance", members: 4, activeAlerts: 0, status: "ACTIVE" },
-    { id: "TC-102", user: "Amara Okafor", members: 2, activeAlerts: 0, status: "ACTIVE" },
-    { id: "TC-103", user: "Chloe Smith", members: 5, activeAlerts: 1, status: "ALERT_TRIGGERED" },
-  ];
+    load(statusFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm">
         <div>
-          <h2 className="text-2xl font-bold font-display text-[#17131D]">Safety Incidents & Emergency Directory ({resources.length} Entries)</h2>
-          <p className="text-xs text-[#6E6875]">Curate 31 source-verified emergency contacts across Nigeria, Ghana, UK & US, and monitor SOS triggers.</p>
+          <h2 className="text-xl font-bold font-display text-[#17131D]">SOS incidents</h2>
+          <p className="text-xs text-[#6E6875]">
+            Delivery counts are what the provider actually reported. A skipped or failed channel is never shown as
+            delivered, and no incident here implies emergency-service dispatch.
+          </p>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setActiveTab("directory")}
-            className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
-              activeTab === "directory" ? "bg-[#6C4CF1] text-white" : "bg-[#F5F2FF] text-[#6E6875]"
-            }`}
+        <div className="flex items-center gap-2">
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as (typeof INCIDENT_STATUSES)[number])}
+            className="px-3 py-2 bg-[#F5F2FF] border border-[#E8E0FF] rounded-full text-xs font-bold text-[#17131D] capitalize"
           >
-            Directory Entries ({filteredResources.length})
-          </button>
+            {INCIDENT_STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {status === "all" ? "All statuses" : status}
+              </option>
+            ))}
+          </select>
           <button
-            onClick={() => setActiveTab("incidents")}
-            className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
-              activeTab === "incidents" ? "bg-[#6C4CF1] text-white" : "bg-[#F5F2FF] text-[#6E6875]"
-            }`}
+            onClick={() => load(statusFilter)}
+            className="px-4 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] text-[#6C4CF1] text-xs font-bold rounded-full inline-flex items-center gap-2"
           >
-            SOS Incidents Log
-          </button>
-          <button
-            onClick={() => setActiveTab("trusted_circle")}
-            className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
-              activeTab === "trusted_circle" ? "bg-[#6C4CF1] text-white" : "bg-[#F5F2FF] text-[#6E6875]"
-            }`}
-          >
-            Trusted Circle
+            <RefreshCw className="w-4 h-4" /> Refresh
           </button>
         </div>
       </div>
 
-      {activeTab === "directory" && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <h3 className="text-lg font-bold font-display text-[#17131D]">Geospatial Verified Directory Database</h3>
+      <ErrorBanner message={errorMsg} />
 
-            <div className="flex items-center gap-3">
-              <div className="relative w-full sm:w-64">
-                <Search className="w-4 h-4 absolute left-3.5 top-3 text-[#6E6875]" />
-                <input
-                  type="text"
-                  placeholder="Search 31 emergency records..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-[#F5F2FF] border border-[#E8E0FF] rounded-full text-xs font-medium focus:outline-none"
-                />
-              </div>
-
-              <button
-                onClick={() => setShowAddResource(true)}
-                className="px-4 py-2.5 bg-[#6C4CF1] text-white text-xs font-bold rounded-full flex items-center gap-1.5 shadow-md shrink-0"
-              >
-                <Plus className="w-4 h-4" /> Add Record
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-[#F5F2FF]/60 border-b border-[#E7E2EB] text-[#6E6875] uppercase text-[10px] font-bold tracking-wider">
-                    <th className="py-4 px-4">Record ID</th>
-                    <th className="py-4 px-4">Organisation Name</th>
-                    <th className="py-4 px-4">Country & Region</th>
-                    <th className="py-4 px-4">Category</th>
-                    <th className="py-4 px-4">Phone / Contact</th>
-                    <th className="py-4 px-4">Hours & Cost</th>
-                    <th className="py-4 px-4">Status</th>
+      <div className="bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm">
+        {loading ? (
+          <TableSkeleton label="Loading incidents..." />
+        ) : incidents.length === 0 ? (
+          <EmptyState
+            icon={<ShieldAlert className="w-10 h-10" />}
+            title="No incidents in this view"
+            description="SOS activations are append-only records; exact coordinates stay out of this list."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-[10px] uppercase font-bold text-[#6E6875] border-b border-[#E7E2EB]">
+                  <th className="py-2 pr-4">Account</th>
+                  <th className="py-2 pr-4">Triggered</th>
+                  <th className="py-2 pr-4">State</th>
+                  <th className="py-2 pr-4">Dispatch</th>
+                  <th className="py-2 pr-4">Deliveries</th>
+                  <th className="py-2 pr-4">Guardians</th>
+                  <th className="py-2 pr-4">Mode</th>
+                </tr>
+              </thead>
+              <tbody>
+                {incidents.map((incident) => (
+                  <tr key={incident.id} className="border-b border-[#F5F2FF] last:border-0">
+                    <td className="py-3 pr-4">
+                      <p className="font-bold text-[#17131D]">{incident.patient.displayName}</p>
+                      <p className="text-[10px] text-[#6E6875]">
+                        {incident.patient.email || "no email"} • {incident.patient.countryCode || "—"}
+                      </p>
+                    </td>
+                    <td className="py-3 pr-4 text-[#6E6875]">{formatDateTime(incident.triggeredAt)}</td>
+                    <td className="py-3 pr-4">
+                      <StatusPill status={incident.status} />
+                    </td>
+                    <td className="py-3 pr-4">
+                      <StatusPill status={incident.dispatchStatus} />
+                    </td>
+                    <td className="py-3 pr-4 text-[#6E6875]">
+                      <span className="font-bold text-emerald-700">{incident.delivery.sent} sent</span>
+                      {" • "}
+                      <span className="font-bold text-red-600">{incident.delivery.failed} failed</span>
+                      {" • "}
+                      {incident.delivery.simulated} simulated
+                    </td>
+                    <td className="py-3 pr-4 text-[#6E6875]">{incident.trustedContactCount}</td>
+                    <td className="py-3 pr-4 text-[#6E6875]">{incident.isTestMode ? "test" : "live"}</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E7E2EB]">
-                  {filteredResources.map((res) => (
-                    <tr key={res.record_id} className="hover:bg-[#F5F2FF]/30 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-[#6C4CF1]">{res.record_id}</td>
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-[#17131D]">{res.organisation_name}</div>
-                        <div className="text-[11px] text-[#6E6875] line-clamp-1">{res.service_summary}</div>
-                      </td>
-                      <td className="py-3 px-4 font-bold text-[#17131D]">
-                        {res.country} ({res.region || "Nationwide"})
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="font-semibold text-[#6C4CF1]">{res.top_category}</span>
-                      </td>
-                      <td className="py-3 px-4 font-mono font-bold text-[#17131D]">
-                        {res.phone || "Online Referral"}
-                      </td>
-                      <td className="py-3 px-4 text-[#6E6875]">
-                        {res.hours} • {res.cost}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-[#238A5A] border border-emerald-200">
-                          {res.verification_status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
-          {/* Add Resource Modal */}
-          {showAddResource && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-              <div className="bg-white rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl">
-                <div className="flex justify-between items-center">
-                  <h4 className="text-lg font-bold font-display">Add Emergency Directory Record</h4>
-                  <button onClick={() => setShowAddResource(false)}><X className="w-5 h-5 text-[#6E6875]" /></button>
-                </div>
+/* -------------------------------------------------------------------------- */
+/* Emergency resource directory                                               */
+/* -------------------------------------------------------------------------- */
 
-                <form onSubmit={handleAddResource} className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-[#6E6875] mb-1">Organisation Name</label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="e.g. Lagos State General Hospital ER"
-                      value={newResource.name}
-                      onChange={(e) => setNewResource({ ...newResource, name: e.target.value })}
-                      className="w-full px-4 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] rounded-xl text-xs"
-                    />
-                  </div>
+function ResourceDirectory({ selectedCountry }: { selectedCountry: string }) {
+  const [resources, setResources] = useState<ResourceRow[]>([]);
+  const [freshness, setFreshness] = useState("");
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [notice, setNotice] = useState("");
+  const [reviewTarget, setReviewTarget] = useState<ResourceRow | null>(null);
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs font-bold uppercase text-[#6E6875] mb-1">Country</label>
-                      <select
-                        value={newResource.countryCode}
-                        onChange={(e) => {
-                          const code = e.target.value as any;
-                          const nameMap: any = { NG: "Nigeria", GB: "United Kingdom", US: "United States", GH: "Ghana" };
-                          setNewResource({ ...newResource, countryCode: code, country: nameMap[code] });
-                        }}
-                        className="w-full px-3 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] rounded-xl text-xs font-bold"
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      const data = await adminApi.listEmergencyResources({
+        countryCode: selectedCountry === "ALL" ? undefined : selectedCountry,
+        freshness: (freshness || undefined) as EmergencyResourceFreshness | undefined,
+        limit: 100,
+      });
+      setResources((data.resources ?? []) as unknown as ResourceRow[]);
+    } catch (err) {
+      setErrorMsg(
+        err instanceof ApiError && err.status === 403
+          ? "Your role does not grant access to emergency resources."
+          : err instanceof ApiError
+            ? err.message
+            : "Could not load emergency resources.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCountry, freshness]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const rows = resources.filter((row) => {
+    if (!search.trim()) return true;
+    const needle = search.trim().toLowerCase();
+    return (
+      row.organisationName.toLowerCase().includes(needle) ||
+      row.category.toLowerCase().includes(needle) ||
+      row.phone.toLowerCase().includes(needle)
+    );
+  });
+
+  const counts = resources.reduce<Record<string, number>>((acc, row) => {
+    acc[row.freshness] = (acc[row.freshness] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold font-display text-[#17131D]">Emergency resources</h2>
+            <p className="text-xs text-[#6E6875]">
+              Published contacts with recorded review state. Freshness is derived from the next review date recorded by
+              the team, not assumed.
+            </p>
+          </div>
+          <button
+            onClick={load}
+            className="px-4 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] text-[#6C4CF1] text-xs font-bold rounded-full inline-flex items-center gap-2 self-start"
+          >
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {(["", "due_soon", "overdue", "unreviewed", "current"] as const).map((value) => (
+            <button
+              key={value || "all"}
+              onClick={() => setFreshness(value)}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-bold border capitalize ${
+                freshness === value
+                  ? "bg-[#6C4CF1] text-white border-[#6C4CF1]"
+                  : "bg-white text-[#17131D] border-[#E7E2EB]"
+              }`}
+            >
+              {value ? `${value.replace(/_/g, " ")} (${counts[value] ?? 0})` : `All (${resources.length})`}
+            </button>
+          ))}
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search organisation, category or number"
+            className="flex-1 min-w-[200px] px-4 py-2 rounded-full border border-[#E7E2EB] text-xs focus:outline-none focus:ring-2 focus:ring-[#6C4CF1]/30"
+          />
+        </div>
+      </div>
+
+      <InfoBanner message="Recording a review stores who checked the resource and when. Marking a contact operationally confirmed requires an evidence reference so safety claims stay auditable." />
+      <ErrorBanner message={errorMsg} />
+      <NoticeBanner message={notice} />
+
+      <div className="bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm">
+        {loading ? (
+          <TableSkeleton label="Loading resources..." />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={<Phone className="w-10 h-10" />}
+            title="No resources match"
+            description="Try clearing the freshness or search filters."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-[10px] uppercase font-bold text-[#6E6875] border-b border-[#E7E2EB]">
+                  <th className="py-2 pr-4">Organisation</th>
+                  <th className="py-2 pr-4">Market</th>
+                  <th className="py-2 pr-4">Contact</th>
+                  <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4">Last checked</th>
+                  <th className="py-2 pr-4">Next review</th>
+                  <th className="py-2 pr-4">Freshness</th>
+                  <th className="py-2 pr-4"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.recordId} className="border-b border-[#F5F2FF] last:border-0">
+                    <td className="py-3 pr-4">
+                      <p className="font-bold text-[#17131D]">{row.organisationName}</p>
+                      <p className="text-[10px] text-[#6E6875]">{row.category}</p>
+                    </td>
+                    <td className="py-3 pr-4 text-[#6E6875]">{row.countryCode}</td>
+                    <td className="py-3 pr-4">
+                      <a href={`tel:${row.phone}`} className="font-bold text-[#6C4CF1] inline-flex items-center gap-1">
+                        <Phone className="w-3 h-3" /> {row.phone}
+                      </a>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <StatusPill status={row.verificationStatus} />
+                    </td>
+                    <td className="py-3 pr-4 text-[#6E6875]">{formatDateTime(row.lastCheckedAt)}</td>
+                    <td className="py-3 pr-4 text-[#6E6875]">{formatDateTime(row.nextReviewDueAt)}</td>
+                    <td className="py-3 pr-4">
+                      <StatusPill status={row.freshness} />
+                    </td>
+                    <td className="py-3 pr-4 text-right">
+                      <button
+                        onClick={() => setReviewTarget(row)}
+                        className="px-3 py-1.5 bg-[#F5F2FF] border border-[#E8E0FF] text-[#6C4CF1] rounded-full font-bold"
                       >
-                        <option value="NG">🇳🇬 Nigeria</option>
-                        <option value="GB">🇬🇧 United Kingdom</option>
-                        <option value="US">🇺🇸 United States</option>
-                        <option value="GH">🇬🇭 Ghana</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold uppercase text-[#6E6875] mb-1">Category</label>
-                      <select
-                        value={newResource.category}
-                        onChange={(e) => setNewResource({ ...newResource, category: e.target.value })}
-                        className="w-full px-3 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] rounded-xl text-xs font-bold"
-                      >
-                        <option value="Emergency services">Emergency services</option>
-                        <option value="Safety and abuse support">Safety and abuse support</option>
-                        <option value="Women’s healthcare">Women’s healthcare</option>
-                        <option value="Mental health">Mental health</option>
-                        <option value="Legal and safety support">Legal and safety support</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-[#6E6875] mb-1">Phone Number</label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="112, +234..."
-                      value={newResource.phone}
-                      onChange={(e) => setNewResource({ ...newResource, phone: e.target.value })}
-                      className="w-full px-4 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] rounded-xl text-xs"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-[#6E6875] mb-1">Service Summary</label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="24/7 toll-free national emergency line..."
-                      value={newResource.summary}
-                      onChange={(e) => setNewResource({ ...newResource, summary: e.target.value })}
-                      className="w-full px-4 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] rounded-xl text-xs"
-                    />
-                  </div>
-
-                  <button type="submit" className="w-full py-3 bg-[#6C4CF1] text-white font-bold text-xs rounded-xl">
-                    Publish Record
-                  </button>
-                </form>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === "incidents" && (
-        <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm p-6 space-y-4">
-          <h3 className="text-lg font-bold font-display text-[#17131D]">Live & Historical Safety SOS Audit Log</h3>
-          <div className="space-y-3">
-            {incidents.map((inc) => (
-              <div key={inc.id} className="p-4 bg-[#F5F2FF] rounded-2xl border border-[#E8E0FF] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-[#17131D]">{inc.id} — {inc.user}</span>
-                    <span className="text-[10px] font-bold bg-white px-2 py-0.5 rounded border border-[#E8E0FF]">{inc.flag} {inc.country}</span>
-                  </div>
-                  <p className="text-[#6E6875]">{inc.type} • Triggered: {inc.time}</p>
-                  <p className="text-[#6C4CF1] font-mono text-[11px]">GPS: {inc.gps} ({inc.guardiansNotified} Guardians Notified)</p>
-                </div>
-
-                <span className="text-[10px] font-bold px-3 py-1 rounded-full bg-emerald-50 text-[#238A5A] border border-emerald-200 self-start sm:self-center">
-                  {inc.status}
-                </span>
-              </div>
-            ))}
+                        Review
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {activeTab === "trusted_circle" && (
-        <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden p-6 space-y-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-2xl font-bold font-display text-[#17131D]">Trusted Circle Network Configuration</h2>
-              <p className="text-xs text-[#6E6875]">Manage user safety guardian allocations and network limits.</p>
-            </div>
-            <button className="px-4 py-2 bg-[#17131D] text-white text-xs font-bold rounded-full">Global Limits</button>
+      {reviewTarget ? (
+        <ReviewResourceDialog
+          resource={reviewTarget}
+          onClose={() => setReviewTarget(null)}
+          onSaved={async (message) => {
+            setReviewTarget(null);
+            setNotice(message);
+            await load();
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ReviewResourceDialog({
+  resource,
+  onClose,
+  onSaved,
+}: {
+  resource: ResourceRow;
+  onClose: () => void;
+  onSaved: (message: string) => void | Promise<void>;
+}) {
+  const [status, setStatus] = useState<EmergencyVerificationStatus>(
+    (resource.verificationStatus as EmergencyVerificationStatus) || "unverified",
+  );
+  const [evidenceRef, setEvidenceRef] = useState(resource.evidenceRef || "");
+  const [note, setNote] = useState(resource.note || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      await adminApi.reviewEmergencyResource(resource.recordId, {
+        verificationStatus: status,
+        evidenceRef: evidenceRef.trim() || undefined,
+        note: note.trim() || undefined,
+      });
+      await onSaved(`Review recorded for ${resource.organisationName}.`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not record the review.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] uppercase font-bold text-[#6E6875]">{resource.recordId}</p>
+            <h3 className="text-lg font-bold font-display text-[#17131D]">{resource.organisationName}</h3>
+            <p className="text-xs text-[#6E6875]">
+              {resource.category} • {resource.countryCode} • {resource.phone}
+            </p>
           </div>
-          
-          <div className="space-y-3">
-            {trustedCircles.map((tc) => (
-              <div key={tc.id} className="p-4 bg-white rounded-2xl border border-[#E8E0FF] flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-[#F5F2FF] text-[#6D4AFF] flex items-center justify-center">
-                    <Users className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-[#17131D] text-sm">{tc.user}</h4>
-                    <p className="text-xs text-[#6E6875] mt-0.5">{tc.members} / 5 Guardians configured</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  {tc.status === "ALERT_TRIGGERED" && (
-                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-red-50 text-red-600 animate-pulse">ACTIVE SOS</span>
-                  )}
-                  <button className="px-4 py-2 bg-[#F5F2FF] text-[#6D4AFF] text-xs font-bold rounded-full hover:bg-[#E8E0FF]">Inspect Network</button>
-                </div>
-              </div>
-            ))}
-          </div>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-[#F5F2FF] text-[#6E6875]" aria-label="Close">
+            <X className="w-4 h-4" />
+          </button>
         </div>
-      )}
+
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold uppercase text-[#6E6875]">Verification status</label>
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value as EmergencyVerificationStatus)}
+            className="w-full px-3 py-2 rounded-2xl border border-[#E7E2EB] text-xs font-bold"
+          >
+            <option value="source_verified">Source verified</option>
+            <option value="directory_source_verified">Directory source verified</option>
+            <option value="operationally_confirmed">Operationally confirmed</option>
+            <option value="unverified">Unverified</option>
+          </select>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold uppercase text-[#6E6875]">Evidence reference</label>
+          <input
+            value={evidenceRef}
+            onChange={(event) => setEvidenceRef(event.target.value)}
+            maxLength={300}
+            placeholder="Call log, provider website snapshot or case reference"
+            className="w-full p-3 rounded-2xl border border-[#E7E2EB] text-xs focus:outline-none focus:ring-2 focus:ring-[#6C4CF1]/30"
+          />
+          <p className="text-[10px] text-[#6E6875]">
+            Required to mark a resource operationally confirmed.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold uppercase text-[#6E6875]">Note</label>
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            rows={3}
+            maxLength={500}
+            className="w-full p-3 rounded-2xl border border-[#E7E2EB] text-xs focus:outline-none focus:ring-2 focus:ring-[#6C4CF1]/30"
+          />
+        </div>
+
+        {error ? <ErrorBanner message={error} /> : null}
+
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-full text-xs font-bold text-[#6E6875] hover:bg-[#F5F2FF]">
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={saving || (status === "operationally_confirmed" && evidenceRef.trim().length < 3)}
+            className="px-4 py-2 bg-[#6C4CF1] text-white rounded-full text-xs font-bold disabled:opacity-40"
+          >
+            {saving ? "Saving..." : "Record review"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

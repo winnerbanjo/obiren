@@ -5,13 +5,14 @@ import AdminLoginModal from "@/components/AdminLoginModal";
 import AdminShell from "@/components/AdminShell";
 import AdminOverviewView from "@/components/AdminOverviewView";
 import AdminUsersView from "@/components/AdminUsersView";
+import AdminSupportView from "@/components/AdminSupportView";
 import AdminHealthcareView from "@/components/AdminHealthcareView";
+import AdminDoctorsView from "@/components/AdminDoctorsView";
 import AdminSafetyView from "@/components/AdminSafetyView";
 import AdminCMSView from "@/components/AdminCMSView";
 import AdminPaymentsView from "@/components/AdminPaymentsView";
 import AdminPlatformView from "@/components/AdminPlatformView";
-import AdminPlaceholderView from "@/components/AdminPlaceholderView";
-import { authApi, setAccessToken, AuthUser } from "@obiren/api-client";
+import { authApi, onSessionExpired, setAccessToken, AuthUser } from "@obiren/api-client";
 
 const ADMIN_ROLES = [
   "super_admin",
@@ -28,6 +29,7 @@ export default function AdminPage() {
   const [restoring, setRestoring] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedCountry, setSelectedCountry] = useState("ALL");
+  const [sessionNotice, setSessionNotice] = useState("");
 
   // Restore the admin session from the HTTP-only refresh cookie.
   // No fake admin is ever created: if there is no valid session with an
@@ -38,6 +40,7 @@ export default function AdminPage() {
       const auth = await authApi.restore();
       if (auth && (auth.roles || []).some((r) => ADMIN_ROLES.includes(r))) {
         setAdminProfile(auth);
+        setSessionNotice("");
       } else {
         setAccessToken(null);
         setAdminProfile(null);
@@ -53,8 +56,25 @@ export default function AdminPage() {
     restore();
   }, [restore]);
 
+  // A protected call that fails even after the automatic token refresh means
+  // the session is over. Return to sign-in once with a clear reason, instead
+  // of leaving every screen showing the same authorization error.
+  useEffect(() => {
+    return onSessionExpired((message) => {
+      setAccessToken(null);
+      setAdminProfile(null);
+      setActiveTab("overview");
+      setSessionNotice(
+        /not active|suspend|restrict|deleted/i.test(message)
+          ? "This administrator account is no longer active. Sign in with an active account."
+          : "Your session has ended. Sign in again to continue.",
+      );
+    });
+  }, []);
+
   const handleLoginSuccess = (auth: AuthUser) => {
     setAdminProfile(auth);
+    setSessionNotice("");
     setActiveTab("overview");
   };
 
@@ -82,7 +102,7 @@ export default function AdminPage() {
   if (!adminProfile) {
     return (
       <div className="min-h-screen bg-[#21182F] flex items-center justify-center">
-        <AdminLoginModal isOpen={true} onLoginSuccess={handleLoginSuccess} />
+        <AdminLoginModal isOpen={true} notice={sessionNotice} onLoginSuccess={handleLoginSuccess} />
       </div>
     );
   }
@@ -93,18 +113,17 @@ export default function AdminPage() {
       case "overview":
         return <AdminOverviewView selectedCountry={selectedCountry} onNavigate={setActiveTab} />;
       case "users":
+        return <AdminUsersView currentUserId={adminProfile.id} />;
       case "support":
       case "support_tickets":
-      case "notifications":
-        return <AdminUsersView selectedCountry={selectedCountry} activeTabId={activeTab} />;
+        return <AdminSupportView />;
+      case "doctors":
+        return <AdminDoctorsView />;
       case "professionals":
-      case "health_tracking":
-      case "pregnancy":
       case "appointments":
         return <AdminHealthcareView selectedCountry={selectedCountry} activeTabId={activeTab} />;
       case "emergency_resources":
       case "safety_incidents":
-      case "trusted_circle":
         return <AdminSafetyView selectedCountry={selectedCountry} activeTabId={activeTab} />;
       case "knowledge":
       case "medical_reviews":
@@ -120,8 +139,7 @@ export default function AdminPage() {
       case "system_settings":
         return <AdminPlatformView selectedCountry={selectedCountry} activeTabId={activeTab} />;
       default:
-        // Render placeholder for all unimplemented tabs
-        return <AdminPlaceholderView activeTab={activeTab} />;
+        return <AdminOverviewView selectedCountry={selectedCountry} onNavigate={setActiveTab} />;
     }
   };
 

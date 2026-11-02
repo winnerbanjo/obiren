@@ -1,437 +1,624 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  Stethoscope,
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Search,
   ShieldCheck,
-  CheckCircle2,
-  XCircle,
-  FileText,
-  Eye,
-  AlertTriangle,
-  Clock,
-  Building2,
+  Stethoscope,
   X,
-  Activity,
-  Baby,
-  Calendar,
 } from "lucide-react";
+import { adminApi, ApiError, AdminAppointmentData } from "@obiren/api-client";
+import {
+  EmptyState,
+  ErrorBanner,
+  NoticeBanner,
+  StatusPill,
+  TableSkeleton,
+  formatDateTime,
+  formatMoneyMinor,
+  zonedDayBounds,
+} from "./admin-ui";
 
 interface AdminHealthcareViewProps {
   selectedCountry: string;
   activeTabId?: string;
 }
 
-export default function AdminHealthcareView({ selectedCountry, activeTabId }: AdminHealthcareViewProps) {
-  let defaultTab: "professionals" | "health_tracking" | "pregnancy" | "appointments" = "professionals";
-  if (activeTabId === "health_tracking") defaultTab = "health_tracking";
-  else if (activeTabId === "pregnancy") defaultTab = "pregnancy";
-  else if (activeTabId === "appointments") defaultTab = "appointments";
+interface ClinicianRow {
+  _id: string;
+  userId?: string;
+  displayName?: string;
+  specialties?: string[];
+  languages?: string[];
+  countryCode?: string;
+  verificationStatus?: string;
+  verificationEvidenceRef?: string | null;
+  verificationNote?: string | null;
+  reviewedAt?: string | null;
+  active?: boolean;
+}
 
-  const [activeTab, setActiveTab] = useState<"professionals" | "health_tracking" | "pregnancy" | "appointments">(defaultTab);
+const APPOINTMENT_STATUSES = [
+  "pending",
+  "confirmed",
+  "reschedule_requested",
+  "completed",
+  "cancelled",
+  "rejected",
+  "no_show",
+];
+
+/**
+ * Clinical operations. Both tabs read the same authoritative records the user
+ * app and Doctor Portal use: clinician verification decisions and the global
+ * appointment register. No patient clinical notes are joined into this view.
+ */
+export default function AdminHealthcareView({ selectedCountry, activeTabId }: AdminHealthcareViewProps) {
+  const mode: "professionals" | "appointments" = activeTabId === "appointments" ? "appointments" : "professionals";
+
+  return mode === "appointments" ? (
+    <AppointmentRegister selectedCountry={selectedCountry} />
+  ) : (
+    <VerificationQueue selectedCountry={selectedCountry} />
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Clinician verification                                                     */
+/* -------------------------------------------------------------------------- */
+
+function VerificationQueue({ selectedCountry }: { selectedCountry: string }) {
+  const [clinicians, setClinicians] = useState<ClinicianRow[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string>("pending");
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [notice, setNotice] = useState("");
+  const [reviewTarget, setReviewTarget] = useState<ClinicianRow | null>(null);
+
+  const load = useCallback(async (status = statusFilter) => {
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      const data = await adminApi.listClinicians({
+        verificationStatus: status === "all" ? undefined : (status as "pending" | "verified" | "rejected"),
+        limit: 50,
+      });
+      setClinicians((data.clinicians ?? []) as ClinicianRow[]);
+    } catch (err) {
+      setErrorMsg(
+        err instanceof ApiError && err.status === 403
+          ? "Your role does not grant access to clinician verification."
+          : err instanceof ApiError
+            ? err.message
+            : "Could not load clinician verification records.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter]);
 
   useEffect(() => {
-    if (activeTabId === "professionals") setActiveTab("professionals");
-    else if (activeTabId === "health_tracking") setActiveTab("health_tracking");
-    else if (activeTabId === "pregnancy") setActiveTab("pregnancy");
-    else if (activeTabId === "appointments") setActiveTab("appointments");
-  }, [activeTabId]);
+    load(statusFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter]);
 
-  const [stageFilter, setStageFilter] = useState("ALL");
-  const [selectedApp, setSelectedApp] = useState<any | null>(null);
-  const [actionReason, setActionReason] = useState("");
-
-  const [applications, setApplications] = useState([
-    {
-      id: "app-101",
-      name: "Dr. Amina Bello",
-      country: "NG",
-      flag: "🇳🇬",
-      specialty: "Obstetrics & Gynecology",
-      degrees: "MBBS, FWACS",
-      licenceNumber: "MDCN/2012/8821",
-      authority: "Medical & Dental Council of Nigeria",
-      expiryDate: "2028-12-31",
-      stage: "UNDER_REVIEW",
-      riskFlag: false,
-      appliedDate: "2026-07-10",
-      documents: ["MDCN Practicing Licence 2026.pdf", "MBBS Certificate.pdf", "National ID.png"],
-    },
-    {
-      id: "app-102",
-      name: "Dr. Sarah Jenkins",
-      country: "GB",
-      flag: "🇬🇧",
-      specialty: "Reproductive Endocrinology",
-      degrees: "MD, MRCOG (UK)",
-      licenceNumber: "GMC-771920",
-      authority: "General Medical Council UK",
-      expiryDate: "2027-09-30",
-      stage: "VERIFIED",
-      riskFlag: false,
-      appliedDate: "2026-06-22",
-      documents: ["GMC Registration 2026.pdf", "MRCOG Diploma.pdf"],
-    },
-    {
-      id: "app-103",
-      name: "Khadijah Vance",
-      country: "NG",
-      flag: "🇳🇬",
-      specialty: "Maternal Nutrition",
-      degrees: "RDN, MSc Nutrition",
-      licenceNumber: "DAN/2018/4412",
-      authority: "Dietitians Association of Nigeria",
-      expiryDate: "2026-11-30",
-      stage: "UNDER_REVIEW",
-      riskFlag: false,
-      appliedDate: "2026-07-15",
-      documents: ["DAN Certification.pdf", "MSc Certificate.pdf"],
-    },
-    {
-      id: "app-104",
-      name: "Dr. John Doe",
-      country: "US",
-      flag: "🇺🇸",
-      specialty: "Gynecology",
-      degrees: "MD",
-      licenceNumber: "USMLE-99120",
-      authority: "State Medical Board",
-      expiryDate: "2025-01-01",
-      stage: "REJECTED",
-      riskFlag: true,
-      appliedDate: "2026-05-10",
-      documents: ["Expired Licence 2024.pdf"],
-    },
-  ]);
-
-  const filteredApps = applications.filter((app) => {
-    const matchesCountry = selectedCountry === "ALL" || app.country === selectedCountry;
-    const matchesStage = stageFilter === "ALL" || app.stage === stageFilter;
-    return matchesCountry && matchesStage;
-  });
-
-  const handleApprove = () => {
-    if (!actionReason) {
-      alert("Please provide a verification note/reason.");
-      return;
-    }
-    setApplications((prev) =>
-      prev.map((a) => (a.id === selectedApp.id ? { ...a, stage: "VERIFIED" } : a))
-    );
-    alert(`Verification Approved for ${selectedApp.name}. Audit Log generated.`);
-    setSelectedApp(null);
-  };
-
-  const handleReject = () => {
-    if (!actionReason) {
-      alert("Please provide a rejection reason.");
-      return;
-    }
-    setApplications((prev) =>
-      prev.map((a) => (a.id === selectedApp.id ? { ...a, stage: "REJECTED" } : a))
-    );
-    alert(`Verification Rejected for ${selectedApp.name}. Audit Log generated.`);
-    setSelectedApp(null);
-  };
-
-  // Mock Pregnancy CMS
-  const pregnancyContent = [
-    { week: 4, title: "Your baby is the size of a poppy seed", status: "PUBLISHED" },
-    { week: 12, title: "End of the first trimester milestones", status: "PUBLISHED" },
-    { week: 20, title: "Halfway there: Anatomy scan time", status: "DRAFT" },
-  ];
-
-  // Mock Appointments
-  const appointments = [
-    { id: "APT-882", patient: "Amara Okafor", doctor: "Dr. Amina Bello", type: "Video Consult", time: "Today, 14:00", status: "UPCOMING" },
-    { id: "APT-883", patient: "Chloe Smith", doctor: "Dr. Sarah Jenkins", type: "Chat Consult", time: "Today, 15:30", status: "IN_PROGRESS" },
-    { id: "APT-884", patient: "Ella Vance", doctor: "Khadijah Vance", type: "Nutrition Plan", time: "Tomorrow, 09:00", status: "SCHEDULED" },
-  ];
-
-  // Mock Health Config
-  const healthConfig = [
-    { metric: "Cycle Deviation Threshold", value: "±5 days", description: "Triggers irregularity alert to user." },
-    { metric: "Fetal Kick Count Minimum", value: "10 per 2 hours", description: "Standard clinical threshold for kick tracker." },
-    { metric: "Temperature Spike Threshold", value: "38.0°C (100.4°F)", description: "Triggers fever warning in symptom log." },
-  ];
+  const rows = clinicians.filter(
+    (row) => selectedCountry === "ALL" || !row.countryCode || row.countryCode === selectedCountry,
+  );
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Sub-Navigation Tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-[#E7E2EB] pb-4">
-        <button
-          onClick={() => setActiveTab("professionals")}
-          className={`px-4 py-2 text-xs font-bold rounded-full transition-colors flex items-center gap-1.5 ${
-            activeTab === "professionals" ? "bg-[#17131D] text-white shadow-md" : "text-[#6E6875] hover:bg-[#F5F2FF]"
-          }`}
-        >
-          <Stethoscope className="w-3.5 h-3.5" />
-          Doctors Verification
-        </button>
-        <button
-          onClick={() => setActiveTab("health_tracking")}
-          className={`px-4 py-2 text-xs font-bold rounded-full transition-colors flex items-center gap-1.5 ${
-            activeTab === "health_tracking" ? "bg-[#17131D] text-white shadow-md" : "text-[#6E6875] hover:bg-[#F5F2FF]"
-          }`}
-        >
-          <Activity className="w-3.5 h-3.5" />
-          Health Config
-        </button>
-        <button
-          onClick={() => setActiveTab("pregnancy")}
-          className={`px-4 py-2 text-xs font-bold rounded-full transition-colors flex items-center gap-1.5 ${
-            activeTab === "pregnancy" ? "bg-[#17131D] text-white shadow-md" : "text-[#6E6875] hover:bg-[#F5F2FF]"
-          }`}
-        >
-          <Baby className="w-3.5 h-3.5" />
-          Pregnancy CMS
-        </button>
-        <button
-          onClick={() => setActiveTab("appointments")}
-          className={`px-4 py-2 text-xs font-bold rounded-full transition-colors flex items-center gap-1.5 ${
-            activeTab === "appointments" ? "bg-[#17131D] text-white shadow-md" : "text-[#6E6875] hover:bg-[#F5F2FF]"
-          }`}
-        >
-          <Calendar className="w-3.5 h-3.5" />
-          Appointments
-        </button>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm">
+        <div>
+          <h2 className="text-xl font-bold font-display text-[#17131D]">Doctor verification</h2>
+          <p className="text-xs text-[#6E6875]">
+            Verification is an audited decision. Only verified, active doctors appear in user-facing discovery.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            className="px-3 py-2 bg-[#F5F2FF] border border-[#E8E0FF] rounded-full text-xs font-bold text-[#17131D]"
+          >
+            <option value="pending">Pending review</option>
+            <option value="verified">Verified</option>
+            <option value="rejected">Rejected</option>
+            <option value="all">All records</option>
+          </select>
+          <button
+            onClick={() => load(statusFilter)}
+            className="px-4 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] text-[#6C4CF1] text-xs font-bold rounded-full inline-flex items-center gap-2"
+          >
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </button>
+        </div>
       </div>
 
-      {activeTab === "professionals" && (
-        <>
-          {/* Header Banner */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm">
-            <div>
-              <h2 className="text-2xl font-bold font-display text-[#17131D]">Healthcare Professional Verification</h2>
-              <p className="text-xs text-[#6E6875]">Verify medical licences, degrees, and identity documents for doctors in UK, US, Nigeria & Ghana.</p>
-            </div>
+      <ErrorBanner message={errorMsg} />
+      <NoticeBanner message={notice} />
 
+      <div className="bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm">
+        {loading ? (
+          <TableSkeleton label="Loading verification records..." />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={<ShieldCheck className="w-10 h-10" />}
+            title="Nothing in this queue"
+            description="Doctors added from the Doctors section appear here until their credentials are verified."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-[10px] uppercase font-bold text-[#6E6875] border-b border-[#E7E2EB]">
+                  <th className="py-2 pr-4">Doctor</th>
+                  <th className="py-2 pr-4">Specialties</th>
+                  <th className="py-2 pr-4">Market</th>
+                  <th className="py-2 pr-4">Evidence</th>
+                  <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4">Review</th>
+                  <th className="py-2 pr-4"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row._id} className="border-b border-[#F5F2FF] last:border-0">
+                    <td className="py-3 pr-4">
+                      <p className="font-bold text-[#17131D]">{row.displayName || "Unnamed profile"}</p>
+                      <p className="text-[10px] text-[#6E6875] font-mono">{row._id}</p>
+                    </td>
+                    <td className="py-3 pr-4 text-[#6E6875] max-w-[220px]">
+                      {(row.specialties || []).join(", ") || "—"}
+                    </td>
+                    <td className="py-3 pr-4 text-[#6E6875]">{row.countryCode || "—"}</td>
+                    <td className="py-3 pr-4 text-[#6E6875] max-w-[200px] truncate">
+                      {row.verificationEvidenceRef || "Not recorded"}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <StatusPill status={row.verificationStatus || "pending"} />
+                    </td>
+                    <td className="py-3 pr-4 text-[#6E6875]">{formatDateTime(row.reviewedAt)}</td>
+                    <td className="py-3 pr-4 text-right">
+                      <button
+                        onClick={() => setReviewTarget(row)}
+                        className="px-3 py-1.5 bg-[#F5F2FF] border border-[#E8E0FF] text-[#6C4CF1] rounded-full font-bold"
+                      >
+                        Review
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {reviewTarget ? (
+        <ReviewDialog
+          clinician={reviewTarget}
+          onClose={() => setReviewTarget(null)}
+          onSaved={async (message) => {
+            setReviewTarget(null);
+            setNotice(message);
+            await load(statusFilter);
+          }}
+          onError={setErrorMsg}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ReviewDialog({
+  clinician,
+  onClose,
+  onSaved,
+  onError,
+}: {
+  clinician: ClinicianRow;
+  onClose: () => void;
+  onSaved: (message: string) => void | Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const [decision, setDecision] = useState<"verified" | "rejected" | "pending">(
+    (clinician.verificationStatus as "verified" | "rejected" | "pending") || "pending",
+  );
+  const [evidenceRef, setEvidenceRef] = useState(clinician.verificationEvidenceRef || "");
+  const [note, setNote] = useState(clinician.verificationNote || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      await adminApi.verifyClinician(clinician._id, {
+        verificationStatus: decision,
+        evidenceRef: evidenceRef.trim() || undefined,
+        note: note.trim() || undefined,
+        active: decision === "verified",
+      });
+      await onSaved(
+        decision === "verified"
+          ? `${clinician.displayName || "Doctor"} verified. They can be listed once the doctor profile is active and listed.`
+          : `Verification decision recorded for ${clinician.displayName || "the doctor"}.`,
+      );
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Could not record the verification decision.";
+      setError(message);
+      onError(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] uppercase font-bold text-[#6E6875]">Verification review</p>
+            <h3 className="text-lg font-bold font-display text-[#17131D]">{clinician.displayName || "Doctor"}</h3>
+            <p className="text-xs text-[#6E6875]">{(clinician.specialties || []).join(", ") || "No specialties recorded"}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-[#F5F2FF] text-[#6E6875]" aria-label="Close">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold uppercase text-[#6E6875]">Decision</label>
+          <div className="flex flex-wrap gap-1.5">
+            {(["verified", "rejected", "pending"] as const).map((value) => (
+              <button
+                key={value}
+                onClick={() => setDecision(value)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-bold border capitalize ${
+                  decision === value
+                    ? "bg-[#6C4CF1] text-white border-[#6C4CF1]"
+                    : "bg-white text-[#17131D] border-[#E7E2EB]"
+                }`}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold uppercase text-[#6E6875]">Evidence reference</label>
+          <input
+            value={evidenceRef}
+            onChange={(event) => setEvidenceRef(event.target.value)}
+            maxLength={300}
+            placeholder="Licence registry check, document id or case reference"
+            className="w-full p-3 rounded-2xl border border-[#E7E2EB] text-xs focus:outline-none focus:ring-2 focus:ring-[#6C4CF1]/30"
+          />
+          <p className="text-[10px] text-[#6E6875]">Required before a doctor can be verified. Stored with the decision.</p>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold uppercase text-[#6E6875]">Review note</label>
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            rows={3}
+            maxLength={500}
+            className="w-full p-3 rounded-2xl border border-[#E7E2EB] text-xs focus:outline-none focus:ring-2 focus:ring-[#6C4CF1]/30"
+          />
+        </div>
+
+        {error ? <ErrorBanner message={error} /> : null}
+
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-full text-xs font-bold text-[#6E6875] hover:bg-[#F5F2FF]">
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={saving || (decision === "verified" && evidenceRef.trim().length < 3)}
+            className="px-4 py-2 bg-[#6C4CF1] text-white rounded-full text-xs font-bold disabled:opacity-40"
+          >
+            {saving ? "Saving..." : "Record decision"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Appointment register                                                       */
+/* -------------------------------------------------------------------------- */
+
+function AppointmentRegister({ selectedCountry: _selectedCountry }: { selectedCountry: string }) {
+  const [appointments, setAppointments] = useState<AdminAppointmentData[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [selected, setSelected] = useState<AdminAppointmentData | null>(null);
+  const limit = 20;
+
+  const load = useCallback(
+    async (targetPage = 1) => {
+      setLoading(true);
+      setErrorMsg("");
+      try {
+        const data = await adminApi.listAppointments({
+          status: statusFilter || undefined,
+          from: fromDate ? zonedDayBounds(fromDate).from : undefined,
+          to: toDate ? zonedDayBounds(toDate).to : undefined,
+          q: appliedSearch || undefined,
+          page: targetPage,
+          limit,
+        });
+        setAppointments(data.appointments ?? []);
+        setTotal(data.total ?? 0);
+        setPage(data.page ?? targetPage);
+      } catch (err) {
+        setErrorMsg(
+          err instanceof ApiError && err.status === 403
+            ? "Your role does not grant access to the appointment register."
+            : err instanceof ApiError
+              ? err.message
+              : "Could not load appointments.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [statusFilter, fromDate, toDate, appliedSearch],
+  );
+
+  useEffect(() => {
+    load(1);
+  }, [load]);
+
+  // The register is intentionally not filtered by market here: the booking API
+  // returns the authoritative cross-market list and the doctor's market is not
+  // stored on the booking snapshot.
+  const rows = appointments;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  return (
+    <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold font-display text-[#17131D]">Appointment register</h2>
+            <p className="text-xs text-[#6E6875]">
+              Every booking made through the user app, with doctor assignment and current status. {total.toLocaleString()} matching booking(s).
+            </p>
+          </div>
+          <button
+            onClick={() => load(page)}
+            className="px-4 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] text-[#6C4CF1] text-xs font-bold rounded-full inline-flex items-center gap-2 self-start"
+          >
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex-1 min-w-[180px]">
+            <label className="text-[10px] font-bold uppercase text-[#6E6875]">Search</label>
+            <div className="flex items-center gap-1.5 mt-1 px-3 py-2 rounded-full border border-[#E7E2EB] bg-white">
+              <Search className="w-3.5 h-3.5 text-[#918A98]" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") setAppliedSearch(search.trim());
+                }}
+                placeholder="Reference, patient or doctor"
+                className="w-full bg-transparent text-xs focus:outline-none"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold uppercase text-[#6E6875]">Status</label>
             <select
-              value={stageFilter}
-              onChange={(e) => setStageFilter(e.target.value)}
-              className="px-4 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] rounded-full text-xs font-bold text-[#17131D] focus:outline-none"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="block mt-1 px-3 py-2 rounded-full border border-[#E7E2EB] bg-white text-xs font-bold capitalize"
             >
-              <option value="ALL">All Verification Stages</option>
-              <option value="UNDER_REVIEW">Under Review</option>
-              <option value="VERIFIED">Verified</option>
-              <option value="REJECTED">Rejected</option>
+              <option value="">All statuses</option>
+              {APPOINTMENT_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {status.replace(/_/g, " ")}
+                </option>
+              ))}
             </select>
           </div>
+          <div>
+            <label className="text-[10px] font-bold uppercase text-[#6E6875]">From</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+              className="block mt-1 px-3 py-2 rounded-full border border-[#E7E2EB] bg-white text-xs"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold uppercase text-[#6E6875]">To</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(event) => setToDate(event.target.value)}
+              className="block mt-1 px-3 py-2 rounded-full border border-[#E7E2EB] bg-white text-xs"
+            />
+          </div>
+          <button
+            onClick={() => setAppliedSearch(search.trim())}
+            className="px-4 py-2 bg-[#17131D] text-white rounded-full text-xs font-bold"
+          >
+            Apply
+          </button>
+        </div>
+      </div>
 
-          {/* Applications Table */}
-          <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-[#F5F2FF]/60 border-b border-[#E7E2EB] text-[#6E6875] uppercase text-[10px] font-bold tracking-wider">
-                    <th className="py-4 px-4">Applicant Doctor</th>
-                    <th className="py-4 px-4">Market</th>
-                    <th className="py-4 px-4">Specialty & Degrees</th>
-                    <th className="py-4 px-4">Licence Number</th>
-                    <th className="py-4 px-4">Expiry Date</th>
-                    <th className="py-4 px-4">Stage</th>
-                    <th className="py-4 px-4 text-right">Actions</th>
+      <ErrorBanner message={errorMsg} />
+
+      <div className="bg-white p-6 rounded-3xl border border-[#E7E2EB] shadow-sm space-y-4">
+        {loading ? (
+          <TableSkeleton label="Loading appointments..." />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={<CalendarClock className="w-10 h-10" />}
+            title="No appointments match these filters"
+            description="Bookings made in the user app appear here with the assigned doctor."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-[10px] uppercase font-bold text-[#6E6875] border-b border-[#E7E2EB]">
+                  <th className="py-2 pr-4">Reference</th>
+                  <th className="py-2 pr-4">Patient</th>
+                  <th className="py-2 pr-4">Doctor</th>
+                  <th className="py-2 pr-4">Schedule</th>
+                  <th className="py-2 pr-4">Type</th>
+                  <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4">Amount</th>
+                  <th className="py-2 pr-4"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className="border-b border-[#F5F2FF] last:border-0">
+                    <td className="py-3 pr-4 font-mono text-[10px] text-[#6E6875]">{row.reference}</td>
+                    <td className="py-3 pr-4 font-bold text-[#17131D]">{row.patient.displayName}</td>
+                    <td className="py-3 pr-4 text-[#6E6875]">{row.doctor.displayName}</td>
+                    <td className="py-3 pr-4 text-[#6E6875]">{formatDateTime(row.startsAt, row.timeZone)}</td>
+                    <td className="py-3 pr-4 text-[#6E6875] capitalize">{row.sessionType}</td>
+                    <td className="py-3 pr-4">
+                      <StatusPill status={row.status} />
+                    </td>
+                    <td className="py-3 pr-4 text-[#17131D] font-bold">{formatMoneyMinor(row.amountMinor, row.currency)}</td>
+                    <td className="py-3 pr-4 text-right">
+                      <button
+                        onClick={() => setSelected(row)}
+                        className="px-3 py-1.5 bg-[#F5F2FF] border border-[#E8E0FF] text-[#6C4CF1] rounded-full font-bold"
+                      >
+                        View
+                      </button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E7E2EB]">
-                  {filteredApps.map((app) => (
-                    <tr key={app.id} className="hover:bg-[#F5F2FF]/30 transition-colors">
-                      <td className="py-3.5 px-4 font-bold text-[#17131D]">{app.name}</td>
-
-                      <td className="py-3.5 px-4 font-bold text-[#17131D]">
-                        <span className="text-base mr-1">{app.flag}</span>
-                        <span>{app.country}</span>
-                      </td>
-
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold text-[#6C4CF1]">{app.specialty}</div>
-                        <div className="text-[11px] text-[#6E6875]">{app.degrees}</div>
-                      </td>
-
-                      <td className="py-3.5 px-4 font-mono font-bold text-[#17131D]">{app.licenceNumber}</td>
-                      <td className="py-3.5 px-4 text-[#6E6875]">{app.expiryDate}</td>
-
-                      <td className="py-3.5 px-4">
-                        <span
-                          className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                            app.stage === "VERIFIED"
-                              ? "bg-emerald-50 text-[#238A5A] border border-emerald-200"
-                              : app.stage === "UNDER_REVIEW"
-                              ? "bg-amber-50 text-[#B87512] border border-amber-200"
-                              : "bg-red-50 text-[#C53D52] border border-red-200"
-                          }`}
-                        >
-                          {app.stage}
-                        </span>
-                      </td>
-
-                      <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => {
-                            setSelectedApp(app);
-                            setActionReason("");
-                          }}
-                          className="px-3.5 py-1.5 bg-[#6C4CF1] text-white font-bold text-[11px] rounded-lg shadow-sm hover:bg-[#5B3DE0]"
-                        >
-                          Inspect Documents
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </>
-      )}
+        )}
 
-      {activeTab === "health_tracking" && (
-        <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden p-6 space-y-6">
-          <div>
-            <h2 className="text-2xl font-bold font-display text-[#17131D]">Algorithmic Health Config</h2>
-            <p className="text-xs text-[#6E6875]">Configure the clinical thresholds and prediction parameters used by the platform.</p>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-3 border-t border-[#E7E2EB]">
+            <button
+              onClick={() => load(page - 1)}
+              disabled={page <= 1}
+              className="px-3 py-1.5 text-xs font-bold text-[#6C4CF1] disabled:opacity-30 inline-flex items-center gap-1"
+            >
+              <ChevronLeft className="w-4 h-4" /> Prev
+            </button>
+            <span className="text-xs font-bold text-[#6E6875]">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => load(page + 1)}
+              disabled={page >= totalPages}
+              className="px-3 py-1.5 text-xs font-bold text-[#6C4CF1] disabled:opacity-30 inline-flex items-center gap-1"
+            >
+              Next <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
-          
-          <div className="space-y-4">
-            {healthConfig.map((c, i) => (
-              <div key={i} className="p-4 bg-[#F5F2FF]/60 rounded-2xl border border-[#E8E0FF] flex justify-between items-center">
-                <div>
-                  <h4 className="font-bold text-[#17131D] text-sm">{c.metric}</h4>
-                  <p className="text-xs text-[#6E6875] mt-1">{c.description}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-mono font-bold text-[#6D4AFF] bg-white px-3 py-1.5 rounded-lg border border-[#E8E0FF]">{c.value}</span>
-                  <button className="px-3 py-1.5 text-xs font-bold text-[#17131D] bg-[#E8E0FF] rounded-lg hover:bg-[#D8CCFF]">Edit</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {activeTab === "pregnancy" && (
-        <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden p-6 space-y-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-2xl font-bold font-display text-[#17131D]">Pregnancy Companion CMS</h2>
-              <p className="text-xs text-[#6E6875]">Manage weekly milestones, baby sizing, and stage-specific guidance.</p>
-            </div>
-            <button className="px-4 py-2 bg-[#6C4CF1] text-white text-xs font-bold rounded-full">Add Week Content</button>
-          </div>
-          
-          <div className="space-y-3">
-            {pregnancyContent.map((p, i) => (
-              <div key={i} className="p-4 bg-white rounded-2xl border border-[#E8E0FF] flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-pink-50 text-pink-600 flex items-center justify-center font-bold text-xs">W{p.week}</div>
-                  <h4 className="font-bold text-[#17131D] text-sm">{p.title}</h4>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${p.status === "PUBLISHED" ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`}>{p.status}</span>
-                  <button className="text-xs font-bold text-[#6C4CF1]">Edit</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {activeTab === "appointments" && (
-        <div className="bg-white rounded-3xl border border-[#E7E2EB] shadow-sm overflow-hidden p-6 space-y-6">
-          <div>
-            <h2 className="text-2xl font-bold font-display text-[#17131D]">Telehealth Appointments Master Schedule</h2>
-            <p className="text-xs text-[#6E6875]">Global overview of all specialist consultations.</p>
-          </div>
-          
-          <div className="grid grid-cols-1 gap-4">
-            {appointments.map((a, i) => (
-              <div key={i} className="p-4 bg-white rounded-2xl border border-[#E8E0FF] flex justify-between items-center hover:border-[#6C4CF1] transition-colors cursor-pointer">
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-[#F5F2FF] rounded-lg text-[#6D4AFF]">
-                    <Clock className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-[#17131D] text-sm">{a.patient} <span className="text-[#6E6875] font-normal mx-1">with</span> {a.doctor}</h4>
-                    <p className="text-xs text-[#6E6875] mt-0.5">{a.type} • {a.time}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${a.status === "IN_PROGRESS" ? "bg-rose-50 text-rose-600 animate-pulse" : a.status === "UPCOMING" ? "bg-[#F5F2FF] text-[#6C4CF1]" : "bg-gray-100 text-gray-600"}`}>{a.status}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Verification Inspection Modal */}
-      {selectedApp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-xl space-y-6 shadow-2xl border border-[#E7E2EB]">
-            <div className="flex justify-between items-center border-b border-[#E7E2EB] pb-3">
+      {selected ? (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-xl font-bold font-display text-[#17131D]">{selectedApp.name}</h3>
-                <p className="text-xs text-[#6E6875]">{selectedApp.degrees} • {selectedApp.flag} {selectedApp.country} Market</p>
+                <p className="text-[10px] uppercase font-bold text-[#6E6875] font-mono">{selected.reference}</p>
+                <h3 className="text-lg font-bold font-display text-[#17131D]">{selected.patient.displayName}</h3>
+                <p className="text-xs text-[#6E6875]">with {selected.doctor.displayName}</p>
               </div>
-              <button onClick={() => setSelectedApp(null)} className="p-2 text-[#6E6875] hover:bg-[#F5F2FF] rounded-full">
-                <X className="w-5 h-5" />
+              <button
+                onClick={() => setSelected(null)}
+                className="p-2 rounded-full hover:bg-[#F5F2FF] text-[#6E6875]"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-4 text-xs">
-              <div className="p-3 bg-[#F5F2FF] rounded-2xl grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#6E6875] block">Licence Authority</span>
-                  <span className="font-bold text-[#17131D]">{selectedApp.authority}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#6E6875] block">Licence Number</span>
-                  <span className="font-mono font-bold text-[#6C4CF1]">{selectedApp.licenceNumber}</span>
-                </div>
-              </div>
+            <div className="flex items-center gap-2">
+              <StatusPill status={selected.status} />
+              <span className="text-[11px] text-[#6E6875] capitalize">{selected.sessionType} consultation</span>
+            </div>
 
+            <dl className="grid grid-cols-2 gap-3 text-xs">
               <div>
-                <span className="font-bold text-[#17131D] block mb-1">Submitted Medical Credentials Documents:</span>
-                <div className="space-y-1.5">
-                  {selectedApp.documents.map((doc: string, i: number) => (
-                    <div key={i} className="p-3 bg-[#F5F2FF]/60 rounded-xl border border-[#E8E0FF] flex justify-between items-center">
-                      <span className="font-medium text-[#17131D]">{doc}</span>
-                      <span className="text-[10px] font-bold text-[#238A5A] bg-emerald-50 px-2 py-0.5 rounded">Verified Signature</span>
-                    </div>
-                  ))}
-                </div>
+                <dt className="text-[10px] uppercase font-bold text-[#6E6875]">Starts</dt>
+                <dd className="font-bold text-[#17131D]">{formatDateTime(selected.startsAt, selected.timeZone)}</dd>
               </div>
-
-              <div className="space-y-2 pt-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6875]">Verification Audit Note (Required)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Verified active licence status directly on GMC/MDCN portal..."
-                  value={actionReason}
-                  onChange={(e) => setActionReason(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#F5F2FF] border border-[#E8E0FF] rounded-xl text-xs"
-                />
+              <div>
+                <dt className="text-[10px] uppercase font-bold text-[#6E6875]">Ends</dt>
+                <dd className="font-bold text-[#17131D]">{formatDateTime(selected.endsAt, selected.timeZone)}</dd>
               </div>
-            </div>
+              <div>
+                <dt className="text-[10px] uppercase font-bold text-[#6E6875]">Patient contact</dt>
+                <dd className="text-[#17131D]">{selected.patient.email || selected.patient.phoneNumber || "Not provided"}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase font-bold text-[#6E6875]">Payment</dt>
+                <dd className="text-[#17131D]">
+                  {formatMoneyMinor(selected.amountMinor, selected.currency)} • {selected.paymentStatus || "no payment record"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase font-bold text-[#6E6875]">Booked</dt>
+                <dd className="text-[#17131D]">{formatDateTime(selected.createdAt)}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase font-bold text-[#6E6875]">Refund</dt>
+                <dd className="text-[#17131D] capitalize">{selected.refundStatus?.replace(/_/g, " ") || "none"}</dd>
+              </div>
+            </dl>
 
-            <div className="pt-3 border-t border-[#E7E2EB] flex justify-end gap-3">
-              <button
-                onClick={handleReject}
-                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-full shadow-md"
-              >
-                Reject Application
-              </button>
+            {selected.cancellationReason || selected.rejectionReason ? (
+              <div className="p-3 rounded-2xl bg-[#F5F2FF] border border-[#E8E0FF]">
+                <p className="text-[10px] font-bold uppercase text-[#6E6875]">Recorded reason</p>
+                <p className="text-xs text-[#17131D]">{selected.cancellationReason || selected.rejectionReason}</p>
+              </div>
+            ) : null}
 
+            <p className="text-[10px] text-[#6E6875]">
+              Appointment status changes are made by the assigned doctor in the Doctor Portal or by the patient in
+              the user app. This register is read-only so the same booking record stays authoritative.
+            </p>
+
+            <div className="flex justify-end">
               <button
-                onClick={handleApprove}
-                className="px-5 py-2.5 bg-[#238A5A] hover:bg-emerald-700 text-white text-xs font-bold rounded-full shadow-md"
+                onClick={() => setSelected(null)}
+                className="px-4 py-2 bg-[#17131D] text-white rounded-full text-xs font-bold"
               >
-                Approve Doctor Verification
+                Close
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
