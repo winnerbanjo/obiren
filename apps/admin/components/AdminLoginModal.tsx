@@ -16,9 +16,11 @@ import { authApi, ApiError, AuthUser } from "@obiren/api-client";
 interface AdminLoginModalProps {
   isOpen: boolean;
   onLoginSuccess: (auth: AuthUser) => void;
+  /** Reason the console sent the user back to sign-in, when there is one. */
+  notice?: string;
 }
 
-export default function AdminLoginModal({ isOpen, onLoginSuccess }: AdminLoginModalProps) {
+export default function AdminLoginModal({ isOpen, onLoginSuccess, notice }: AdminLoginModalProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -76,6 +78,13 @@ export default function AdminLoginModal({ isOpen, onLoginSuccess }: AdminLoginMo
             <p className="text-xs text-[#6E6875]">Central operational & compliance command server.</p>
           </div>
         </div>
+
+        {notice ? (
+          <div className="mb-5 p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold rounded-xl flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{notice}</span>
+          </div>
+        ) : null}
 
         <form onSubmit={handleCredentialsSubmit} className="space-y-5">
           <div>

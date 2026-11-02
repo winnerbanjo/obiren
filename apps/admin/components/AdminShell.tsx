@@ -7,30 +7,20 @@ import {
   LayoutDashboard,
   Users,
   LifeBuoy,
-  Bell,
-  Calendar,
-  Baby,
   Stethoscope,
   Clock,
-  Video,
+  ShieldCheck,
   ShieldAlert,
   Radio,
-  UserCheck,
   BookOpen,
   FileCheck,
   CreditCard,
-  RotateCcw,
-  BarChart3,
   Globe,
-  Flag,
   FileText,
-  Settings,
   LogOut,
   Menu,
   X,
-  Search,
   Lock,
-  ChevronDown,
 } from "lucide-react";
 
 interface AdminShellProps {
@@ -53,59 +43,68 @@ export default function AdminShell({
   children,
 }: AdminShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
 
+  // Only modules with a real backend surface are listed. Dead navigation items
+  // were removed rather than left pointing at simulated screens.
   const navGroups = [
     {
       group: "Operations",
       items: [
         { id: "overview", label: "Overview", icon: LayoutDashboard },
-        { id: "users", label: "Users Management", icon: Users },
+        { id: "users", label: "Users", icon: Users },
         { id: "support", label: "Support Tickets", icon: LifeBuoy },
-        { id: "notifications", label: "Notifications", icon: Bell },
       ],
     },
     {
-      group: "Health & Clinical",
+      group: "Clinical",
       items: [
-        { id: "health_tracking", label: "Health Config", icon: Calendar },
-        { id: "pregnancy", label: "Pregnancy CMS", icon: Baby },
-        { id: "professionals", label: "Doctors Verification", icon: Stethoscope },
+        { id: "doctors", label: "Doctors", icon: Stethoscope },
+        { id: "professionals", label: "Doctor Verification", icon: ShieldCheck },
         { id: "appointments", label: "Appointments", icon: Clock },
       ],
     },
     {
-      group: "Safety & Emergency",
+      group: "Safety",
       items: [
+        { id: "safety_incidents", label: "SOS Incidents", icon: Radio },
         { id: "emergency_resources", label: "Emergency Resources", icon: ShieldAlert },
-        { id: "safety_incidents", label: "Safety SOS Incidents", icon: Radio },
-        { id: "trusted_circle", label: "Trusted Circle", icon: UserCheck },
       ],
     },
     {
-      group: "Content & Medical",
+      group: "Content",
       items: [
         { id: "knowledge", label: "Knowledge CMS", icon: BookOpen },
         { id: "medical_reviews", label: "Medical Reviews", icon: FileCheck },
       ],
     },
     {
-      group: "Business & Finance",
-      items: [
-        { id: "payments", label: "Payments & Revenue", icon: CreditCard },
-        { id: "refunds", label: "Refund Approvals", icon: RotateCcw },
-      ],
+      group: "Finance",
+      items: [{ id: "payments", label: "Payments & Revenue", icon: CreditCard }],
     },
     {
-      group: "Platform & Compliance",
+      group: "Platform",
       items: [
-        { id: "countries", label: "Country Markets", icon: Globe },
-        { id: "feature_flags", label: "Feature Flags", icon: Flag },
+        { id: "countries", label: "Platform Status", icon: Globe },
         { id: "audit_logs", label: "Audit Logs", icon: FileText },
-        { id: "settings", label: "System Settings", icon: Settings },
       ],
     },
   ];
+
+  const pageTitles: Record<string, string> = {
+    overview: "Overview",
+    users: "Users",
+    support: "Support Tickets",
+    doctors: "Doctors",
+    professionals: "Doctor Verification",
+    appointments: "Appointments",
+    safety_incidents: "SOS Incidents",
+    emergency_resources: "Emergency Resources",
+    knowledge: "Knowledge CMS",
+    medical_reviews: "Medical Reviews",
+    payments: "Payments & Revenue",
+    countries: "Platform Status",
+    audit_logs: "Audit Logs",
+  };
 
   return (
     <div className="min-h-screen bg-[#FBFAFD] text-[#17131D] flex flex-col md:flex-row font-sans selection:bg-[#E8E0FF] selection:text-[#6C4CF1]">
@@ -205,11 +204,11 @@ export default function AdminShell({
             </button>
 
             <div>
-              <h1 className="text-base sm:text-xl font-bold font-display text-[#17131D] capitalize">
-                {activeTab.replace("_", " ")} Command
+              <h1 className="text-base sm:text-xl font-bold font-display text-[#17131D]">
+                {pageTitles[activeTab] ?? "Overview"}
               </h1>
               <p className="text-[11px] text-[#6E6875] hidden sm:block">
-                Single Source of Operational Control across UK, US, Nigeria & Ghana
+                One authoritative record across the user app, Doctor Portal and Admin
               </p>
             </div>
           </div>

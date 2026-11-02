@@ -17,6 +17,7 @@ import {
   MfaDisableSchema,
   MfaLoginVerifySchema,
   GoogleSignInSchema,
+  DoctorActivationSchema,
 } from '../../common/validation/api-schemas';
 
 export const REFRESH_COOKIE = 'obiren_refresh';
@@ -86,7 +87,7 @@ export class AuthController {
 
   @Post('refresh')
   @ApiOperation({ summary: 'Rotate tokens', description: 'Exchanges a valid refresh token for a new access token and refresh token. The old refresh token is revoked immediately; replace it in secure storage. Native clients provide refreshToken in JSON. Browser clients may send the HttpOnly cookie.' })
-  @ApiBody({ required: false, schema: { type: 'object', additionalProperties: false, required: ['refreshToken'], properties: { refreshToken: { type: 'string', minLength: 20, maxLength: 256, description: 'Required for native clients; optional when the refresh cookie is present.' } } } })
+  @ApiBody({ required: false, schema: { type: 'object', additionalProperties: false, properties: { refreshToken: { type: 'string', minLength: 20, maxLength: 256, description: 'Required for native clients; optional when the refresh cookie is present.' } } } })
   @ApiResponse({ status: 200, description: 'Tokens rotated successfully. Persist both returned tokens; the submitted refresh token can no longer be reused.', content: { 'application/json': { example: { success: true, data: { accessToken: '<new-jwt-access-token>', refreshToken: '<new-opaque-refresh-token>' }, meta: { requestId: 'req_1729339200000' } } } } })
   @ApiResponse({ status: 401, description: 'Refresh token is invalid, expired, revoked, or replayed.' })
   @HttpCode(HttpStatus.OK)
@@ -216,6 +217,15 @@ export class AuthController {
   }
 
   // ---------------- password reset ----------------
+
+  @Post('activate-doctor')
+  @ApiOperation({ summary: 'Activate a doctor invitation', description: 'Consumes a single-use doctor invitation token, sets the doctor’s own password, marks the email verified and activates the account. Administrators never see or set a doctor password. The token expires after 7 days.' })
+  @ApiBody({ schema: { type: 'object', additionalProperties: false, required: ['token', 'password'], properties: { token: { type: 'string', minLength: 32, maxLength: 256 }, password: { type: 'string', format: 'password', minLength: 8, maxLength: 128, description: 'At least eight characters including one uppercase letter and one number.' } } } })
+  @ApiResponse({ status: 201, description: 'Account activated; the doctor can sign in.' })
+  @ApiResponse({ status: 400, description: 'Invitation token is invalid or expired.' })
+  async activateDoctor(@Body(new ZodValidationPipe(DoctorActivationSchema)) body) {
+    return this.authService.activateDoctor(body);
+  }
 
   @Post('forgot-password')
   @ApiOperation({ summary: 'Request a password reset', description: 'Sends password-reset instructions when an eligible account exists. The response is intentionally generic to prevent account enumeration.' })

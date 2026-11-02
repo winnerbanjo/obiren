@@ -44,6 +44,13 @@
   --font-sans: var(--font-inter), sans-serif;
 }
 
+@layer components {
+  /* Shared form control used by admin dialogs. */
+  .field {
+    @apply w-full p-3 rounded-2xl border border-[#E7E2EB] bg-white text-xs focus:outline-none focus:ring-2 focus:ring-[#6C4CF1]/30;
+  }
+}
+
 /* Custom Utilities for Glassmorphism & Micro-animations */
 .glass-panel {
   background: rgba(255, 255, 255, 0.75);

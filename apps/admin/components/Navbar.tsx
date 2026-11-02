@@ -2,20 +2,17 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, ArrowUpRight, Heart, LogIn, UserPlus } from "lucide-react";
+import { Menu, X, Heart, LogIn, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { DOCTOR_PORTAL_URL, WAITLIST_URL } from "@/lib/portal-links";
 
-interface NavbarProps {
-  onOpenWaitlist?: () => void;
-  onOpenSignIn?: () => void;
-  onOpenSignUp?: () => void;
-}
-
-export default function Navbar({
-  onOpenWaitlist,
-  onOpenSignIn,
-  onOpenSignUp,
-}: NavbarProps) {
+/**
+ * Marketing navigation used by the public information pages.
+ *
+ * There is no patient sign-in or sign-up on the web: women join the waitlist
+ * or download the app, and the only account surface is the clinician portal.
+ */
+export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -83,25 +80,23 @@ export default function Navbar({
               ))}
             </nav>
 
-            {/* Right Action Auth Buttons */}
+            {/* Right Action Buttons */}
             <div className="hidden md:flex items-center gap-3">
-              {/* Sign In Button */}
-              <button
-                onClick={() => onOpenSignIn ? onOpenSignIn() : window.location.href = "/"}
+              <Link
+                href={DOCTOR_PORTAL_URL}
                 className="px-4.5 py-2.5 bg-white border border-[#E7E2EB] hover:bg-[#F5F2FF] hover:border-[#6C4CF1] text-[#17131D] text-xs font-bold rounded-full transition-all flex items-center gap-1.5 shadow-sm"
               >
                 <LogIn className="w-4 h-4 text-[#6C4CF1]" />
-                <span>Sign In</span>
-              </button>
+                <span>Doctor login</span>
+              </Link>
 
-              {/* Sign Up Button */}
-              <button
-                onClick={() => onOpenSignUp ? onOpenSignUp() : window.location.href = "/"}
+              <Link
+                href={WAITLIST_URL}
                 className="px-5 py-2.5 bg-[#6C4CF1] hover:bg-[#5B3DE0] text-white text-xs font-bold rounded-full shadow-lg shadow-[#6C4CF1]/25 hover:shadow-xl hover:shadow-[#6C4CF1]/35 hover:-translate-y-0.5 transition-all flex items-center gap-1.5"
               >
-                <UserPlus className="w-4 h-4" />
-                <span>Create Free Account</span>
-              </button>
+                <Sparkles className="w-4 h-4" />
+                <span>Join waitlist</span>
+              </Link>
             </div>
 
             {/* Mobile Hamburger & Actions */}
@@ -140,26 +135,20 @@ export default function Navbar({
                 </Link>
               ))}
               <div className="pt-4 border-t border-[#E8DFFF] flex flex-col gap-3">
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    if (onOpenSignIn) onOpenSignIn();
-                    else window.location.href = "/";
-                  }}
-                  className="w-full py-3 bg-white border border-[#E7E2EB] text-[#17131D] font-bold text-sm rounded-xl text-center"
-                >
-                  Sign In
-                </button>
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    if (onOpenSignUp) onOpenSignUp();
-                    else window.location.href = "/";
-                  }}
+                <Link
+                  href={WAITLIST_URL}
+                  onClick={() => setMobileMenuOpen(false)}
                   className="w-full py-3.5 bg-[#6C4CF1] text-white font-bold text-sm rounded-xl text-center shadow-lg shadow-[#6C4CF1]/30"
                 >
-                  Create Free Account
-                </button>
+                  Join waitlist
+                </Link>
+                <Link
+                  href={DOCTOR_PORTAL_URL}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full py-3 bg-white border border-[#E7E2EB] text-[#17131D] font-bold text-sm rounded-xl text-center"
+                >
+                  Doctor login
+                </Link>
               </div>
             </div>
           </motion.div>

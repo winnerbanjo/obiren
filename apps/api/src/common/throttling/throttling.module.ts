@@ -15,7 +15,11 @@ const AUTH_SENSITIVE_PATHS = [
   /\/auth\/forgot-password$/,
   /\/auth\/reset-password$/,
   /\/auth\/resend-verification$/,
-  /\/auth\/refresh$/,
+  // `/auth/refresh` is deliberately NOT in this list. A browser restores its
+  // session with a refresh request on every page load, so counting refreshes
+  // against the credential-guessing budget locks normal users out after ten
+  // reloads. Refresh tokens are high-entropy, single-use and rotated; the
+  // global limiter still applies to this route.
   /\/safety\/sos\/trigger$/,
   /\/safety\/guardians$/,
   /\/safety\/guardians\/[^/]+\/resend$/,

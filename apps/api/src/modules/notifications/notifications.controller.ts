@@ -48,4 +48,22 @@ export class NotificationsController {
     assertCronSecret({ headerSecret, querySecret: cronSecret, authorization });
     return this.notificationsService.processNotificationOutbox();
   }
+
+  @Get('internal/cron/appointment-reminders')
+  @ApiOperation({
+    summary: 'Create due appointment reminders (internal)',
+    description:
+      'Internal scheduler operation. For confirmed appointments starting in the next 24 hours it creates one in-app reminder per appointment for the assigned doctor. A unique dedupe key makes repeated runs safe. Authenticates with X-Cron-Secret or Authorization: Bearer <CRON_SECRET>; denied when CRON_SECRET is unset. Not a mobile-client operation.',
+  })
+  @ApiHeader({ name: 'X-Cron-Secret', required: false, description: 'Value configured by the operator as CRON_SECRET. `Authorization: Bearer <CRON_SECRET>` is also accepted.' })
+  @ApiResponse({ status: 200, description: 'Reminder batch result (candidates, created, skipped).' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid cron credential.' })
+  async processAppointmentReminders(
+    @Query('cronSecret') cronSecret: string,
+    @Headers('x-cron-secret') headerSecret: string,
+    @Headers('authorization') authorization: string,
+  ) {
+    assertCronSecret({ headerSecret, querySecret: cronSecret, authorization });
+    return this.notificationsService.processAppointmentReminders();
+  }
 }

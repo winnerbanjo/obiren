@@ -122,6 +122,37 @@ describe('Authentication (e2e)', () => {
     expect(me.body.data.email).toBe(user.email);
   });
 
+  it('restores a browser session from the HttpOnly refresh cookie with an empty body', async () => {
+    const email = uniqueEmail('cookie');
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send({ email, password: 'SecurePass123', firstName: 'Ada', lastName: 'Obi', countryCode: 'NG' });
+
+    // A browser keeps the refresh token in the cookie and posts `{}`.
+    const agent = request.agent(app.getHttpServer());
+    const login = await agent
+      .post('/api/v1/auth/login')
+      .send({ email, password: 'SecurePass123', platform: 'web' });
+    expect(login.status).toBe(200);
+
+    const first = await agent.post('/api/v1/auth/refresh').send({});
+    expect(first.status).toBe(200);
+    expect(typeof first.body.data.accessToken).toBe('string');
+
+    // The rotated cookie must work on the next page load too.
+    const second = await agent.post('/api/v1/auth/refresh').send({});
+    expect(second.status).toBe(200);
+
+    const me = await agent.get('/api/v1/auth/me').set(authHeader(second.body.data.accessToken));
+    expect(me.status).toBe(200);
+    expect(me.body.data.email).toBe(email.toLowerCase());
+
+    // No cookie and no body token is a clear 400, not a validation crash.
+    const anonymous = await request(app.getHttpServer()).post('/api/v1/auth/refresh').send({});
+    expect(anonymous.status).toBe(400);
+    expect(anonymous.body.error.message).toBe('A refresh token is required.');
+  });
+
   it('logout revokes the refresh token', async () => {
     const { tokens } = await registerAndLogin(app);
 

@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as crypto from 'crypto';
 import { SupportTicket, SupportTicketDocument } from '../../database/schemas/support.schema';
+import { User, UserDocument, UserProfile, UserProfileDocument } from '../../database/schemas/user.schema';
 import { SUPPORT_FAQS, SUPPORT_FAQ_VERSION, SupportFaq } from './support-faqs';
 import { requireAdminRole } from '../admin/admin.service';
 import { AuthenticatedUser } from '../../common/auth/request-user';
@@ -27,6 +28,8 @@ const SUPPORT_ROLES = ['super_admin', 'platform_admin', 'compliance_officer', 's
 export class SupportService {
   constructor(
     @InjectModel(SupportTicket.name) private readonly ticketModel: Model<SupportTicketDocument>,
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    @InjectModel(UserProfile.name) private readonly profileModel: Model<UserProfileDocument>,
   ) {}
 
   private meta() {
@@ -151,13 +154,30 @@ export class SupportService {
     const rows = await this.ticketModel.find(filter).sort({ _id: -1 }).limit(query.limit + 1).lean().exec();
     const hasNext = rows.length > query.limit;
     const selected = rows.slice(0, query.limit);
+    const userIds = selected.map((ticket) => ticket.userId).filter(Boolean) as Types.ObjectId[];
+    const [users, profiles] = await Promise.all([
+      this.userModel.find({ _id: { $in: userIds } }).select('email countryCode').lean().exec(),
+      this.profileModel.find({ userId: { $in: userIds } }).select('displayName').lean().exec(),
+    ]);
+    const userMap = new Map(users.map((user) => [String(user._id), user]));
+    const profileMap = new Map(profiles.map((profile) => [String(profile.userId), profile]));
+
     return {
       success: true,
       data: {
-        tickets: selected.map((ticket) => ({
-          ...this.presentTicket(ticket as unknown as SupportTicketView),
-          userId: ticket.userId!.toString(),
-        })),
+        tickets: selected.map((ticket) => {
+          const user = userMap.get(String(ticket.userId));
+          const profile = profileMap.get(String(ticket.userId));
+          return {
+            ...this.presentTicket(ticket as unknown as SupportTicketView),
+            userId: ticket.userId!.toString(),
+            user: {
+              email: user?.email ?? null,
+              countryCode: user?.countryCode ?? null,
+              displayName: profile?.displayName ?? null,
+            },
+          };
+        }),
         nextCursor: hasNext ? selected[selected.length - 1]._id.toString() : null,
       },
       meta: this.meta(),
@@ -179,6 +199,25 @@ export class SupportService {
     }
     ticket.handledByUserId = new Types.ObjectId(adminUser.sub);
     await ticket.save();
-    return { success: true, data: this.presentTicket(ticket.toObject() as unknown as SupportTicketView), meta: this.meta() };
+
+    // The updated row keeps the same account context the queue showed, so the
+    // staff detail panel never blanks out the account it is handling.
+    const [user, profile] = await Promise.all([
+      this.userModel.findById(ticket.userId).select('email countryCode').lean().exec(),
+      this.profileModel.findOne({ userId: ticket.userId }).select('displayName').lean().exec(),
+    ]);
+    return {
+      success: true,
+      data: {
+        ...this.presentTicket(ticket.toObject() as unknown as SupportTicketView),
+        userId: String(ticket.userId),
+        user: {
+          email: user?.email ?? null,
+          countryCode: user?.countryCode ?? null,
+          displayName: profile?.displayName ?? null,
+        },
+      },
+      meta: this.meta(),
+    };
   }
 }

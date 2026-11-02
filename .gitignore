@@ -19,13 +19,11 @@ node_modules/
 .DS_Store
 *.pem
 *.log.
-docs/*
 
 
 # env files
 .env*
 !.env.example
-*docs
 
 
 # vercel

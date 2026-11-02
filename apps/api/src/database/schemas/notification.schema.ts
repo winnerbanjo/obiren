@@ -84,3 +84,31 @@ export const NotificationOutboxSchema = SchemaFactory.createForClass(Notificatio
 NotificationOutboxSchema.index({ idempotencyKey: 1 }, { unique: true });
 NotificationOutboxSchema.index({ status: 1, scheduledFor: 1, lockedUntil: 1 });
 NotificationOutboxSchema.index({ userId: 1, createdAt: -1 });
+
+/**
+ * In-app notification feed (Doctor Portal today, patient app-safe copy).
+ *
+ * Distinct from `notification_outbox`, which tracks external delivery
+ * attempts. An in-app event is always recorded, even when every external
+ * channel is unconfigured, so the provider-side experience never depends on
+ * email/SMS being live.
+ *
+ * Copy must never contain symptoms, diagnoses or other health detail: it is
+ * safe on a locked screen and in a shared browser.
+ */
+export type InAppNotificationDocument = InAppNotification & Document;
+@Schema({ timestamps: true, collection: 'in_app_notifications' })
+export class InAppNotification {
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true }) userId: Types.ObjectId;
+  @Prop({ required: true, maxlength: 60 }) type: string;
+  @Prop({ required: true, maxlength: 140 }) title: string;
+  @Prop({ required: true, maxlength: 400 }) body: string;
+  @Prop({ type: String, maxlength: 300 }) deepLink?: string;
+  @Prop({ type: String, maxlength: 40 }) objectType?: string;
+  @Prop({ type: String, maxlength: 80 }) objectId?: string;
+  @Prop({ type: String, maxlength: 80, unique: true, sparse: true }) dedupeKey?: string;
+  @Prop({ type: Date }) readAt?: Date;
+}
+export const InAppNotificationSchema = SchemaFactory.createForClass(InAppNotification);
+InAppNotificationSchema.index({ userId: 1, createdAt: -1 }, { name: 'idx_inapp_user_created' });
+InAppNotificationSchema.index({ userId: 1, readAt: 1 }, { name: 'idx_inapp_user_read' });

@@ -41,14 +41,57 @@ export class ApiError extends Error {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
 let accessToken: string | null = null;
+let currentUser: AuthUser | null = null;
 let refreshInFlight: Promise<boolean> | null = null;
+
+type SessionExpiredListener = (message: string) => void;
+const sessionExpiredListeners = new Set<SessionExpiredListener>();
+
+/**
+ * Subscribe to a definitive end of session: a 401 that survives the automatic
+ * refresh attempt. Host apps use this to return to the sign-in screen once,
+ * instead of leaving every screen showing the same authorization error.
+ */
+export function onSessionExpired(listener: SessionExpiredListener): () => void {
+  sessionExpiredListeners.add(listener);
+  return () => {
+    sessionExpiredListeners.delete(listener);
+  };
+}
+
+function notifySessionExpired(message: string) {
+  accessToken = null;
+  currentUser = null;
+  for (const listener of sessionExpiredListeners) {
+    try {
+      listener(message);
+    } catch {
+      // A broken listener must never mask the original API error.
+    }
+  }
+}
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
+  if (!token) currentUser = null;
 }
 
 export function getAccessToken(): string | null {
   return accessToken;
+}
+
+/**
+ * The identity from the last successful sign-in or `/auth/me`. Kept in memory
+ * only, so a fresh page load still revalidates through the refresh cookie.
+ * The Doctor Portal uses this to render its shell immediately after sign-in
+ * instead of spending another round-trip asking for an identity it just got.
+ */
+export function getAuthUser(): AuthUser | null {
+  return currentUser;
+}
+
+export function setAuthUser(user: AuthUser | null) {
+  currentUser = user;
 }
 
 async function rawRequest<T>(
@@ -86,10 +129,16 @@ async function rawRequest<T>(
 
   if (!res.ok) {
     const details = json?.error?.details as { fields?: Record<string, string> } | undefined;
+    const message = json?.error?.message || `Request failed (${res.status})`;
+    // Auth endpoints handle their own 401s (bad credentials, expired refresh
+    // token); every other protected call means the session is really gone.
+    if (res.status === 401 && opts.auth !== false && !path.startsWith('/auth/')) {
+      notifySessionExpired(message);
+    }
     throw new ApiError(
       res.status,
       json?.error?.code || (res.status === 401 ? 'AUTH_REQUIRED' : 'REQUEST_FAILED'),
-      json?.error?.message || `Request failed (${res.status})`,
+      message,
       details?.fields ?? json?.error?.fields,
     );
   }
@@ -97,10 +146,18 @@ async function rawRequest<T>(
   return json ?? {};
 }
 
-/** Attempt one refresh round-trip. Concurrent callers share the promise. */
+/**
+ * Attempt one refresh round-trip. Concurrent callers share the promise.
+ *
+ * Returns false only when the session really is gone (no cookie / revoked).
+ * Throttling and provider outages are thrown so the UI can show a retry state
+ * instead of bouncing the user back to the sign-in screen as if their session
+ * had expired.
+ */
 export async function tryRefresh(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
-  refreshInFlight = (async () => {
+
+  const doRefresh = async (): Promise<boolean> => {
     try {
       const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',
@@ -108,15 +165,46 @@ export async function tryRefresh(): Promise<boolean> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      if (!res.ok) return false;
-      const json = (await res.json()) as ApiEnvelope<{ accessToken: string }>;
+      if (res.status === 400 || res.status === 401) return false;
+
+      let json: ApiEnvelope<{ accessToken: string }> | null = null;
+      try {
+        json = (await res.json()) as ApiEnvelope<{ accessToken: string }>;
+      } catch {
+        // Non-JSON error page (proxy/gateway).
+      }
+
+      if (!res.ok) {
+        throw new ApiError(
+          res.status,
+          json?.error?.code || 'SESSION_REFRESH_FAILED',
+          json?.error?.message || `Could not restore your session (${res.status}).`,
+        );
+      }
+
       if (json?.data?.accessToken) {
         accessToken = json.data.accessToken;
         return true;
       }
       return false;
-    } catch {
-      return false;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(0, 'NETWORK_ERROR', 'Could not reach the server. Check your connection and try again.');
+    }
+  };
+
+  refreshInFlight = (async () => {
+    try {
+      // The refresh token is a shared HttpOnly cookie. Two tabs refreshing at
+      // once would submit the same token; the second would be treated as a
+      // replay and the server would revoke the whole session family. The Web
+      // Locks API serialises rotation across tabs so each request uses the
+      // cookie left by the previous one. Browsers without it fall back to the
+      // single-tab behaviour.
+      const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+      return locks
+        ? await locks.request('obiren-session-refresh', doRefresh)
+        : await doRefresh();
     } finally {
       refreshInFlight = null;
     }
@@ -197,6 +285,7 @@ export const authApi = {
   async login(email: string, password: string) {
     const data = await request<LoginResult>('POST', '/auth/login', { email, password, platform: 'web' });
     setAccessToken(data.tokens.accessToken);
+    setAuthUser(data.user);
     return data;
   },
 
@@ -211,7 +300,10 @@ export const authApi = {
       platform: 'web',
     });
     // Never store a token for an MFA challenge; it has no session yet.
-    if ('tokens' in data) setAccessToken(data.tokens.accessToken);
+    if ('tokens' in data) {
+      setAccessToken(data.tokens.accessToken);
+      setAuthUser(data.user);
+    }
     return data;
   },
 
@@ -228,7 +320,9 @@ export const authApi = {
     const ok = await tryRefresh();
     if (!ok) return null;
     try {
-      return await request<AuthUser>('GET', '/auth/me');
+      const user = await request<AuthUser>('GET', '/auth/me');
+      setAuthUser(user);
+      return user;
     } catch {
       setAccessToken(null);
       return null;
@@ -236,7 +330,9 @@ export const authApi = {
   },
 
   async me(): Promise<AuthUser> {
-    return request<AuthUser>('GET', '/auth/me');
+    const user = await request<AuthUser>('GET', '/auth/me');
+    setAuthUser(user);
+    return user;
   },
 
   async verifyEmail(token: string) {
@@ -254,6 +350,188 @@ export const authApi = {
   async resetPassword(token: string, newPassword: string) {
     return request<{ message: string }>('POST', '/auth/reset-password', { token, newPassword });
   },
+
+  /** Doctor invitation: set your own password and activate the account. */
+  async activateDoctor(token: string, password: string) {
+    return request<{ email: string; activated: boolean; message: string }>('POST', '/auth/activate-doctor', { token, password });
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Doctor Portal API
+// ---------------------------------------------------------------------------
+
+export type AppointmentStatus =
+  | 'held'
+  | 'pending_payment'
+  | 'pending'
+  | 'confirmed'
+  | 'reschedule_requested'
+  | 'rejected'
+  | 'cancelled'
+  | 'completed'
+  | 'no_show'
+  | 'expired';
+
+export interface DoctorPatient {
+  displayName: string;
+  phoneNumber: string | null;
+}
+
+export interface DoctorAppointment {
+  id: string;
+  reference: string;
+  status: AppointmentStatus;
+  statusLabel: string;
+  sessionType: 'clinic' | 'audio' | 'video' | 'text';
+  startsAt: string;
+  endsAt: string;
+  timeZone: string | null;
+  durationMinutes: number;
+  amountMinor: number;
+  currency: string;
+  paymentStatus: string | null;
+  refundStatus: string;
+  patient: DoctorPatient | null;
+  patientNote: string | null;
+  cancellationReason: string | null;
+  rejectionReason: string | null;
+  createdAt: string | null;
+  statusHistory: Array<{ from: string | null; to: string; actorRole: string; reason: string | null; at: string }>;
+  actions: { confirm: boolean; reject: boolean; cancel: boolean; reschedule: boolean; complete: boolean; noShow: boolean };
+}
+
+export interface DoctorProfileData {
+  id: string;
+  userId: string;
+  email: string | null;
+  displayName: string;
+  professionalTitle: string | null;
+  profession: string | null;
+  specialities: string[];
+  specialties: string[];
+  languages: string[];
+  certifications: string[];
+  licenceNumber: string | null;
+  yearsOfExperience: number | null;
+  bio: string | null;
+  photoUrl: string | null;
+  clinicName: string | null;
+  clinicAddress: string | null;
+  phoneNumber: string | null;
+  countryCode: string;
+  timeZone: string;
+  consultationDurationMinutes: number;
+  bufferMinutes: number;
+  bookingApprovalMode: 'instant' | 'manual';
+  verificationStatus: 'pending' | 'verified' | 'rejected';
+  credentialReviewRequired: boolean;
+  accountStatus: 'invited' | 'active' | 'inactive' | 'suspended';
+  listed: boolean;
+  feeBySessionType: Record<string, number>;
+  emailVerified: boolean;
+}
+
+export interface DoctorScheduleRule {
+  dayOfWeek: number;
+  startMinutes: number;
+  endMinutes: number;
+  sessionType: 'clinic' | 'audio' | 'video' | 'text';
+}
+
+export interface DoctorDashboardData {
+  doctor: { id: string; displayName: string; timeZone: string; accountStatus: string; listed: boolean };
+  summary: { today: number; upcoming: number; pending: number; completed: number; total: number };
+  today: { date: string; timeZone: string; appointments: DoctorAppointment[] };
+  pendingRequests: DoctorAppointment[];
+  upcoming: DoctorAppointment[];
+  availability: {
+    configuredDays: number[];
+    weeklyGrid: Array<{ dayOfWeek: number; label: string; timeZone: string; slots: Array<{ startMinutes: number; endMinutes: number; startTime: string; endTime: string; sessionType: string; capacity: number }> }>;
+    nextAvailableAt: string | null;
+    slotGenerationHorizonDays: number;
+  };
+  recentActivity: Array<{ bookingId: string; from: string | null; to: string; actorRole: string; reason: string | null; at: string }>;
+}
+
+export interface DoctorScheduleData {
+  timeZone: string;
+  consultationDurationMinutes: number;
+  bufferMinutes: number;
+  bookingApprovalMode: 'instant' | 'manual';
+  rules: Array<{ id: string; dayOfWeek: number; startMinutes: number; endMinutes: number; sessionType: DoctorScheduleRule['sessionType'] }>;
+  weeklyGrid: DoctorDashboardData['availability']['weeklyGrid'];
+  timeOff: Array<{ id: string; startsAt: string; endsAt: string; reason: string | null }>;
+  leadTimeMinutes: number;
+  slotGenerationHorizonDays: number;
+}
+
+export interface DoctorNotificationData {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  deepLink: string | null;
+  objectId: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+function queryString(params: Record<string, unknown>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+  }
+  const suffix = search.toString();
+  return suffix ? `?${suffix}` : '';
+}
+
+export const doctorApi = {
+  me: () => request<DoctorProfileData>('GET', '/clinician/me'),
+  updateMe: (input: Record<string, unknown>) =>
+    request<{ profile: DoctorProfileData; credentialReviewTriggered: boolean; message: string }>('PATCH', '/clinician/me', input),
+  dashboard: () => request<DoctorDashboardData>('GET', '/clinician/dashboard'),
+  listAppointments: (query: { status?: string; from?: string; to?: string; sessionType?: string; q?: string; cursor?: string; limit?: number } = {}) =>
+    request<{ appointments: DoctorAppointment[]; nextCursor: string | null }>('GET', `/clinician/bookings${queryString(query)}`),
+  getAppointment: (id: string) => request<DoctorAppointment>('GET', `/clinician/bookings/${id}`),
+  confirm: (id: string) => request<DoctorAppointment>('POST', `/clinician/bookings/${id}/confirm`, {}),
+  reject: (id: string, reason: string) => request<DoctorAppointment>('POST', `/clinician/bookings/${id}/reject`, { reason }),
+  cancel: (id: string, reason: string) => request<DoctorAppointment>('POST', `/clinician/bookings/${id}/cancel`, { reason }),
+  complete: (id: string) => request<{ appointment: DoctorAppointment; paymentChanged: boolean }>('POST', `/clinician/bookings/${id}/complete`, {}),
+  noShow: (id: string, reason?: string) => request<DoctorAppointment>('POST', `/clinician/bookings/${id}/no-show`, { reason }),
+  reschedule: (id: string, slotId: string, reason?: string) =>
+    request<DoctorAppointment>('POST', `/clinician/bookings/${id}/reschedule`, { slotId, reason }),
+  schedule: () => request<DoctorScheduleData>('GET', '/clinician/schedule'),
+  saveSchedule: (input: {
+    timeZone: string;
+    consultationDurationMinutes: number;
+    bufferMinutes: number;
+    rules: DoctorScheduleRule[];
+  }) =>
+    request<{ timeZone: string; consultationDurationMinutes: number; bufferMinutes: number; ruleCount: number; slotsGenerated: number; weeklyGrid: DoctorScheduleData['weeklyGrid'] }>(
+      'PATCH',
+      '/clinician/schedule',
+      input,
+    ),
+  previewSchedule: (days = 14) =>
+    request<{ timeZone: string; from: string; to: string; slots: Array<{ id: string; startsAt: string; endsAt: string; sessionType: string }> }>(
+      'GET',
+      `/clinician/schedule/preview?days=${days}`,
+    ),
+  timeOff: () => request<{ timeOff: Array<{ id: string; startsAt: string; endsAt: string; reason: string | null }> }>('GET', '/clinician/time-off'),
+  createTimeOff: (input: { startsAt: string; endsAt: string; reason?: string }) =>
+    request<{
+      timeOff: { id: string; startsAt: string; endsAt: string; reason: string | null };
+      affectedAppointments: Array<{ id: string; startsAt: string; endsAt: string; status: string; patient: DoctorPatient | null }>;
+      message: string;
+    }>('POST', '/clinician/time-off', input),
+  deleteTimeOff: (id: string) => request<{ id: string; deleted: boolean }>('DELETE', `/clinician/time-off/${id}`),
+  notifications: (query: { cursor?: string; limit?: number } = {}) =>
+    request<{ notifications: DoctorNotificationData[]; unreadCount: number; nextCursor: string | null }>(
+      'GET',
+      `/clinician/notifications${queryString(query)}`,
+    ),
+  markNotificationRead: (id: string) => request<{ id: string; readAt: string }>('POST', `/clinician/notifications/${id}/read`, {}),
 };
 
 // ---------------------------------------------------------------------------
@@ -925,8 +1203,109 @@ export const waitlistApi = {
 // Admin API
 // ---------------------------------------------------------------------------
 
+export interface AdminMetricsData {
+  totalUsers: number;
+  newUsersLast7Days: number;
+  activePregnancies: number;
+  verifiedEmergencyResources: number;
+  totalDoctors: number;
+  verifiedDoctors: number;
+  activeDoctors: number;
+  appointmentsToday: number;
+  pendingAppointments: number;
+  confirmedUpcoming: number;
+  openSupportTickets: number;
+  activeSosIncidents: number;
+  payments: { byCurrency: Array<{ currency: string; amountMinor: number; count: number }>; policyPending: boolean };
+  operationsTimeZone: string;
+  today: string;
+  generatedAt: string;
+  countryBreakdown: Record<string, { users: number }>;
+}
+
+export interface AdminAppointmentData {
+  id: string;
+  reference: string;
+  status: string;
+  sessionType: string;
+  startsAt: string;
+  endsAt: string;
+  timeZone: string | null;
+  amountMinor: number;
+  currency: string;
+  refundStatus: string;
+  cancellationReason: string | null;
+  rejectionReason: string | null;
+  createdAt: string | null;
+  patient: { displayName: string; email: string | null; phoneNumber: string | null };
+  doctor: { id: string | null; displayName: string };
+  paymentStatus: string | null;
+}
+
+export interface AdminPaymentData {
+  id: string;
+  reference: string;
+  gateway: string;
+  amountMinor: number;
+  currency: string;
+  status: string;
+  failureReason: string | null;
+  verifiedAt: string | null;
+  createdAt: string | null;
+  bookingId: string | null;
+  bookingStatus: string | null;
+  patient: { displayName: string; email: string | null };
+  doctor: { id: string | null; displayName: string };
+}
+
+export interface AdminSafetyIncidentData {
+  id: string;
+  status: string;
+  dispatchStatus: string;
+  isTestMode: boolean;
+  triggeredAt: string;
+  cancelledAt: string | null;
+  createdAt: string | null;
+  trustedContactCount: number;
+  patient: { displayName: string; email: string | null; countryCode: string | null };
+  delivery: { sent: number; failed: number; skipped: number; simulated: number };
+}
+
+export interface AdminSupportTicketData extends SupportTicketData {
+  userId: string;
+  updatedAt?: string;
+  user: { email: string | null; countryCode: string | null; displayName: string | null };
+}
+
+export interface AdminArticleData extends ArticleSummaryData {
+  body: string;
+  reviewEvidenceRef: string | null;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface AdminPlatformStatusData {
+  environment: string;
+  degraded: boolean;
+  generatedAt: string;
+  countries: Array<{
+    code: string;
+    name: string;
+    flag: string;
+    currency: string;
+    features: Record<string, boolean>;
+  }>;
+  payments: { enabled: boolean; policyVersion: string | null; gatewayConfigured: boolean; currency: string };
+  email: { delivery: string; from: string };
+  whatsapp: { delivery: string };
+  googleSignIn: { enabled: boolean };
+  redis: { configured: boolean };
+}
+
 export const adminApi = {
-  metrics: () => request<{ totalUsers: number; activePregnancies: number; verifiedEmergencyResources: number; countryBreakdown: Record<string, { users: number }> }>('GET', '/admin/metrics'),
+  metrics: () => request<AdminMetricsData>('GET', '/admin/metrics'),
   listUsers: (page = 1, limit = 20) => request<{ users: any[]; total: number; page: number; limit: number }>('GET', `/admin/users?page=${page}&limit=${limit}`),
   setUserStatus: (id: string, status: string) => request<{ id: string; status: string }>('PUT', `/admin/users/${id}/status`, { status }),
   auditLogs: () => request<any[]>('GET', '/admin/audit-logs'),
@@ -950,6 +1329,86 @@ export const adminApi = {
   ) => request<Record<string, unknown>>('PUT', `/admin/safety/resources/${recordId}/review`, input),
   createConsultation: (input: { patientUserId: string; clinicianId: string }) =>
     request<{ id: string; status: string; participantCount: number; bookingConfirmed: false; message: string }>('POST', '/admin/consultations', input),
+
+  // Doctors section of the existing Admin.
+  listDoctors: (query: { q?: string; status?: string; listed?: 'true' | 'false'; specialization?: string; page?: number; limit?: number } = {}) =>
+    request<{
+      doctors: Array<{
+        id: string;
+        userId: string | null;
+        displayName: string;
+        email: string | null;
+        phoneNumber: string | null;
+        photoUrl: string | null;
+        specialization: string | null;
+        specialties: string[];
+        status: 'invited' | 'active' | 'inactive' | 'suspended';
+        listed: boolean;
+        verificationStatus: string;
+        bookingCount: number;
+        createdAt: string | null;
+      }>;
+      total: number;
+      page: number;
+      limit: number;
+      statusCounts: Record<string, number>;
+    }>('GET', `/admin/doctors${queryString(query)}`),
+  createDoctor: (input: Record<string, unknown>) =>
+    request<{
+      doctor: Record<string, unknown>;
+      invitation: { emailDelivered: boolean; emailDelivery: string; activationRequired: boolean; expiresInDays: number; activationToken?: string; message: string };
+    }>('POST', '/admin/doctors', input),
+  getDoctor: (id: string) => request<Record<string, unknown>>('GET', `/admin/doctors/${id}`),
+  updateDoctor: (id: string, input: Record<string, unknown>) => request<Record<string, unknown>>('PATCH', `/admin/doctors/${id}`, input),
+  setDoctorStatus: (id: string, status: 'active' | 'inactive' | 'suspended', reason?: string) =>
+    request<Record<string, unknown>>('POST', `/admin/doctors/${id}/status`, { status, reason }),
+  inviteDoctor: (id: string) =>
+    request<{ emailDelivered: boolean; emailDelivery: string; expiresInDays: number; activationToken?: string; message: string }>(
+      'POST',
+      `/admin/doctors/${id}/invite`,
+      {},
+    ),
+
+  listAppointments: (query: { status?: string; from?: string; to?: string; q?: string; page?: number; limit?: number } = {}) =>
+    request<{
+      appointments: AdminAppointmentData[];
+      total: number;
+      page: number;
+      limit: number;
+      statusCounts: Record<string, number>;
+    }>('GET', `/admin/appointments${queryString(query)}`),
+
+  listPayments: (query: { status?: string; q?: string; page?: number; limit?: number } = {}) =>
+    request<{
+      payments: AdminPaymentData[];
+      total: number;
+      page: number;
+      limit: number;
+      statusCounts: Record<string, number>;
+      totals: Array<{ currency: string; amountMinor: number; count: number }>;
+      policyPending: boolean;
+    }>('GET', `/admin/payments${queryString(query)}`),
+
+  listSafetyIncidents: (query: { status?: string; limit?: number } = {}) =>
+    request<{ incidents: AdminSafetyIncidentData[]; total: number }>('GET', `/admin/safety/incidents${queryString(query)}`),
+
+  platformStatus: () => request<AdminPlatformStatusData>('GET', '/admin/platform/status'),
+
+  supportTickets: (query: { status?: string; cursor?: string; limit?: number } = {}) =>
+    request<{ tickets: AdminSupportTicketData[]; nextCursor: string | null }>('GET', `/admin/support/tickets${queryString(query)}`),
+  updateSupportTicket: (id: string, input: { status?: string; reply?: string }) =>
+    request<AdminSupportTicketData>('PUT', `/admin/support/tickets/${id}`, input),
+
+  listArticles: (query: { status?: string; cursor?: string; limit?: number } = {}) =>
+    request<{ articles: AdminArticleData[]; nextCursor: string | null }>('GET', `/admin/articles${queryString(query)}`),
+  createArticle: (input: { slug: string; title: string; summary: string; body: string; category: string; tags?: string[] }) =>
+    request<AdminArticleData>('POST', '/admin/articles', input),
+  updateArticle: (id: string, input: { title?: string; summary?: string; body?: string; category?: string; tags?: string[] }) =>
+    request<AdminArticleData>('PUT', `/admin/articles/${id}`, input),
+  reviewArticle: (id: string, input: { medicalReviewStatus: 'pending' | 'approved' | 'rejected'; reviewEvidenceRef?: string; reviewNote?: string }) =>
+    request<AdminArticleData>('PUT', `/admin/articles/${id}/review`, input),
+  publishArticle: (id: string) => request<AdminArticleData>('POST', `/admin/articles/${id}/publish`, {}),
+  archiveArticle: (id: string) => request<AdminArticleData>('POST', `/admin/articles/${id}/archive`, {}),
 };
 
 // ---------------------------------------------------------------------------

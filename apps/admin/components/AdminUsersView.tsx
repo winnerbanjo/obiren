@@ -4,19 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import { Users, RefreshCw, AlertTriangle, CheckCircle2, Ban, ChevronLeft, ChevronRight } from "lucide-react";
 import { adminApi, ApiError } from "@obiren/api-client";
 
-interface AdminUsersViewProps {
-  selectedCountry: string;
-  activeTabId: string;
-}
-
 /**
- * The Users tab lists REAL registered users straight from the API and can
- * change account status (suspend/restrict/reinstate) with server-side
- * authorization. Other sub-tabs (support tickets, notifications) do not have
- * real backend functionality yet, so they render an honest unavailable state
- * instead of fake data.
+ * The Users tab lists REAL registered accounts straight from the API and can
+ * change account status (suspend/inactive/active) with server-side
+ * authorization. Support conversations live in their own screen.
+ *
+ * Staff cannot change their own status from this list: doing so would lock the
+ * signed-in administrator out of the console mid-session.
  */
-export default function AdminUsersView({ selectedCountry, activeTabId }: AdminUsersViewProps) {
+export default function AdminUsersView({ currentUserId }: { currentUserId?: string }) {
   const [users, setUsers] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -26,32 +22,26 @@ export default function AdminUsersView({ selectedCountry, activeTabId }: AdminUs
   const [actingId, setActingId] = useState<string | null>(null);
   const limit = 20;
 
-  const isUsersTab = activeTabId === "users";
-
-  const load = useCallback(
-    async (p: number) => {
-      if (!isUsersTab) return;
-      setLoading(true);
-      setErrorMsg("");
-      try {
-        const data = await adminApi.listUsers(p, limit);
-        setUsers(data.users ?? []);
-        setTotal(data.total ?? 0);
-        setPage(data.page ?? p);
-      } catch (err) {
-        setErrorMsg(
-          err instanceof ApiError && err.status === 403
-            ? "Your role does not grant access to user management."
-            : err instanceof ApiError
-              ? err.message
-              : "Could not load users.",
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [isUsersTab],
-  );
+  const load = useCallback(async (p: number) => {
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      const data = await adminApi.listUsers(p, limit);
+      setUsers(data.users ?? []);
+      setTotal(data.total ?? 0);
+      setPage(data.page ?? p);
+    } catch (err) {
+      setErrorMsg(
+        err instanceof ApiError && err.status === 403
+          ? "Your role does not grant access to user management."
+          : err instanceof ApiError
+            ? err.message
+            : "Could not load users.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     load(1);
@@ -72,21 +62,6 @@ export default function AdminUsersView({ selectedCountry, activeTabId }: AdminUs
     }
   };
 
-  if (!isUsersTab) {
-    return (
-      <div className="space-y-6 max-w-4xl mx-auto">
-        <div className="bg-white p-10 rounded-3xl border border-[#E7E2EB] shadow-sm text-center space-y-3">
-          <Users className="w-10 h-10 text-[#918A98] mx-auto" />
-          <h3 className="text-lg font-bold font-display text-[#17131D]">Coming soon</h3>
-          <p className="text-xs text-[#6E6875] max-w-md mx-auto">
-            The <strong>{activeTabId.replace(/_/g, " ")}</strong> module is not implemented in the backend yet.
-            Rather than showing simulated data, this screen will light up once the corresponding API exists.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
   return (
@@ -95,8 +70,7 @@ export default function AdminUsersView({ selectedCountry, activeTabId }: AdminUs
         <div>
           <h2 className="text-xl font-bold font-display text-[#17131D]">Registered Users</h2>
           <p className="text-xs text-[#6E6875]">
-            {total.toLocaleString()} accounts in the production database
-            {selectedCountry !== "ALL" ? ` • market filter: ${selectedCountry}` : ""}
+            {total.toLocaleString()} registered accounts. Status changes are authorized and audited server-side.
           </p>
         </div>
         <button
@@ -144,7 +118,14 @@ export default function AdminUsersView({ selectedCountry, activeTabId }: AdminUs
               <tbody>
                 {users.map((u) => (
                   <tr key={u._id || u.id} className="border-b border-[#F5F2FF] last:border-0">
-                    <td className="py-3 pr-4 font-bold text-[#17131D]">{u.email}</td>
+                    <td className="py-3 pr-4 font-bold text-[#17131D]">
+                      {u.email}
+                      {(u._id || u.id) === currentUserId ? (
+                        <span className="ml-2 px-1.5 py-0.5 rounded-full bg-[#F5F2FF] border border-[#E8E0FF] text-[10px] font-bold text-[#6C4CF1]">
+                          you
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="py-3 pr-4">
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
@@ -164,6 +145,9 @@ export default function AdminUsersView({ selectedCountry, activeTabId }: AdminUs
                       {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}
                     </td>
                     <td className="py-3 pr-4">
+                      {(u._id || u.id) === currentUserId ? (
+                        <span className="text-[10px] text-[#918A98] font-semibold">Managed elsewhere</span>
+                      ) : (
                       <div className="flex gap-1.5">
                         {u.status !== "active" ? (
                           <button
@@ -185,6 +169,7 @@ export default function AdminUsersView({ selectedCountry, activeTabId }: AdminUs
                           </button>
                         )}
                       </div>
+                      )}
                     </td>
                   </tr>
                 ))}

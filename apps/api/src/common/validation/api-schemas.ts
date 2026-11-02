@@ -56,7 +56,10 @@ export const GoogleSignInSchema = z
   })
   .strict();
 
-export const RefreshSchema = z.object({ refreshToken: z.string().min(20).max(256) }).strict();
+// Browser sessions authenticate the refresh with the HttpOnly cookie and send
+// an empty JSON body; native clients send the token explicitly. The controller
+// rejects the request when neither is present.
+export const RefreshSchema = z.object({ refreshToken: z.string().min(20).max(256).optional() }).strict();
 
 export const LogoutSchema = RefreshSchema;
 
@@ -483,7 +486,9 @@ export const AvailabilityQuerySchema = z.object({ from: z.coerce.date(), to: z.c
 export const CreateAvailabilitySchema = z.object({ startsAt: z.string().datetime({ offset: true }), endsAt: z.string().datetime({ offset: true }), sessionType: z.enum(['clinic', 'audio', 'video', 'text']) }).strict()
   .refine((v) => new Date(v.endsAt) > new Date(v.startsAt), 'endsAt must follow startsAt')
   .refine((v) => new Date(v.endsAt).getTime() - new Date(v.startsAt).getTime() <= 8 * 60 * 60 * 1000, 'Slot duration cannot exceed eight hours');
-export const HoldSlotSchema = z.object({ slotId: MongoIdParam }).strict();
+export const HoldSlotSchema = z
+  .object({ slotId: MongoIdParam, note: z.string().trim().max(1000).optional() })
+  .strict();
 
 // Clinician-owned availability (PRD `CLINICIAN /clinician/slots`).
 export const ClinicianSlotListQuerySchema = z
@@ -542,6 +547,223 @@ export const CancelBookingSchema = z
 export const ClinicianBookingQuerySchema = z
   .object({ cursor: objectId.optional(), limit: z.coerce.number().int().min(1).max(50).default(20) })
   .strict();
+
+// ---------------- Doctor Portal ----------------
+const AppointmentStatus = z.enum([
+  'held',
+  'pending_payment',
+  'pending',
+  'confirmed',
+  'reschedule_requested',
+  'rejected',
+  'cancelled',
+  'completed',
+  'no_show',
+  'expired',
+]);
+
+export const ClinicianAppointmentQuerySchema = z
+  .object({
+    status: z
+      .string()
+      .trim()
+      .max(200)
+      .optional()
+      .transform((value) => (value ? value.split(',').map((item) => item.trim()).filter(Boolean) : undefined))
+      .pipe(z.array(AppointmentStatus).max(10).optional()),
+    from: z.string().datetime({ offset: true }).optional(),
+    to: z.string().datetime({ offset: true }).optional(),
+    sessionType: z.enum(['clinic', 'audio', 'video', 'text']).optional(),
+    q: z.string().trim().min(1).max(120).optional(),
+    cursor: objectId.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict()
+  .transform((value) => ({ ...value, status: value.status ? Array.from(new Set(value.status)).join(',') : undefined }))
+  .refine((value) => !value.from || !value.to || new Date(value.from) <= new Date(value.to), 'from must be on or before to');
+
+export const ClinicianCancelAppointmentSchema = z
+  .object({ reason: z.string().trim().min(3, 'A reason is required').max(300) })
+  .strict();
+
+export const ClinicianNoteSchema = z
+  .object({ reason: z.string().trim().min(1).max(300).optional() })
+  .strict()
+  .optional();
+
+export const ClinicianRescheduleSchema = z
+  .object({ slotId: objectId, reason: z.string().trim().max(300).optional() })
+  .strict();
+
+export const ClinicianProfileUpdateSchema = z
+  .object({
+    displayName: z.string().trim().min(2).max(120).optional(),
+    professionalTitle: z.string().trim().max(60).optional(),
+    profession: z.string().trim().max(120).optional(),
+    bio: z.string().trim().max(2000).optional(),
+    photoUrl: z.string().trim().url().max(500).optional(),
+    languages: z.array(z.string().trim().min(2).max(30)).max(10).optional(),
+    specialties: z.array(z.string().trim().min(2).max(60)).max(10).optional(),
+    clinicName: z.string().trim().max(160).optional(),
+    clinicAddress: z.string().trim().max(300).optional(),
+    phoneNumber: z.string().trim().min(7).max(20).optional(),
+    yearsOfExperience: z.coerce.number().int().min(0).max(70).optional(),
+    licenceNumber: z.string().trim().max(40).optional(),
+    certifications: z.array(z.string().trim().min(2).max(160)).max(20).optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, 'Provide at least one field to update');
+
+const ScheduleRuleSchema = z
+  .object({
+    dayOfWeek: z.number().int().min(0).max(6),
+    startMinutes: z.number().int().min(0).max(1439),
+    endMinutes: z.number().int().min(1).max(1440),
+    sessionType: z.enum(['clinic', 'audio', 'video', 'text']),
+  })
+  .strict()
+  .refine((rule) => rule.endMinutes > rule.startMinutes, 'Each availability period must end after it starts');
+
+export const ClinicianScheduleSchema = z
+  .object({
+    timeZone: z.string().trim().min(1).max(64),
+    consultationDurationMinutes: z.coerce.number().int().min(10).max(240).default(45),
+    bufferMinutes: z.coerce.number().int().min(0).max(120).default(0),
+    rules: z.array(ScheduleRuleSchema).max(50),
+  })
+  .strict();
+
+export const PreviewScheduleQuerySchema = z
+  .object({ days: z.coerce.number().int().min(1).max(45).default(14) })
+  .strict();
+
+export const CreateTimeOffSchema = z
+  .object({
+    startsAt: z.string().datetime({ offset: true }),
+    endsAt: z.string().datetime({ offset: true }),
+    reason: z.string().trim().max(300).optional(),
+  })
+  .strict()
+  .refine((value) => new Date(value.endsAt) > new Date(value.startsAt), 'endsAt must follow startsAt');
+
+export const ClinicianNotificationQuerySchema = z
+  .object({ cursor: objectId.optional(), limit: z.coerce.number().int().min(1).max(50).default(20) })
+  .strict();
+
+// ---------------- Admin doctor management ----------------
+export const AdminDoctorCreateSchema = z
+  .object({
+    fullName: z.string().trim().min(2).max(140),
+    email,
+    phoneNumber: z.string().trim().min(7).max(20).optional(),
+    photoUrl: z.string().trim().url().max(500).optional(),
+    professionalTitle: z.string().trim().min(2).max(60),
+    specialization: z.string().trim().min(2).max(80),
+    qualifications: z.array(z.string().trim().min(2).max(160)).max(20).default([]),
+    licenceNumber: z.string().trim().max(40).optional(),
+    yearsOfExperience: z.coerce.number().int().min(0).max(70).optional(),
+    biography: z.string().trim().max(2000).optional(),
+    languages: z.array(z.string().trim().min(2).max(30)).max(10).default(['English']),
+    clinicName: z.string().trim().max(160).optional(),
+    clinicAddress: z.string().trim().max(300).optional(),
+    countryCode: z.enum(['NG', 'GH', 'GB', 'US']).default('NG'),
+    timeZone: z.string().trim().max(64).optional(),
+    consultationTypes: z.array(z.enum(['clinic', 'audio', 'video', 'text'])).min(1, 'Choose at least one consultation type'),
+    consultationDurationMinutes: z.coerce.number().int().min(10).max(240).default(45),
+    consultationFeeMinor: z.coerce.number().int().min(0).max(100_000_000).optional(),
+    bookingApprovalMode: z.enum(['instant', 'manual']).default('instant'),
+    verificationStatus: z.enum(['pending', 'verified']).default('pending'),
+    listed: z.boolean().default(false),
+  })
+  .strict()
+  .refine((value) => value.verificationStatus !== 'verified' || Boolean(value.licenceNumber), 'A licence number is required to mark a doctor verified');
+
+export const AdminDoctorUpdateSchema = z
+  .object({
+    fullName: z.string().trim().min(2).max(140).optional(),
+    phoneNumber: z.string().trim().min(7).max(20).optional(),
+    photoUrl: z.string().trim().url().max(500).optional(),
+    professionalTitle: z.string().trim().min(2).max(60).optional(),
+    specialization: z.string().trim().min(2).max(80).optional(),
+    qualifications: z.array(z.string().trim().min(2).max(160)).max(20).optional(),
+    licenceNumber: z.string().trim().max(40).optional(),
+    yearsOfExperience: z.coerce.number().int().min(0).max(70).optional(),
+    biography: z.string().trim().max(2000).optional(),
+    languages: z.array(z.string().trim().min(2).max(30)).max(10).optional(),
+    clinicName: z.string().trim().max(160).optional(),
+    clinicAddress: z.string().trim().max(300).optional(),
+    countryCode: z.enum(['NG', 'GH', 'GB', 'US']).optional(),
+    timeZone: z.string().trim().max(64).optional(),
+    consultationTypes: z.array(z.enum(['clinic', 'audio', 'video', 'text'])).min(1).optional(),
+    consultationDurationMinutes: z.coerce.number().int().min(10).max(240).optional(),
+    consultationFeeMinor: z.coerce.number().int().min(0).max(100_000_000).optional(),
+    bookingApprovalMode: z.enum(['instant', 'manual']).optional(),
+    listed: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, 'Provide at least one field to update');
+
+export const AdminDoctorListQuerySchema = z
+  .object({
+    q: z.string().trim().min(1).max(120).optional(),
+    status: z.enum(['invited', 'active', 'inactive', 'suspended']).optional(),
+    listed: z.enum(['true', 'false']).optional(),
+    specialization: z.string().trim().min(1).max(80).optional(),
+    page: z.coerce.number().int().min(1).max(1000).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+export const AdminDoctorStatusSchema = z
+  .object({
+    status: z.enum(['active', 'inactive', 'suspended']),
+    reason: z.string().trim().max(300).optional(),
+  })
+  .strict()
+  .refine((value) => value.status !== 'suspended' || Boolean(value.reason), 'A reason is required to suspend a doctor');
+
+export const AdminDoctorInviteSchema = z.object({}).strict().optional();
+
+// ---------------- Admin operations ----------------
+export const AdminAppointmentQuerySchema = z
+  .object({
+    status: z
+      .string()
+      .trim()
+      .max(200)
+      .optional()
+      .transform((value) => (value ? value.split(',').map((item) => item.trim()).filter(Boolean) : undefined))
+      .pipe(z.array(AppointmentStatus).max(10).optional()),
+    from: z.string().datetime({ offset: true }).optional(),
+    to: z.string().datetime({ offset: true }).optional(),
+    q: z.string().trim().min(1).max(120).optional(),
+    page: z.coerce.number().int().min(1).max(1000).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict()
+  .transform((value) => ({ ...value, status: value.status ? Array.from(new Set(value.status)).join(',') : undefined }))
+  .refine((value) => !value.from || !value.to || new Date(value.from) <= new Date(value.to), 'from must be on or before to');
+
+export const AdminPaymentQuerySchema = z
+  .object({
+    status: z.enum(['initialized', 'succeeded', 'failed', 'abandoned']).optional(),
+    q: z.string().trim().min(1).max(120).optional(),
+    page: z.coerce.number().int().min(1).max(1000).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+export const AdminSafetyIncidentQuerySchema = z
+  .object({
+    status: z.enum(['active', 'cancelled', 'completed', 'triggered']).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  })
+  .strict();
+
+export const DoctorActivationSchema = z
+  .object({ token: z.string().min(32).max(256), password: z.string().min(8).max(128) })
+  .strict()
+  .refine((value) => /[A-Z]/.test(value.password) && /\d/.test(value.password), 'Password must include at least one uppercase letter and one number');
 
 export const GuardianCreateSchema = z.object({ name: z.string().trim().min(1).max(120), phoneE164: z.string().regex(/^\+[1-9]\d{7,14}$/), scopes: z.array(z.enum(['sos_alert', 'check_in'])).min(1).max(2) }).strict();
 export const GuardianIdParamSchema = MongoIdParam;

@@ -509,6 +509,42 @@ paths:
       summary: Resend email verification
       tags:
         - Authentication
+  /auth/activate-doctor:
+    post:
+      description: >-
+        Consumes a single-use doctor invitation token, sets the doctor’s own password, marks the email verified and
+        activates the account. Administrators never see or set a doctor password. The token expires after 7 days.
+      operationId: AuthController_activateDoctor
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - token
+                - password
+              properties:
+                token:
+                  type: string
+                  minLength: 32
+                  maxLength: 256
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  maxLength: 128
+                  description: At least eight characters including one uppercase letter and one number.
+      responses:
+        '201':
+          description: Account activated; the doctor can sign in.
+        '400':
+          description: Invitation token is invalid or expired.
+      summary: Activate a doctor invitation
+      tags:
+        - Authentication
   /auth/forgot-password:
     post:
       description: >-
@@ -2304,6 +2340,44 @@ paths:
       summary: Process pending notification outbox (internal)
       tags:
         - Notifications and webhooks
+  /internal/cron/appointment-reminders:
+    get:
+      description: >-
+        Internal scheduler operation. For confirmed appointments starting in the next 24 hours it creates one in-app
+        reminder per appointment for the assigned doctor. A unique dedupe key makes repeated runs safe. Authenticates
+        with X-Cron-Secret or Authorization: Bearer <CRON_SECRET>; denied when CRON_SECRET is unset. Not a mobile-client
+        operation.
+      operationId: NotificationsController_processAppointmentReminders
+      parameters:
+        - name: cronSecret
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: x-cron-secret
+          required: true
+          in: header
+          schema:
+            type: string
+        - name: authorization
+          required: true
+          in: header
+          schema:
+            type: string
+        - name: X-Cron-Secret
+          in: header
+          description: 'Value configured by the operator as CRON_SECRET. `Authorization: Bearer <CRON_SECRET>` is also accepted.'
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reminder batch result (candidates, created, skipped).
+        '401':
+          description: Missing or invalid cron credential.
+      summary: Create due appointment reminders (internal)
+      tags:
+        - Notifications and webhooks
   /safety/guardians:
     get:
       description: >-
@@ -3173,6 +3247,250 @@ paths:
       summary: List clinician verification records (admin)
       tags:
         - Admin
+  /admin/doctors:
+    get:
+      description: >-
+        Searchable, filterable doctor list for the Admin Doctors section. Each row combines the doctor profile, linked
+        account status, public listing visibility and total booking count. No password, clinical note or patient data is
+        returned.
+      operationId: AdminController_listDoctors
+      parameters: []
+      responses:
+        '200':
+          description: Doctors, total count and per-status counts.
+      security:
+        - accessToken: []
+      summary: List doctors (admin)
+      tags:
+        - Admin
+    post:
+      description: >-
+        Creates the linked account and doctor profile, then sends a single-use activation invitation. Administrators
+        never set or see a password. Email and licence duplicates are rejected. The doctor only appears in user-facing
+        discovery once verified and listed.
+      operationId: AdminController_createDoctor
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - fullName
+                - email
+                - professionalTitle
+                - specialization
+                - consultationTypes
+              additionalProperties: false
+              properties:
+                fullName:
+                  type: string
+                  maxLength: 140
+                email:
+                  type: string
+                  format: email
+                phoneNumber:
+                  type: string
+                  maxLength: 20
+                photoUrl:
+                  type: string
+                  format: uri
+                professionalTitle:
+                  type: string
+                  maxLength: 60
+                  example: Consultant Obstetrician
+                specialization:
+                  type: string
+                  maxLength: 80
+                  example: Obstetrics & Gynaecology
+                qualifications:
+                  type: array
+                  items:
+                    type: string
+                licenceNumber:
+                  type: string
+                  maxLength: 40
+                yearsOfExperience:
+                  type: integer
+                  minimum: 0
+                  maximum: 70
+                biography:
+                  type: string
+                  maxLength: 2000
+                languages:
+                  type: array
+                  items:
+                    type: string
+                clinicName:
+                  type: string
+                  maxLength: 160
+                clinicAddress:
+                  type: string
+                  maxLength: 300
+                countryCode:
+                  type: string
+                  enum:
+                    - NG
+                    - GH
+                    - GB
+                    - US
+                timeZone:
+                  type: string
+                  example: Africa/Lagos
+                consultationTypes:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - clinic
+                      - audio
+                      - video
+                      - text
+                consultationDurationMinutes:
+                  type: integer
+                  minimum: 10
+                  maximum: 240
+                consultationFeeMinor:
+                  type: integer
+                  minimum: 0
+                  description: Fee in the country currency minor unit (kobo for NGN). Omit when pricing is not approved.
+                bookingApprovalMode:
+                  type: string
+                  enum:
+                    - instant
+                    - manual
+                verificationStatus:
+                  type: string
+                  enum:
+                    - pending
+                    - verified
+                listed:
+                  type: boolean
+      responses:
+        '201':
+          description: Doctor created; invitation outcome reported honestly.
+        '409':
+          description: Duplicate email or licence number.
+      security:
+        - accessToken: []
+      summary: Add a doctor (admin)
+      tags:
+        - Admin
+  /admin/doctors/{id}:
+    get:
+      description: Full administrative view of a doctor profile, linked account state, fees, schedule settings and booking count.
+      operationId: AdminController_getDoctor
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character doctor profile identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Doctor record.
+        '404':
+          description: Doctor not found.
+      security:
+        - accessToken: []
+      summary: Get one doctor (admin)
+      tags:
+        - Admin
+    patch:
+      description: >-
+        Updates permitted doctor profile fields, fees and public listing. Listing requires a verified profile. Account
+        status is changed through the status action.
+      operationId: AdminController_updateDoctor
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character doctor profile identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Updated doctor record.
+        '422':
+          description: Attempt to list an unverified doctor.
+      security:
+        - accessToken: []
+      summary: Edit a doctor (admin)
+      tags:
+        - Admin
+  /admin/doctors/{id}/status:
+    post:
+      description: >-
+        Activation restores sign-in; deactivation hides the doctor from discovery; suspension also blocks sign-in,
+        revokes sessions and requires a reason. Recorded and audited.
+      operationId: AdminController_setDoctorStatus
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character doctor profile identifier.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              additionalProperties: false
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - active
+                    - inactive
+                    - suspended
+                reason:
+                  type: string
+                  maxLength: 300
+                  description: Required to suspend.
+      responses:
+        '201':
+          description: Doctor status updated.
+      security:
+        - accessToken: []
+      summary: Activate, deactivate or suspend a doctor (admin)
+      tags:
+        - Admin
+  /admin/doctors/{id}/invite:
+    post:
+      description: >-
+        Issues a fresh single-use activation link for a doctor who has not activated yet. Delivery failure is reported,
+        never faked; in non-production without email the one-time token is returned once.
+      operationId: AdminController_inviteDoctor
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character doctor profile identifier.
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+      responses:
+        '201':
+          description: Invitation reissued, with honest delivery state.
+        '409':
+          description: The doctor has already activated their account.
+      security:
+        - accessToken: []
+      summary: Resend a doctor invitation (admin)
+      tags:
+        - Admin
   /admin/clinicians/{id}/verification:
     put:
       description: >-
@@ -3490,6 +3808,471 @@ paths:
       summary: List available slots across specialists (deprecated)
       tags:
         - Care
+  /clinician/me:
+    get:
+      description: Returns the caller’s own doctor profile, account and listing status, fees (read-only) and verification state.
+      operationId: DoctorController_me
+      parameters: []
+      responses:
+        '200':
+          description: Own doctor profile.
+        '403':
+          description: No clinician profile is linked to this account.
+      security:
+        - accessToken: []
+      summary: Get the signed-in doctor’s profile
+      tags:
+        - Doctor Portal
+    patch:
+      description: >-
+        Doctors can edit public-facing profile fields only. Account status, listing approval, verification and fees stay
+        admin-controlled. Changing a licence number or certification flags the profile for review and hides it from
+        discovery until Obiren re-approves it.
+      operationId: DoctorController_updateMe
+      parameters: []
+      responses:
+        '200':
+          description: Profile updated, with a credential review flag when applicable.
+        '409':
+          description: Licence number already registered to another doctor.
+      security:
+        - accessToken: []
+      summary: Update permitted profile fields
+      tags:
+        - Doctor Portal
+  /clinician/dashboard:
+    get:
+      description: >-
+        Real counts and schedule data computed from the same booking records the patient app uses: today, upcoming,
+        pending approval, completed, today’s schedule, pending requests, upcoming appointments, availability snapshot
+        and recent status activity. Dates use the doctor’s own timezone.
+      operationId: DoctorController_dashboard
+      parameters: []
+      responses:
+        '200':
+          description: Dashboard summary.
+      security:
+        - accessToken: []
+      summary: Get the doctor dashboard
+      tags:
+        - Doctor Portal
+  /clinician/bookings:
+    get:
+      description: >-
+        Doctor-scoped appointment list with filters for status, date range and a search over appointment reference or
+        patient display name. Patient information is limited to display name, optional phone number and the note the
+        patient supplied.
+      operationId: DoctorController_listBookings
+      parameters:
+        - name: q
+          required: false
+          in: query
+          description: Search appointment reference or patient display name.
+          schema: {}
+        - name: sessionType
+          required: false
+          in: query
+          description: Filter by consultation type.
+          schema:
+            enum:
+              - clinic
+              - audio
+              - video
+              - text
+            type: string
+        - name: to
+          required: false
+          in: query
+          description: Only appointments starting at or before this ISO instant.
+          schema: {}
+        - name: from
+          required: false
+          in: query
+          description: Only appointments starting at or after this ISO instant.
+          schema: {}
+        - name: status
+          required: false
+          in: query
+          description: Comma-separated appointment statuses.
+          schema:
+            example: pending,confirmed
+      responses:
+        '200':
+          description: Appointments and next cursor.
+      security:
+        - accessToken: []
+      summary: List the caller’s appointments
+      tags:
+        - Doctor Portal
+  /clinician/bookings/{id}:
+    get:
+      description: >-
+        Owner-scoped appointment detail: reference, status, patient display name and phone, times with timezone,
+        consultation type, patient note, payment status (never card data) and the full status history. Another doctor’s
+        appointment id is reported as not found.
+      operationId: DoctorController_getBooking
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character appointment identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Appointment detail with server-computed permitted actions.
+        '404':
+          description: No such appointment for this doctor.
+      security:
+        - accessToken: []
+      summary: Get one appointment
+      tags:
+        - Doctor Portal
+  /clinician/bookings/{id}/confirm:
+    post:
+      description: >-
+        Moves a pending request to confirmed when the doctor’s booking approval mode requires it. Invalid transitions
+        return 409; an appointment that has already started returns 422.
+      operationId: DoctorController_confirm
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character appointment identifier.
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Appointment confirmed and the patient notified in-app.
+        '409':
+          description: Appointment is not awaiting confirmation.
+      security:
+        - accessToken: []
+      summary: Confirm a pending appointment
+      tags:
+        - Doctor Portal
+  /clinician/bookings/{id}/reject:
+    post:
+      description: >-
+        Rejects a pending request with a recorded reason, frees the slot and notifies the patient. A paid booking is
+        marked refund-pending; no refund is issued automatically.
+      operationId: DoctorController_reject
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character appointment identifier.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              additionalProperties: false
+              properties:
+                reason:
+                  type: string
+                  minLength: 3
+                  maxLength: 300
+      responses:
+        '201':
+          description: Appointment rejected.
+        '409':
+          description: Appointment is not awaiting confirmation.
+      security:
+        - accessToken: []
+      summary: Reject a pending appointment
+      tags:
+        - Doctor Portal
+  /clinician/bookings/{id}/cancel:
+    post:
+      description: >-
+        Cancels a pending or confirmed future appointment with a reason, releases the slot and notifies the patient.
+        Paid bookings become refund-pending under the platform’s approved policy.
+      operationId: DoctorController_cancel
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character appointment identifier.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              additionalProperties: false
+              properties:
+                reason:
+                  type: string
+                  minLength: 3
+                  maxLength: 300
+      responses:
+        '201':
+          description: Appointment cancelled.
+        '422':
+          description: The session has already started.
+      security:
+        - accessToken: []
+      summary: Cancel an appointment
+      tags:
+        - Doctor Portal
+  /clinician/bookings/{id}/complete:
+    post:
+      description: Records that a started, confirmed session took place. Payment and refund state are never modified.
+      operationId: DoctorController_complete
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character appointment identifier.
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Appointment completed.
+        '422':
+          description: The session has not started yet.
+      security:
+        - accessToken: []
+      summary: Mark a confirmed session completed
+      tags:
+        - Doctor Portal
+  /clinician/bookings/{id}/no-show:
+    post:
+      description: >-
+        Available only for a confirmed appointment whose start time has passed. This changes appointment state only;
+        payment and refund state are untouched.
+      operationId: DoctorController_noShow
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character appointment identifier.
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason:
+                  type: string
+                  maxLength: 300
+      responses:
+        '201':
+          description: No-show recorded.
+        '422':
+          description: The session has not started yet.
+      security:
+        - accessToken: []
+      summary: Record a patient no-show
+      tags:
+        - Doctor Portal
+  /clinician/bookings/{id}/reschedule:
+    post:
+      description: >-
+        Atomically claims the target open slot before releasing the old one, so concurrent reschedules cannot
+        double-book. The appointment keeps its status, records the previous time, and the patient is notified.
+      operationId: DoctorController_reschedule
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character appointment identifier.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - slotId
+              additionalProperties: false
+              properties:
+                slotId:
+                  type: string
+                  pattern: ^[0-9a-fA-F]{24}$
+                reason:
+                  type: string
+                  maxLength: 300
+      responses:
+        '201':
+          description: Appointment rescheduled.
+        '409':
+          description: Target slot is unavailable or the appointment is closed.
+      security:
+        - accessToken: []
+      summary: Move an appointment to another slot
+      tags:
+        - Doctor Portal
+  /clinician/schedule:
+    get:
+      description: >-
+        Returns the doctor’s own weekly availability rules in their timezone, consultation duration, buffer, blocked
+        periods and the generated weekly grid.
+      operationId: DoctorController_getSchedule
+      parameters: []
+      responses:
+        '200':
+          description: Schedule and time off.
+      security:
+        - accessToken: []
+      summary: Get the recurring weekly schedule
+      tags:
+        - Doctor Portal
+    patch:
+      description: >-
+        Replaces the weekly rules, rebuilds future unbooked inventory server-side and returns how many slots were
+        generated. Booked and held slots are never removed.
+      operationId: DoctorController_updateSchedule
+      parameters: []
+      responses:
+        '200':
+          description: Schedule saved and slots regenerated.
+        '400':
+          description: Invalid timezone, duration, buffer or overlapping periods.
+      security:
+        - accessToken: []
+      summary: Save the recurring weekly schedule
+      tags:
+        - Doctor Portal
+  /clinician/schedule/preview:
+    get:
+      description: >-
+        Generates and returns the concrete slots the user-facing catalogue will offer, using the same server-side
+        calculation as booking.
+      operationId: DoctorController_preview
+      parameters:
+        - name: days
+          required: false
+          in: query
+          description: Preview window in days, 1–45 (default 14).
+          schema:
+            example: 14
+            type: number
+      responses:
+        '200':
+          description: Preview slots in UTC.
+      security:
+        - accessToken: []
+      summary: Preview the bookable slots
+      tags:
+        - Doctor Portal
+  /clinician/time-off:
+    get:
+      description: Returns the doctor’s own leave and blocked time, including recent past entries.
+      operationId: DoctorController_listTimeOff
+      parameters: []
+      responses:
+        '200':
+          description: Blocked periods.
+      security:
+        - accessToken: []
+      summary: List blocked periods
+      tags:
+        - Doctor Portal
+    post:
+      description: >-
+        Records time off and returns any existing appointments inside the range so the doctor can resolve them
+        explicitly. Overlapping appointments are never cancelled automatically.
+      operationId: DoctorController_createTimeOff
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - startsAt
+                - endsAt
+              additionalProperties: false
+              properties:
+                startsAt:
+                  type: string
+                  format: date-time
+                endsAt:
+                  type: string
+                  format: date-time
+                reason:
+                  type: string
+                  maxLength: 300
+      responses:
+        '201':
+          description: Time off recorded, with affected appointments when relevant.
+      security:
+        - accessToken: []
+      summary: Block a date or time range
+      tags:
+        - Doctor Portal
+  /clinician/time-off/{id}:
+    delete:
+      description: Deletes an owned blocked period and regenerates consistent future slots.
+      operationId: DoctorController_deleteTimeOff
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character time-off identifier.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Blocked period removed.
+      security:
+        - accessToken: []
+      summary: Remove a blocked period
+      tags:
+        - Doctor Portal
+  /clinician/notifications:
+    get:
+      description: >-
+        Doctor-only notification feed for new appointments, confirmations, cancellations, reschedules and reminders.
+        Copy never contains symptoms or diagnoses. External email delivery is best-effort and never blocks the
+        appointment action.
+      operationId: DoctorController_notifications
+      parameters: []
+      responses:
+        '200':
+          description: Notifications, unread count and next cursor.
+      security:
+        - accessToken: []
+      summary: List in-app notifications
+      tags:
+        - Doctor Portal
+  /clinician/notifications/{id}/read:
+    post:
+      description: Marks one of the caller’s own notifications as read. Another account’s notification id returns 404.
+      operationId: DoctorController_readNotification
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 24-character notification identifier.
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Notification marked read.
+      security:
+        - accessToken: []
+      summary: Mark a notification read
+      tags:
+        - Doctor Portal
   /clinician/slots:
     get:
       description: >-
@@ -3706,6 +4489,10 @@ paths:
                 slotId:
                   type: string
                   pattern: ^[0-9a-fA-F]{24}$
+                note:
+                  type: string
+                  maxLength: 1000
+                  description: Optional reason for the visit. Shown to the doctor; not a clinical record.
       responses:
         '201':
           description: Held booking with amount, currency and hold expiry.
@@ -3803,52 +4590,6 @@ paths:
       security:
         - accessToken: []
       summary: Cancel a booking
-      tags:
-        - Bookings
-  /clinician/bookings:
-    get:
-      description: >-
-        Returns bookings for the caller’s own clinician profile only. Requires the clinician role and an existing
-        clinician profile.
-      operationId: ClinicianBookingsController_list
-      parameters: []
-      responses:
-        '200':
-          description: Clinician bookings and next cursor.
-        '403':
-          description: No clinician profile for this account.
-      security:
-        - accessToken: []
-      summary: List bookings for the signed-in clinician
-      tags:
-        - Bookings
-  /clinician/bookings/{id}/complete:
-    post:
-      description: >-
-        Scoped to the caller’s own clinician profile. Only a confirmed session that has already started can be
-        completed; payment and refund state are left untouched.
-      operationId: ClinicianBookingsController_complete
-      parameters:
-        - name: id
-          required: true
-          in: path
-          description: 24-character booking identifier.
-          schema:
-            type: string
-      responses:
-        '201':
-          description: Booking completed.
-        '403':
-          description: No clinician profile for this account.
-        '404':
-          description: Booking does not belong to this clinician.
-        '409':
-          description: Booking is not confirmed.
-        '422':
-          description: The session has not started yet.
-      security:
-        - accessToken: []
-      summary: Mark a confirmed session completed
       tags:
         - Bookings
   /payments/{id}:

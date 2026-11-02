@@ -409,7 +409,7 @@ describe('Specialists, bookings and Paystack payments (e2e)', () => {
       .get('/api/v1/clinician/bookings')
       .set(authHeader(specialist.user.accessToken!))
       .expect(200);
-    expect(own.body.data.bookings.map((entry: any) => entry.id)).toContain(hold.body.data.booking.id);
+    expect(own.body.data.appointments.map((entry: any) => entry.id)).toContain(hold.body.data.booking.id);
 
     // A patient account without the clinician role cannot use the clinician view.
     await request(server()).get('/api/v1/clinician/bookings').set(authHeader(patient.accessToken!)).expect(403);

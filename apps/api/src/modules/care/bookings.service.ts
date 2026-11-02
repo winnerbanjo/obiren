@@ -26,7 +26,9 @@ import {
   PaymentWebhookEventDocument,
 } from '../../database/schemas/care.schema';
 import { User, UserDocument } from '../../database/schemas/user.schema';
+import { Clinician, ClinicianDocument } from '../../database/schemas/care.schema';
 import { CareService } from './care.service';
+import { DoctorService } from './doctor.service';
 import { PaystackProvider } from '../../common/payments/paystack.provider';
 
 const PAYMENT_REUSE_MINUTES = 30;
@@ -42,7 +44,9 @@ export class BookingsService {
     @InjectModel(AvailabilitySlot.name) private readonly slotModel: Model<AvailabilitySlotDocument>,
     @InjectModel(BookingHold.name) private readonly holdModel: Model<BookingHoldDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    @InjectModel(Clinician.name) private readonly clinicianModel: Model<ClinicianDocument>,
     private readonly careService: CareService,
+    private readonly doctorService: DoctorService,
     private readonly paystack: PaystackProvider,
   ) {}
 
@@ -100,7 +104,7 @@ export class BookingsService {
    * priced server-side and persisted as a `held` booking. A hold is not a
    * booking confirmation and never takes payment.
    */
-  async createHold(userId: string, slotId: string) {
+  async createHold(userId: string, slotId: string, patientNote?: string) {
     const slot = await this.slotModel.findOne({ _id: new Types.ObjectId(slotId) }).lean().exec();
     if (!slot) throw new NotFoundException('Availability slot not found');
 
@@ -123,6 +127,7 @@ export class BookingsService {
         currency: price.currency,
         pricePolicyVersion: env().paymentPolicyVersion,
         expiresAt: new Date(held.data.expiresAt),
+        patientNote: patientNote?.slice(0, 1000),
       });
 
       return {
@@ -335,9 +340,34 @@ export class BookingsService {
     payment.gatewayTransactionId = verification.gatewayTransactionId;
     await payment.save();
 
+    // Preserve the booking policy the doctor configured. A doctor who requires
+    // approval receives a `pending` request; everyone else keeps the existing
+    // instant-confirmation behaviour.
+    const existing = await this.bookingModel.findOne({ _id: payment.bookingId }).lean().exec();
+    const clinician = existing
+      ? await this.clinicianModel.findById(existing.clinicianId).select('bookingApprovalMode').lean().exec()
+      : null;
+    const nextStatus = clinician?.bookingApprovalMode === 'manual' ? 'pending' : 'confirmed';
+
     const booking = await this.bookingModel.findOneAndUpdate(
       { _id: payment.bookingId, status: { $in: ['held', 'pending_payment'] } },
-      { $set: { status: 'confirmed', confirmedAt: new Date(), paymentId: payment._id }, $inc: { version: 1 } },
+      {
+        $set: {
+          status: nextStatus,
+          ...(nextStatus === 'confirmed' ? { confirmedAt: new Date() } : {}),
+          paymentId: payment._id,
+        },
+        $push: {
+          statusHistory: {
+            from: existing?.status ?? 'held',
+            to: nextStatus,
+            actorRole: 'system',
+            reason: nextStatus === 'pending' ? 'Payment verified; awaiting doctor confirmation' : 'Payment verified',
+            at: new Date(),
+          },
+        },
+        $inc: { version: 1 },
+      },
       { new: true },
     );
 
@@ -352,7 +382,13 @@ export class BookingsService {
       { _id: booking.slotId },
       { $set: { status: 'booked' }, $unset: { heldBy: 1, holdExpiresAt: 1, holdId: 1 } },
     );
-    return finish('CONFIRMED', 'CONFIRMED', { bookingId: booking._id.toString() });
+    // In-app notification is the reliable channel; email is best-effort and
+    // must never fail the payment transaction.
+    await this.doctorService.notifyDoctorNewBooking(booking).catch(() => this.logger.warn('Doctor notification failed'));
+    return finish('CONFIRMED', nextStatus === 'pending' ? 'AWAITING_DOCTOR' : 'CONFIRMED', {
+      bookingId: booking._id.toString(),
+      appointmentStatus: nextStatus,
+    });
   }
 
   async getBooking(userId: string, bookingId: string) {
@@ -393,7 +429,7 @@ export class BookingsService {
   async cancelBooking(userId: string, bookingId: string, reason?: string) {
     const booking = await this.bookingModel.findOne({ _id: new Types.ObjectId(bookingId), userId: new Types.ObjectId(userId) });
     if (!booking) throw new NotFoundException('Booking not found');
-    if (!['held', 'pending_payment', 'confirmed'].includes(booking.status)) {
+    if (!['held', 'pending_payment', 'pending', 'confirmed'].includes(booking.status)) {
       throw new ConflictException(`A ${booking.status} booking cannot be cancelled`);
     }
     const now = new Date();
@@ -471,49 +507,4 @@ export class BookingsService {
     };
   }
 
-  /**
-   * Clinician-side completion of a confirmed session. Completion records that
-   * the session took place; it never touches payment or refund state.
-   */
-  async completeClinicianBooking(clinicianUserId: string, bookingId: string) {
-    const clinician = await this.slotModel.db.collection('clinicians').findOne({ userId: new Types.ObjectId(clinicianUserId) });
-    if (!clinician) throw new ForbiddenException('An active clinician profile is required');
-    const booking = await this.bookingModel.findOne({ _id: new Types.ObjectId(bookingId), clinicianId: clinician._id });
-    if (!booking) throw new NotFoundException('Booking not found for this clinician');
-    if (booking.status !== 'confirmed') {
-      throw new ConflictException(`Only a confirmed session can be completed; this booking is ${booking.status}`);
-    }
-    if (booking.startsAt.getTime() > Date.now()) {
-      throw new UnprocessableEntityException('A future session cannot be marked completed before it starts');
-    }
-    booking.status = 'completed';
-    booking.completedAt = new Date();
-    booking.version += 1;
-    await booking.save();
-    return {
-      success: true,
-      data: {
-        booking: this.presentBooking(booking),
-        paymentChanged: false,
-        message: 'Session marked completed. Payment and refund state were not modified.',
-      },
-      meta: this.meta(),
-    };
-  }
-
-  /** Clinician-side read of their own booked sessions. */
-  async listClinicianBookings(clinicianUserId: string, query: { cursor?: string; limit: number }) {
-    const clinician = await this.slotModel.db.collection('clinicians').findOne({ userId: new Types.ObjectId(clinicianUserId) });
-    if (!clinician) throw new ForbiddenException('An active clinician profile is required');
-    const filter: Record<string, unknown> = { clinicianId: clinician._id };
-    if (query.cursor) filter._id = { $lt: new Types.ObjectId(query.cursor) };
-    const rows = await this.bookingModel.find(filter).sort({ _id: -1 }).limit(query.limit + 1).exec();
-    const hasNext = rows.length > query.limit;
-    const bookings = rows.slice(0, query.limit);
-    return {
-      success: true,
-      data: { bookings: bookings.map((booking) => this.presentBooking(booking)), nextCursor: hasNext ? bookings[bookings.length - 1]._id.toString() : null },
-      meta: this.meta(),
-    };
-  }
 }

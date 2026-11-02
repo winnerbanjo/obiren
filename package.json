@@ -8,9 +8,11 @@
   ],
   "scripts": {
     "dev": "npm --prefix apps/web run dev",
-    "build": "npm --prefix apps/web run build && npm --prefix apps/admin run build && npm --prefix apps/api run build",
+    "build": "npm --prefix apps/web run build && npm --prefix apps/admin run build && npm --prefix apps/doctor run build && npm --prefix apps/api run build",
     "admin:dev": "npm --prefix apps/admin run dev",
     "admin:build": "npm --prefix apps/admin run build",
+    "doctor:dev": "npm --prefix apps/doctor run dev",
+    "doctor:build": "npm --prefix apps/doctor run build",
     "api:dev": "npm --prefix apps/api run dev",
     "api:build": "npm --prefix apps/api run build",
     "start": "npm --prefix apps/web run start",

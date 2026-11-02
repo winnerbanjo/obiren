@@ -444,7 +444,7 @@ describe('Expanded API surface (e2e)', () => {
         .post(`/api/v1/clinician/bookings/${bookingId.toString()}/complete`)
         .set(authHeader(clinicianUser.accessToken!));
       expect(completed.status).toBe(201);
-      expect(completed.body.data.booking.status).toBe('completed');
+      expect(completed.body.data.appointment.status).toBe('completed');
       expect(completed.body.data.paymentChanged).toBe(false);
 
       const again = await request(server)

@@ -2,14 +2,15 @@
 
 Obiren is a monorepo for a women's health, pregnancy, and personal-safety
 platform serving Nigeria, Ghana, the UK, and the US. It consists of a NestJS
-API, two Next.js frontends (user app and admin/marketing app), and shared
-packages for domain logic.
+API, three Next.js frontends (user app, admin/marketing app and doctor portal),
+and shared packages for domain logic.
 
 This repository was production-hardened from a prototype state: the frontend
 now talks to the real API, authentication is genuine (HTTP-only refresh
 cookies, rotation + replay detection), the Safety PIN is cryptographically
 verified, Health Vault files use real Cloudinary signed delivery, and the
-waitlist is durable. 32 end-to-end integration tests cover the core flows.
+waitlist is durable. 165 end-to-end integration tests cover the core flows,
+including the full Doctor Portal booking lifecycle.
 
 ## Architecture
 
@@ -18,9 +19,10 @@ obiren/
 ├── apps/
 │   ├── api/       NestJS 11 API (MongoDB/Mongoose, JWT auth, Zod validation)
 │   ├── web/       Next.js 16 user application (cycle, pregnancy, safety, vault)
-│   └── admin/     Next.js 16 marketing site + admin control centre
+│   ├── admin/     Next.js 16 marketing site + admin control centre
+│   └── doctor/    Next.js 16 Doctor Portal (appointments, availability, profile)
 └── packages/
-    ├── api-client/      Shared typed API client (used by web + admin)
+    ├── api-client/      Shared typed API client (used by web + admin + doctor)
     ├── types/           Domain types
     ├── health-engine/   Cycle prediction engine (weighted average, outliers)
     ├── localization/    Country configs + verified emergency directory data
@@ -57,19 +59,33 @@ obiren/
   req/min. Blocked requests return `429` with `error.code = RATE_LIMITED` and
   a `Retry-After` header.
 
-### `apps/web` — User application
-Marketing landing page + authenticated app shell. Authentication is real:
-registration triggers email verification; sign-in sets the refresh cookie;
-sessions are restored via `/auth/refresh` on load — `localStorage` is never
-the session authority. Cycle tracking, daily logs, pregnancy, safety SOS
-(PIN-verified cancellation), health vault (direct-to-Cloudinary uploads with
-server-issued signatures), and NDPR data export/deletion all use the API.
+### `apps/web` — Public site
+Professional landing page for the Obiren product. The web surface is
+**doctor-only**: there is no patient sign-up or patient sign-in, and every
+"Log in" affordance sends doctors to the Doctor Portal. Women are directed to
+the mobile app instead (`NEXT_PUBLIC_IOS_APP_URL` / `NEXT_PUBLIC_ANDROID_APP_URL`,
+with a launch-notify fallback while the apps are unpublished). `/home`, the
+former patient landing page, permanently redirects to `/`.
+
+The patient product itself (cycle tracking, daily logs, pregnancy, safety SOS,
+health vault, NDPR export/deletion) lives in the mobile app and talks to the
+same API.
 
 ### `apps/admin` — Admin & marketing
 The admin control centre signs in through the real API and requires an
 administrative role in the database. There is no demo account, no fake 2FA,
 and no auto-created super admin. Modules without backend functionality show an
-honest "coming soon" state instead of simulated data.
+honest "coming soon" state instead of simulated data. Its **Doctors** section
+adds and manages doctor accounts and records audited verification decisions.
+
+### `apps/doctor` — Doctor Portal
+A dedicated portal for approved doctors, using the same API, booking records
+and auth as the user app. Doctors sign in with their own password (set from a
+single-use invitation), see only their own appointments, confirm/reject/
+reschedule/cancel/complete/no-show, publish recurring availability and time
+off, edit their public profile and read booking notifications. Access requires
+the `clinician` role and a linked doctor profile; every route is authorised
+server-side. See [`docs/DOCTOR_PORTAL.md`](docs/DOCTOR_PORTAL.md).
 
 ## Local development
 
@@ -84,8 +100,11 @@ npm run api:dev                          # http://localhost:3000/api/v1
 # Web app (proxies /api/v1 to the API)
 npm run dev                              # http://localhost:3001*
 
-# Admin app
-npm run admin:dev                        # http://localhost:3002
+# Admin app (console route is /user, not /admin)
+npm run admin:dev                        # http://localhost:3002/user
+
+# Doctor portal
+npm run doctor:dev                       # http://localhost:3003
 ```
 
 \* The web app rewrites `/api/v1/*` to `API_PROXY_TARGET` (default
@@ -168,7 +187,8 @@ DB re-check on every request (status + roles)
 Base path `/api/v1`:
 
 - `auth/*` — register, login, google, refresh, logout, me, sessions,
-  verify-email, resend-verification, forgot-password, reset-password
+  verify-email, resend-verification, forgot-password, reset-password,
+  activate-doctor (single-use invitation)
 - `users/me` — profile get/update, export (NDPR), request/cancel deletion
 - `cycles/*` — current, history, start-period, end-period
 - `daily-logs/:date` — get/upsert (validated `YYYY-MM-DD`)
@@ -187,8 +207,11 @@ Base path `/api/v1`:
 - `directory/*` — search (text + filters + pagination), nearby (2dsphere `$near`), service by id
 - `notifications/*` — Twilio inbound/status webhooks (signature-validated), internal cron
 - `waitlist` — public signup (rate-limited, anti-enumeration), stats; admin listing
-- `admin/*` — metrics, users list/status, directory upsert, emergency-resource
-  reviews (audited, evidence-backed), audit logs (role-guarded)
+- `admin/doctors` — add/edit/activate/deactivate/suspend doctors, reissue
+  single-use invitations, audited verification decisions (role-guarded)
+- `clinician/*` — doctor dashboard, own profile, owner-scoped appointments and
+  status actions, weekly schedule + slot preview, time off, notifications
+  (including the cron-generated 24-hour appointment reminder)
 - `health` — liveness probe
 
 Regenerate `apps/api/openapi.json` via `npm --prefix apps/api run generate:openapi`.
@@ -204,7 +227,7 @@ MONGODB_URI=<non-production uri> npx ts-node --transpile-only scripts/seed-demo.
 
 ```bash
 cd apps/api
-npm test          # 154 end-to-end tests, real Nest app + in-memory MongoDB
+npm test          # 165 end-to-end tests, real Nest app + in-memory MongoDB
 ```
 
 Tests boot the actual application (same security config as production) against
@@ -219,13 +242,24 @@ waitlist persistence/dedup/anti-enumeration.
 ## Deployment
 
 ### Vercel
-- `apps/web` and `apps/admin` deploy as standard Next.js apps.
+- `apps/web`, `apps/admin` and `apps/doctor` deploy as standard Next.js apps.
   Set `API_PROXY_TARGET` to the API deployment URL so `/api/v1/*` proxies
-  same-origin (refresh cookies require this).
+  same-origin (refresh cookies require this). Set
+  `NEXT_PUBLIC_DOCTOR_PORTAL_URL` on Admin so activation links point at the
+  portal.
 - `apps/api` deploys as a serverless function (`api/index.ts`) with the crons
   declared in `apps/api/vercel.json`. The serverless entry uses the **same**
   bootstrap/security configuration as `src/main.ts` (helmet, CORS allow-list,
   cookies, validation, filters) — there is no separate insecure path.
+
+### GitHub Actions (staging server + PM2)
+Pushes to `main` run `.github/workflows/ci.yml`, which uses `dorny/paths-filter`
+to test **only the apps that changed** (shared `packages/**`, lockfile or
+root tsconfig changes invalidate all four). The `deploy` job then builds,
+restarts and health-checks **only those apps**, and rolls the checkout back to
+the previous revision if a health probe fails. See
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the secrets, host prerequisites
+and rollback semantics.
 
 ### Required production configuration
 Set every `✅` variable from the table above. The API will fail startup
@@ -236,6 +270,7 @@ loudly rather than run with known-default secrets.
 | Path | Schedule | Purpose |
 | --- | --- | --- |
 | `/api/v1/internal/cron/process-notifications` | every 10 min | Outbox claim worker (atomic claims, retries, caps) |
+| `/api/v1/internal/cron/appointment-reminders` | hourly | One deduplicated in-app reminder per confirmed appointment in the next 24 h |
 | `/api/v1/internal/cron/run-retention?dryRun=false` | daily 04:00 | NDPR retention of expired operational records (account health records are never purged) |
 
 Both routes accept `X-Cron-Secret: <CRON_SECRET>` or the
