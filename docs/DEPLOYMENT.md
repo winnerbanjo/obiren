@@ -1,0 +1,125 @@
+# Deployment
+
+How the monorepo is checked and released. The rule is simple: **only the apps
+whose files changed are tested and deployed.**
+
+## 1. Continuous integration (`.github/workflows/ci.yml`)
+
+A `changes` job runs first and inspects the diff with `dorny/paths-filter`.
+Every app job is skipped unless its filter matched:
+
+| Job | Runs when |
+| --- | --- |
+| `api` | `apps/api/**` |
+| `web` | `apps/web/**` |
+| `admin` | `apps/admin/**` |
+| `doctor` | `apps/doctor/**` |
+
+Shared inputs invalidate every app: `packages/**`, `package.json`,
+`package-lock.json`, `tsconfig.json`. A docs-only or workflow-only PR therefore
+runs no build jobs at all.
+
+Each app keeps its existing checks (typecheck, tests for the API, production
+build). Nothing is weakened by being conditional.
+
+## 2. Deployment (same workflow, `deploy` job)
+
+The `deploy` job runs **only on a push to `main`, only after every required
+check has passed**, and only if at least one app changed.
+
+It resolves the changed apps and streams `scripts/deploy/remote-release.sh` to
+the deployment host over SSH. On the host the script:
+
+1. takes a `flock` (two releases can never overlap),
+2. records the current revision,
+3. `git fetch` + hard-resets the checkout to `origin/main`,
+4. runs `npm ci` once at the repo root,
+5. builds **only the changed apps**,
+6. runs API migrations when the API changed (`RUN_MIGRATIONS=1` by default),
+7. reloads **only the changed PM2 processes** from `deploy/ecosystem.config.cjs`,
+8. probes health endpoints.
+
+### Health check and rollback
+
+The API is always probed at `API_HEALTH_URL` (default
+`http://127.0.0.1:3000/api/v1/health`). A probe passes on HTTP 200; when
+`REQUIRE_STATUS_OK=1` it also requires `"status":"ok"` (leave it unset on
+staging, where missing provider keys intentionally report `degraded`).
+
+If any probe fails after `HEALTH_RETRIES` attempts (default 20 x 3 s), the
+script:
+
+1. hard-resets the checkout back to the previous revision,
+2. reinstalls, rebuilds and restarts the same apps,
+3. re-probes them and reports the outcome,
+4. exits non-zero so the Actions run fails and is visible.
+
+Migrations are **forward-only**: a rollback restores code, not the database
+schema. Treat schema changes as backward-compatible for one release.
+
+Frontend probes are opt-in: set `WEB_HEALTH_URL`, `ADMIN_HEALTH_URL`,
+`DOCTOR_HEALTH_URL` to enable them. When unset, the release logs a warning and
+skips that probe rather than failing a deploy for an unknown port.
+
+## 3. Required GitHub configuration
+
+Secrets (`Settings → Secrets and variables → Actions`):
+
+| Name | Purpose |
+| --- | --- |
+| `DEPLOY_HOST` | Hostname or IP of the deployment server |
+| `DEPLOY_USER` | SSH user with access to the checkout and `pm2` |
+| `DEPLOY_SSH_KEY` | Private key for that user (no passphrase) |
+| `DEPLOY_PORT` | SSH port (optional, defaults to 22) |
+
+Variables:
+
+| Name | Purpose |
+| --- | --- |
+| `DEPLOY_APP_DIR` | Path to the git checkout (default `/srv/obiren`) |
+| `API_HEALTH_URL` | API health endpoint (default `http://127.0.0.1:3000/api/v1/health`) |
+| `WEB_HEALTH_URL` | Optional web probe |
+| `ADMIN_HEALTH_URL` | Optional admin probe |
+| `DOCTOR_HEALTH_URL` | Optional doctor portal probe |
+
+If `DEPLOY_HOST` is not set, the deploy job logs a warning and stops instead of
+failing - configure the secrets above to turn releases on. The job also uses
+the `production` GitHub Environment, so required reviewers can gate a deploy.
+
+## 4. Host prerequisites
+
+- Node.js 22 and npm on the server.
+- PM2 installed globally (`npm i -g pm2`) and started on boot
+  (`pm2 startup` + `pm2 save`).
+- A git checkout of this repository at `DEPLOY_APP_DIR` with read access to
+  `origin`, on branch `main`.
+- Each app's environment file present on the host (`apps/api/.env`,
+  `apps/web/.env.local`, ...). The release script never writes or prints
+  secrets.
+- Ports matching `deploy/ecosystem.config.cjs` (API 3000, web 3100, admin 3030,
+  doctor 3020) or overridden with `API_PORT`, `WEB_PORT`, `ADMIN_PORT`,
+  `DOCTOR_PORT`.
+
+## 5. Running a release by hand
+
+```bash
+ssh deploy@your-host
+cd /srv/obiren
+APPS="api" bash -s < scripts/deploy/remote-release.sh
+```
+
+Useful overrides: `BRANCH`, `HEALTH_RETRIES`, `HEALTH_DELAY`, `RUN_MIGRATIONS=0`,
+`REQUIRE_STATUS_OK=1`.
+
+## 6. Public site configuration
+
+The landing page (`apps/web/app/page.tsx`) reads:
+
+| Variable | Effect |
+| --- | --- |
+| `NEXT_PUBLIC_DOCTOR_PORTAL_URL` | Where "Doctor login" points. Defaults to `https://doctors.obiren.com/doctor/login` in production and `http://localhost:3020/doctor/login` in development. |
+| `NEXT_PUBLIC_IOS_APP_URL` | App Store link. When unset, the badge reads "Coming soon" and the launch-notify form is shown. |
+| `NEXT_PUBLIC_ANDROID_APP_URL` | Google Play link. Same behaviour. |
+
+The public web surface has no patient sign-up and no patient sign-in; `/home`
+permanently redirects to `/`.

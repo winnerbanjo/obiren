@@ -5,9 +5,67 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
+  # One cheap job decides what actually changed. Shared code (workspace
+  # packages, the lockfile, root TS config) invalidates every app, because all
+  # four of them compile against it.
+  changes:
+    name: Detect changed apps
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+      admin: ${{ steps.filter.outputs.admin }}
+      doctor: ${{ steps.filter.outputs.doctor }}
+      any: ${{ steps.filter.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'apps/api/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.json'
+            web:
+              - 'apps/web/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.json'
+            admin:
+              - 'apps/admin/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.json'
+            doctor:
+              - 'apps/doctor/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.json'
+            any:
+              - 'apps/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.json'
+
   api:
     name: API — typecheck, tests, build
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +104,8 @@ jobs:
 
   web:
     name: Web — typecheck, lint, build
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,6 +131,8 @@ jobs:
 
   admin:
     name: Admin — typecheck, lint, build
+    needs: changes
+    if: needs.changes.outputs.admin == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -93,3 +155,120 @@ jobs:
         working-directory: apps/admin
         env:
           NODE_ENV: production
+
+  doctor:
+    name: Doctor Portal — typecheck, build
+    needs: changes
+    if: needs.changes.outputs.doctor == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: apps/doctor
+
+      - name: Build
+        run: npm run build
+        working-directory: apps/doctor
+        env:
+          NODE_ENV: production
+
+  # Deploy runs only after every required check on main has passed, and only
+  # for the apps whose files changed in this push. The remote release script
+  # restarts the API, then verifies its health endpoint - rolling back the
+  # checkout and restarting the previous revision if it does not come up.
+  deploy:
+    name: Deploy changed apps
+    needs: [changes, api, web, admin, doctor]
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.changes.result == 'success' &&
+      needs.changes.outputs.any == 'true' &&
+      !cancelled() &&
+      needs.api.result != 'failure' &&
+      needs.web.result != 'failure' &&
+      needs.admin.result != 'failure' &&
+      needs.doctor.result != 'failure'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_APP_DIR: ${{ vars.DEPLOY_APP_DIR }}
+      API_HEALTH_URL: ${{ vars.API_HEALTH_URL }}
+      WEB_HEALTH_URL: ${{ vars.WEB_HEALTH_URL }}
+      ADMIN_HEALTH_URL: ${{ vars.ADMIN_HEALTH_URL }}
+      DOCTOR_HEALTH_URL: ${{ vars.DOCTOR_HEALTH_URL }}
+      CHANGED_API: ${{ needs.changes.outputs.api }}
+      CHANGED_WEB: ${{ needs.changes.outputs.web }}
+      CHANGED_ADMIN: ${{ needs.changes.outputs.admin }}
+      CHANGED_DOCTOR: ${{ needs.changes.outputs.doctor }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve changed apps
+        id: apps
+        run: |
+          set -euo pipefail
+          list=""
+          [ "${CHANGED_API}" = "true" ] && list="${list} api"
+          [ "${CHANGED_WEB}" = "true" ] && list="${list} web"
+          [ "${CHANGED_ADMIN}" = "true" ] && list="${list} admin"
+          [ "${CHANGED_DOCTOR}" = "true" ] && list="${list} doctor"
+          list="$(echo "${list}" | xargs)"
+          if [ -z "${list}" ]; then
+            echo "::error title=Nothing to deploy::No app files changed, but the deploy job was triggered."
+            exit 1
+          fi
+          echo "list=${list}" >> "$GITHUB_OUTPUT"
+          echo "Deploying: ${list}"
+
+      - name: Check deployment configuration
+        if: env.DEPLOY_HOST == ''
+        run: |
+          echo "::warning title=Deploy skipped::DEPLOY_HOST is not configured for this repository. Add the DEPLOY_* secrets described in docs/DEPLOYMENT.md to enable server deployment."
+
+      - name: Prepare SSH
+        if: env.DEPLOY_HOST != ''
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${DEPLOY_PORT:-22}" -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Release changed apps
+        if: env.DEPLOY_HOST != ''
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT:-22}" \
+            -o BatchMode=yes -o ConnectTimeout=15 \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "APPS='${{ steps.apps.outputs.list }}' \
+             APP_DIR='${DEPLOY_APP_DIR:-/srv/obiren}' \
+             API_HEALTH_URL='${API_HEALTH_URL}' \
+             WEB_HEALTH_URL='${WEB_HEALTH_URL}' \
+             ADMIN_HEALTH_URL='${ADMIN_HEALTH_URL}' \
+             DOCTOR_HEALTH_URL='${DOCTOR_HEALTH_URL}' \
+             bash -s" < scripts/deploy/remote-release.sh
+
+      - name: Remove deploy key
+        if: always() && env.DEPLOY_HOST != ''
+        run: rm -f ~/.ssh/deploy_key
