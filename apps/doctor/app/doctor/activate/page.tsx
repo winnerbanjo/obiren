@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, Heart, Loader2, Lock } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, Heart, Loader2, Lock } from "lucide-react";
 import { authApi } from "@obiren/api-client";
 
 function ActivateInner() {
@@ -12,6 +12,8 @@ function ActivateInner() {
   const [token, setToken] = useState(params.get("token") || "");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState<{ email: string } | null>(null);
@@ -91,28 +93,48 @@ function ActivateInner() {
                     <Lock className="w-4 h-4 text-[#9B94A3] absolute left-3 top-3" />
                     <input
                       id="password"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       required
                       minLength={8}
                       autoComplete="new-password"
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-[#E7E2EB] text-xs focus:outline-none focus:ring-2 focus:ring-[#6C4CF1]/30 focus:border-[#6C4CF1]"
+                      className="w-full pl-9 pr-11 py-2.5 rounded-xl border border-[#E7E2EB] text-xs focus:outline-none focus:ring-2 focus:ring-[#6C4CF1]/30 focus:border-[#6C4CF1]"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((visible) => !visible)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showPassword}
+                      className="absolute right-2.5 top-2.5 rounded-lg p-1 text-[#9B94A3] transition-colors hover:text-[#6C4CF1] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6C4CF1]/40"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
                 <div>
                   <label htmlFor="confirm" className="block text-[11px] font-bold mb-1.5">Confirm password</label>
-                  <input
-                    id="confirm"
-                    type="password"
-                    required
-                    minLength={8}
-                    autoComplete="new-password"
-                    value={confirm}
-                    onChange={(event) => setConfirm(event.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-[#E7E2EB] text-xs focus:outline-none focus:ring-2 focus:ring-[#6C4CF1]/30 focus:border-[#6C4CF1]"
-                  />
+                  <div className="relative">
+                    <input
+                      id="confirm"
+                      type={showConfirm ? "text" : "password"}
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                      value={confirm}
+                      onChange={(event) => setConfirm(event.target.value)}
+                      className="w-full pl-3 pr-11 py-2.5 rounded-xl border border-[#E7E2EB] text-xs focus:outline-none focus:ring-2 focus:ring-[#6C4CF1]/30 focus:border-[#6C4CF1]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirm((visible) => !visible)}
+                      aria-label={showConfirm ? "Hide password" : "Show password"}
+                      aria-pressed={showConfirm}
+                      className="absolute right-2.5 top-2.5 rounded-lg p-1 text-[#9B94A3] transition-colors hover:text-[#6C4CF1] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6C4CF1]/40"
+                    >
+                      {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
                 <button
                   type="submit"
