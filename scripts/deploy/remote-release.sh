@@ -106,6 +106,19 @@ install_dependencies() {
   npm ci --include=dev --no-audit --no-fund
 }
 
+# `git reset --hard` restores tracked files but never deletes untracked ones, so
+# a page or component that was renamed or removed in the repo survives on the
+# host. It then either fails the build (stale component props) or ships stale
+# code. Clean the trees we are about to build; ignored files - every `.env`,
+# `node_modules` and `.next` - are kept because -x is deliberately not used.
+clean_checkout() {
+  local dirs=() app
+  for app in $APPS; do dirs+=("$(app_dir "$app")"); done
+  dirs+=("packages")
+  log "Removing untracked leftovers from: ${dirs[*]}"
+  git clean -fd -- "${dirs[@]}"
+}
+
 build_apps() {
   for app in $APPS; do
     log "Building ${app} ($(app_dir "$app"))"
@@ -175,6 +188,7 @@ rollback() {
   warn "Health check failed for:${failed} - rolling back to ${prev:0:12}"
 
   git reset --hard "$prev"
+  clean_checkout
   install_dependencies
   build_apps
   reload_apps
@@ -200,6 +214,7 @@ git reset --hard "origin/$BRANCH"
 NEW_REV="$(git rev-parse HEAD)"
 echo "New revision: ${NEW_REV:0:12}"
 
+clean_checkout
 install_dependencies
 build_apps
 

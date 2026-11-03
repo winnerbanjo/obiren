@@ -33,11 +33,16 @@ the deployment host over SSH. On the host the script:
 1. takes a `flock` (two releases can never overlap),
 2. records the current revision,
 3. `git fetch` + hard-resets the checkout to `origin/main`,
-4. runs `npm ci` once at the repo root,
-5. builds **only the changed apps**,
-6. runs API migrations when the API changed (`RUN_MIGRATIONS=1` by default),
-7. reloads **only the changed PM2 processes** from `deploy/ecosystem.config.cjs`,
-8. probes health endpoints.
+4. deletes untracked files inside the app and `packages` trees it is about to
+   build (`git clean -fd`, never `-x`, so every `.env`, `node_modules` and
+   `.next` survives). A page removed in the repo otherwise lingers on the host
+   and breaks the next build - which is exactly how a renamed console route
+   once failed a redeploy,
+5. runs `npm ci` once at the repo root,
+6. builds **only the changed apps**,
+7. runs API migrations when the API changed (`RUN_MIGRATIONS=1` by default),
+8. reloads **only the changed PM2 processes** from `deploy/ecosystem.config.cjs`,
+9. probes health endpoints.
 
 ### Health check and rollback
 
@@ -92,7 +97,9 @@ the `production` GitHub Environment, so required reviewers can gate a deploy.
 - PM2 installed globally (`npm i -g pm2`) and started on boot
   (`pm2 startup` + `pm2 save`).
 - A git checkout of this repository at `DEPLOY_APP_DIR` with read access to
-  `origin`, on branch `main`.
+  `origin`, on branch `main`. It must hold real history, not a shallow clone:
+  rollback resets to the previous revision, which a `--depth 1` clone does not
+  contain (`git fetch --unshallow` fixes it).
 - Each app's environment file present on the host (`apps/api/.env`,
   `apps/web/.env.local`, ...). The release script never writes or prints
   secrets.
