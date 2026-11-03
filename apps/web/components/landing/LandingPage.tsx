@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
-import LaunchNotifyForm from "./LaunchNotifyForm";
+import WaitlistModal from "@/components/WaitlistModal";
 
 const NAV = [
   { href: "#product", label: "The app" },
@@ -68,6 +68,9 @@ type LandingPageProps = {
  */
 export default function LandingPage({ doctorPortalUrl, iosAppUrl, androidAppUrl }: LandingPageProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  // While the app is still listed as "coming soon", the primary action is a
+  // spot on the waitlist; once a store link exists, it becomes the download.
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
   const appNotListed = !iosAppUrl && !androidAppUrl;
 
   // Close the mobile sheet on Escape and when the viewport grows past md.
@@ -123,12 +126,22 @@ export default function LandingPage({ doctorPortalUrl, iosAppUrl, androidAppUrl 
             >
               Doctor login
             </a>
-            <a
-              href="#download"
-              className={`hidden sm:inline-flex h-9 items-center rounded-full bg-[#6D4AFF] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[#5B3DE0] ${focusRing}`}
-            >
-              Download app
-            </a>
+            {appNotListed ? (
+              <button
+                type="button"
+                onClick={() => setWaitlistOpen(true)}
+                className={`hidden sm:inline-flex h-9 items-center rounded-full bg-[#6D4AFF] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[#5B3DE0] ${focusRing}`}
+              >
+                Join the waitlist
+              </button>
+            ) : (
+              <a
+                href="#download"
+                className={`hidden sm:inline-flex h-9 items-center rounded-full bg-[#6D4AFF] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[#5B3DE0] ${focusRing}`}
+              >
+                Download app
+              </a>
+            )}
             <button
               type="button"
               onClick={() => setMenuOpen((open) => !open)}
@@ -157,13 +170,26 @@ export default function LandingPage({ doctorPortalUrl, iosAppUrl, androidAppUrl 
               ))}
             </nav>
             <div className="mt-3 grid gap-2">
-              <a
-                href="#download"
-                onClick={() => setMenuOpen(false)}
-                className="inline-flex h-10 items-center justify-center rounded-full bg-[#6D4AFF] text-sm font-semibold text-white"
-              >
-                Download the app
-              </a>
+              {appNotListed ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setWaitlistOpen(true);
+                  }}
+                  className="inline-flex h-10 items-center justify-center rounded-full bg-[#6D4AFF] text-sm font-semibold text-white"
+                >
+                  Join the waitlist
+                </button>
+              ) : (
+                <a
+                  href="#download"
+                  onClick={() => setMenuOpen(false)}
+                  className="inline-flex h-10 items-center justify-center rounded-full bg-[#6D4AFF] text-sm font-semibold text-white"
+                >
+                  Download the app
+                </a>
+              )}
               <a
                 href={doctorPortalUrl}
                 className="inline-flex h-10 items-center justify-center rounded-full border border-[#DDD7E4] text-sm font-semibold text-[#17131D]"
@@ -192,13 +218,24 @@ export default function LandingPage({ doctorPortalUrl, iosAppUrl, androidAppUrl 
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <a
-                  href="#download"
-                  className={`inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#6D4AFF] px-6 text-sm font-semibold text-white transition-colors hover:bg-[#5B3DE0] ${focusRing}`}
-                >
-                  Download the app
-                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
-                </a>
+                {appNotListed ? (
+                  <button
+                    type="button"
+                    onClick={() => setWaitlistOpen(true)}
+                    className={`inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#6D4AFF] px-6 text-sm font-semibold text-white transition-colors hover:bg-[#5B3DE0] ${focusRing}`}
+                  >
+                    Join the waitlist
+                    <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                ) : (
+                  <a
+                    href="#download"
+                    className={`inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#6D4AFF] px-6 text-sm font-semibold text-white transition-colors hover:bg-[#5B3DE0] ${focusRing}`}
+                  >
+                    Download the app
+                    <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                  </a>
+                )}
                 <a
                   href="#clinicians"
                   className={`inline-flex h-11 items-center justify-center rounded-full border border-[#DDD7E4] px-6 text-sm font-semibold text-[#17131D] transition-colors hover:border-[#17131D] ${focusRing}`}
@@ -347,7 +384,17 @@ export default function LandingPage({ doctorPortalUrl, iosAppUrl, androidAppUrl 
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9B94A3]">
                   In final testing
                 </p>
-                <LaunchNotifyForm />
+                <button
+                  type="button"
+                  onClick={() => setWaitlistOpen(true)}
+                  className={`inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#6D4AFF] px-6 text-sm font-semibold text-white transition-colors hover:bg-[#5B3DE0] ${focusRing}`}
+                >
+                  Join the waitlist
+                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                </button>
+                <p className="max-w-xs text-xs leading-relaxed text-[#6E6875]">
+                  Reserve your place and we&apos;ll email your download link the moment the app is live.
+                </p>
               </div>
             )}
           </div>
@@ -417,6 +464,8 @@ export default function LandingPage({ doctorPortalUrl, iosAppUrl, androidAppUrl 
           </div>
         </div>
       </footer>
+
+      <WaitlistModal isOpen={waitlistOpen} onClose={() => setWaitlistOpen(false)} />
     </div>
   );
 }
