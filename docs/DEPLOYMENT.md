@@ -156,25 +156,41 @@ front of it with a certificate. The droplet runs **Caddy**, so a host whose DNS
 is correct but whose TLS handshake fails (`SSL routines::tlsv1 alert internal
 error`) has a site block whose certificate was never issued.
 
-`/etc/caddy/Caddyfile`:
+`/etc/caddy/Caddyfile` — **check the ports on the host before copying these**,
+they are per-environment and the defaults in `deploy/ecosystem.config.cjs` need
+not match what PM2 was started with:
 
 ```caddy
-obiren.co, www.obiren.co {
-  reverse_proxy 127.0.0.1:3100
+api.obiren.co {
+  encode gzip
+  reverse_proxy 127.0.0.1:<API_PORT>
 }
 
 doctors.obiren.co {
-  reverse_proxy 127.0.0.1:3020
+  encode gzip
+  reverse_proxy 127.0.0.1:<DOCTOR_PORT>
 }
 
 admin.obiren.co {
-  reverse_proxy 127.0.0.1:3030
-}
-
-api.obiren.co {
-  reverse_proxy 127.0.0.1:3000
+  encode gzip
+  reverse_proxy 127.0.0.1:<ADMIN_PORT>
 }
 ```
+
+Do **not** add a block for `obiren.co` here: that host resolves to Vercel, so a
+site block would shadow the public site.
+
+Read the real ports off the host rather than guessing:
+
+```bash
+pm2 list                       # process -> PORT from its env
+ss -ltnp | grep -E ':(3000|3020|3030|3100)\b'
+```
+
+Every app host must proxy to a *different* port. Two blocks pointing at the same
+port means one of them is serving the wrong app — the symptom is an API JSON
+envelope (`{"error":{"code":"NOT_FOUND"…}}`) or `Cannot GET /doctor/login`
+on the portal host.
 
 Apply and check the certificate:
 
@@ -184,8 +200,13 @@ sudo systemctl reload caddy
 sudo journalctl -u caddy -n 50 --no-pager   # ACME errors show up here
 ```
 
-Caddy issues certificates on the first request to a new host, so the DNS record
-must already point at the droplet when the site block is added. Verify with
+Caddy issues a certificate on the first request to a new host, so the DNS record
+must already point at the droplet when the site block is added. A host whose
+TLS handshake fails with `SSL routines::tlsv1 alert internal error` has a site
+block but no certificate — reload Caddy and read the ACME errors. Verify with
 `curl -sI https://doctors.obiren.co/doctor/login` (expect `200`, not a TLS
-error). Set `API_PROXY_TARGET` for that app to `https://api.obiren.co` so
-`/api/v1/*` works from the portal origin.
+error). If the public site sits behind Cloudflare in Full mode, use
+`tls internal` on the app hosts as well.
+
+Set `API_PROXY_TARGET` for the portal to `https://api.obiren.co` so `/api/v1/*`
+works from the portal origin.
