@@ -416,6 +416,102 @@ describe('Doctor Portal and Admin doctor management (e2e)', () => {
     );
   });
 
+  it("stores the doctor's own meeting link and shows it on the patient's appointment", async () => {
+    const { clinicianId, email } = await createDoctor({ fullName: 'Dr. Grace Okon' });
+    const doctor = await activateDoctor(email);
+    const patient = await createPatient();
+
+    const startsAt = new Date(Date.now() + 2 * 86400_000);
+    const bookingId = await insertBooking({
+      clinicianId,
+      patientUserId: patient.userId!,
+      status: 'confirmed',
+      startsAt,
+      endsAt: new Date(startsAt.getTime() + 30 * 60_000),
+    });
+    const linkPath = `/api/v1/clinician/bookings/${bookingId}/meeting-link`;
+
+    // Whatever reaches the patient as a trusted way into their consultation has
+    // to be https on a known provider: no script URLs, no downgrade, no
+    // lookalike host, no embedded credentials.
+    for (const url of [
+      'javascript:alert(1)',
+      'http://meet.google.com/abc-defg-hij',
+      'https://meet.google.com.evil.example/abc-defg-hij',
+      'https://evil.example/abc-defg-hij',
+      'https://user:secret@meet.google.com/abc-defg-hij',
+    ]) {
+      const rejected = await request(server()).patch(linkPath).set(authHeader(doctor.accessToken)).send({ url });
+      expect(rejected.status).toBe(400);
+    }
+    await request(server()).patch(linkPath).set(authHeader(doctor.accessToken)).send({}).expect(400);
+
+    // Another doctor's appointment is not found, never overwritten.
+    const other = await createDoctor({ fullName: 'Dr. Not Yours', licenceNumber: nextLicence() });
+    const otherDoctor = await activateDoctor(other.email);
+    await request(server())
+      .patch(linkPath)
+      .set(authHeader(otherDoctor.accessToken))
+      .send({ url: 'https://meet.google.com/abc-defg-hij' })
+      .expect(404);
+
+    // A finished appointment no longer accepts a link.
+    const completedId = await insertBooking({
+      clinicianId,
+      patientUserId: patient.userId!,
+      status: 'completed',
+      startsAt: new Date(Date.now() - 86400_000),
+      endsAt: new Date(Date.now() - 86400_000 + 30 * 60_000),
+    });
+    await request(server())
+      .patch(`/api/v1/clinician/bookings/${completedId}/meeting-link`)
+      .set(authHeader(doctor.accessToken))
+      .send({ url: 'https://zoom.us/j/1234567890' })
+      .expect(409);
+
+    const meetingUrl = 'https://meet.google.com/abc-defg-hij';
+    const saved = await request(server()).patch(linkPath).set(authHeader(doctor.accessToken)).send({ url: meetingUrl }).expect(200);
+    expect(saved.body.data).toMatchObject({ meetingUrl, meetingLinkEditable: true });
+    expect(saved.body.data.meetingUrlUpdatedAt).toBeTruthy();
+
+    // The patient reads the same authoritative record, not a separate copy.
+    const patientView = await request(server())
+      .get(`/api/v1/bookings/${bookingId}`)
+      .set(authHeader(patient.accessToken!))
+      .expect(200);
+    expect(patientView.body.data.booking.meetingUrl).toBe(meetingUrl);
+
+    const notifications = () =>
+      getDb(app)
+        .collection('in_app_notifications')
+        .find({ userId: new Types.ObjectId(patient.userId!), objectId: bookingId })
+        .toArray();
+    expect((await notifications()).map((entry) => entry.type)).toContain('APPOINTMENT_LINK_ADDED');
+
+    // Re-saving the same link is idempotent: the patient is not pinged twice.
+    await request(server()).patch(linkPath).set(authHeader(doctor.accessToken)).send({ url: meetingUrl }).expect(200);
+    const linkAdded = (await notifications()).filter((entry) => entry.type === 'APPOINTMENT_LINK_ADDED');
+    expect(linkAdded.length).toBe(1);
+
+    // Provider subdomains are accepted, and the newest link replaces the old one.
+    const zoom = await request(server())
+      .patch(linkPath)
+      .set(authHeader(doctor.accessToken))
+      .send({ url: 'https://us02web.zoom.us/j/1234567890' })
+      .expect(200);
+    expect(zoom.body.data.meetingUrl).toBe('https://us02web.zoom.us/j/1234567890');
+
+    // Clearing the link removes it for the patient too.
+    const cleared = await request(server()).patch(linkPath).set(authHeader(doctor.accessToken)).send({ url: null }).expect(200);
+    expect(cleared.body.data.meetingUrl).toBeNull();
+    const afterRemoval = await request(server())
+      .get(`/api/v1/bookings/${bookingId}`)
+      .set(authHeader(patient.accessToken!))
+      .expect(200);
+    expect(afterRemoval.body.data.booking.meetingUrl).toBeNull();
+    expect((await notifications()).map((entry) => entry.type)).toContain('APPOINTMENT_LINK_REMOVED');
+  });
+
   it('reschedules atomically and releases the previous slot', async () => {
     const { clinicianId, email } = await createDoctor({ fullName: 'Dr. Damilola Eze' });
     const doctor = await activateDoctor(email);

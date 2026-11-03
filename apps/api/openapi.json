@@ -293,9 +293,6 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "refreshToken"
-                ],
                 "properties": {
                   "refreshToken": {
                     "type": "string",
@@ -4418,6 +4415,90 @@
         ]
       }
     },
+    "/admin/appointments": {
+      "get": {
+        "description": "Cross-platform appointment register with patient identity, doctor, schedule, status and latest payment state. Clinical notes and health records are not joined. Filter by status, date range or search over reference, patient email/name and doctor name.",
+        "operationId": "AdminController_listAppointments",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Appointments, total, status counts and pagination."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List all appointments (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/payments": {
+      "get": {
+        "description": "Payment register for operations and finance, with booking, patient, doctor and gateway state. Succeeded totals are grouped by currency. No card data, authorization URL or gateway secret is returned.",
+        "operationId": "AdminController_listPayments",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Payments, totals by currency, status counts and pagination."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List payment transactions (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/safety/incidents": {
+      "get": {
+        "description": "Operational SOS register with incident state and per-delivery counts. Exact GPS coordinates and free-text notes are deliberately omitted from the list view.",
+        "operationId": "AdminController_listSafetyIncidents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Incidents and total."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "List SOS incidents (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/platform/status": {
+      "get": {
+        "description": "Read-only operational readiness: environment, supported country markets and feature availability, payment policy, and whether email, WhatsApp, Google sign-in and Redis are configured. Secrets are never included.",
+        "operationId": "AdminController_platformStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Platform readiness without secrets."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Read runtime platform status (admin)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
     "/admin/users": {
       "get": {
         "description": "Returns a paginated account listing. Requires a super_admin or platform_admin role.",
@@ -5575,6 +5656,68 @@
           }
         ],
         "summary": "Get one appointment",
+        "tags": [
+          "Doctor Portal"
+        ]
+      }
+    },
+    "/clinician/bookings/{id}/meeting-link": {
+      "patch": {
+        "description": "Stores the doctor’s own Google Meet, Zoom or Microsoft Teams room link on one of their appointments; the patient sees it on that appointment in the Obiren app the next time it loads. Obiren does not host or join the call. Only https links on those provider hosts are accepted; send null to remove the link. Another doctor’s appointment id is reported as not found.",
+        "operationId": "DoctorController_setMeetingLink",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character appointment identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "url"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 500,
+                    "example": "https://meet.google.com/abc-defg-hij"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Appointment with the stored link, or without one after removal."
+          },
+          "400": {
+            "description": "Malformed URL, http instead of https, or an unsupported provider."
+          },
+          "404": {
+            "description": "No such appointment for this doctor."
+          },
+          "409": {
+            "description": "The appointment status no longer accepts a consultation link."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Set or clear the consultation link",
         "tags": [
           "Doctor Portal"
         ]

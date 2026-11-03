@@ -121,6 +121,17 @@ export class Booking {
   status: string;
   /** Patient-supplied reason for the appointment. Never a clinical record. */
   @Prop({ type: String, maxlength: 1000 }) patientNote?: string;
+  /**
+   * Doctor-supplied link for a remote consultation (Google Meet, Zoom or
+   * Microsoft Teams). Obiren stores and displays this link; it never hosts or
+   * joins the call. Only https links on an allow-listed provider host reach
+   * this field - see DoctorService.setMeetingLink.
+   */
+  @Prop({ type: String, maxlength: 500 }) meetingUrl?: string;
+  @Prop({ type: Date }) meetingUrlUpdatedAt?: Date;
+  @Prop({ type: Types.ObjectId, ref: 'User' }) meetingUrlUpdatedBy?: Types.ObjectId;
+  /** Patient-facing flag: has this doctor published a link for the appointment. */
+  @Prop({ type: Date }) meetingLinkSeenAt?: Date;
   /** Immutable, append-only lifecycle trail used by the Doctor Portal and Admin. */
   @Prop({
     type: [

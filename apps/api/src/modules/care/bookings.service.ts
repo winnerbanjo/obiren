@@ -73,6 +73,11 @@ export class BookingsService {
       completedAt: booking.completedAt ? booking.completedAt.toISOString() : null,
       refundStatus: booking.refundStatus,
       cancellationReason: booking.cancellationReason ?? null,
+      // Doctor-supplied room link (Google Meet / Zoom / Teams). Obiren only
+      // stores and displays it; the call itself happens on the doctor's
+      // provider. Null until the doctor publishes one.
+      meetingUrl: booking.meetingUrl ?? null,
+      meetingUrlUpdatedAt: booking.meetingUrlUpdatedAt ? new Date(booking.meetingUrlUpdatedAt).toISOString() : null,
     };
   }
 

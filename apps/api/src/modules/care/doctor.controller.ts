@@ -9,6 +9,7 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
   ClinicianAppointmentQuerySchema,
   ClinicianCancelAppointmentSchema,
+  ClinicianMeetingLinkSchema,
   ClinicianNotificationQuerySchema,
   ClinicianNoteSchema,
   ClinicianProfileUpdateSchema,
@@ -81,6 +82,35 @@ export class DoctorController {
   @ApiResponse({ status: 404, description: 'No such appointment for this doctor.' })
   async getBooking(@Req() req: any, @Param('id', new ZodValidationPipe(MongoIdParam)) id: string) {
     return this.doctorService.getAppointment(req.user.sub, id);
+  }
+
+  @Patch('bookings/:id/meeting-link')
+  @ApiOperation({
+    summary: 'Set or clear the consultation link',
+    description:
+      'Stores the doctor’s own Google Meet, Zoom or Microsoft Teams room link on one of their appointments; the patient sees it on that appointment in the Obiren app the next time it loads. Obiren does not host or join the call. Only https links on those provider hosts are accepted; send null to remove the link. Another doctor’s appointment id is reported as not found.',
+  })
+  @ApiParam({ name: 'id', description: '24-character appointment identifier.' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['url'],
+      additionalProperties: false,
+      properties: {
+        url: { type: 'string', nullable: true, maxLength: 500, example: 'https://meet.google.com/abc-defg-hij' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Appointment with the stored link, or without one after removal.' })
+  @ApiResponse({ status: 400, description: 'Malformed URL, http instead of https, or an unsupported provider.' })
+  @ApiResponse({ status: 404, description: 'No such appointment for this doctor.' })
+  @ApiResponse({ status: 409, description: 'The appointment status no longer accepts a consultation link.' })
+  async setMeetingLink(
+    @Req() req: any,
+    @Param('id', new ZodValidationPipe(MongoIdParam)) id: string,
+    @Body(new ZodValidationPipe(ClinicianMeetingLinkSchema)) body: { url: string | null },
+  ) {
+    return this.doctorService.setMeetingLink(req.user.sub, id, body.url);
   }
 
   @Post('bookings/:id/confirm')

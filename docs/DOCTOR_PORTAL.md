@@ -121,7 +121,8 @@ Added for provider-side scheduling (through the existing migration runner):
 
 Booking additions (same record, no new collection): `statusHistory`
 (append-only actor/role/reason/timestamps), `rescheduledFrom`, `completedAt`,
-`noShowAt`, `rejectedAt`, `refundStatus`, and an index on
+`noShowAt`, `rejectedAt`, `refundStatus`, `meetingUrl` / `meetingUrlUpdatedAt` /
+`meetingUrlUpdatedBy` (see *Consultation link*), and an index on
 `(clinicianId, startsAt)`. `clinicians.licenceNumber` is uniquely indexed
 (sparse) after duplicate checks.
 
@@ -134,7 +135,7 @@ checksummed, distributed lock): `npm --prefix apps/api run migrate`.
 ## 4. API
 
 All under `/api/v1`. Regenerated contracts: `apps/api/openapi.json` and
-`apps/api/openapi.yaml` (161 paths).
+`apps/api/openapi.yaml` (166 paths).
 
 ### Provider-side (Doctor Portal)
 
@@ -144,6 +145,7 @@ All under `/api/v1`. Regenerated contracts: `apps/api/openapi.json` and
 | `GET /clinician/dashboard` | Today/upcoming/pending/completed counts, today's schedule, pending list, availability snapshot, recent activity (doctor timezone) |
 | `GET /clinician/bookings` | Filters: `status` (CSV), `from`, `to`, `sessionType`, `q`, cursor/limit |
 | `GET /clinician/bookings/:id` | Detail + server-computed `actions` |
+| `PATCH /clinician/bookings/:id/meeting-link` | `{ "url": string \| null }` - stores or clears the doctor's own Google Meet / Zoom / Teams room link; allow-listed https hosts only |
 | `POST /clinician/bookings/:id/confirm` | Pending → confirmed (manual approval mode) |
 | `POST /clinician/bookings/:id/reject` | Reason required; frees slot; paid booking → refund-pending |
 | `POST /clinician/bookings/:id/reschedule` | Atomic claim of new slot then release of old; prevents double booking |
@@ -179,6 +181,28 @@ Status changes are notified in-app to the patient; the user app already reads
 the authoritative booking status, so the portal update is reflected on refresh.
 Every transition is validated server-side; invalid transitions return `409`
 or `422`, never a silent success.
+
+### Consultation link (doctor-supplied, no RTC in Obiren)
+
+Obiren does not host, join or record the call. The doctor creates the room in
+their own Google Meet, Zoom or Microsoft Teams account and pastes the link on
+the appointment in the portal. The API stores it on the same `bookings` record
+the patient reads:
+
+- accepted hosts: `meet.google.com`, `zoom.us` (including `us02web.zoom.us`),
+  `teams.microsoft.com`, `teams.live.com`; `https` only, no embedded
+  credentials - anything else is `400`, because the link is shown to a patient
+  as a trusted way into their consultation;
+- editable while the appointment is `pending`, `confirmed` or
+  `reschedule_requested` (`meetingLinkEditable`); other statuses return `409`;
+- owner-scoped: another doctor's id is `404`;
+- re-saving the same link is idempotent and does not re-notify; changing or
+  clearing it creates one `APPOINTMENT_LINK_ADDED` / `APPOINTMENT_LINK_REMOVED`
+  in-app event plus a best-effort email, and never rolls back the change if the
+  mail provider is down;
+- the patient app receives `meetingUrl` and `meetingUrlUpdatedAt` on
+  `GET /bookings/:id` (and the list), and displays “your doctor will share the
+  link” while it is null.
 
 ---
 

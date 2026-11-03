@@ -217,6 +217,18 @@ function AppointmentsInner() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                {appointment.meetingUrl ? (
+                  <span className="text-[10px] font-bold text-[#6C4CF1] bg-[#F5F2FF] border border-[#E7E2EB] rounded-full px-2 py-0.5">
+                    link shared
+                  </span>
+                ) : (
+                  appointment.sessionType !== "clinic" &&
+                  !["cancelled", "rejected", "no_show", "expired", "completed"].includes(appointment.status) && (
+                    <span className="text-[10px] font-bold text-[#6E6875] border border-dashed border-[#E7E2EB] rounded-full px-2 py-0.5">
+                      no link
+                    </span>
+                  )
+                )}
                 {appointment.actions.confirm && (
                   <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
                     needs action

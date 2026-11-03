@@ -3,7 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, CalendarClock, CheckCircle2, Loader2, Phone, ShieldAlert, UserX, XCircle } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarClock,
+  CheckCircle2,
+  ExternalLink,
+  Link2,
+  Loader2,
+  Phone,
+  ShieldAlert,
+  UserX,
+  Video,
+  XCircle,
+} from "lucide-react";
 import { doctorApi, specialistsApi, SpecialistSlotData, DoctorAppointment, DoctorProfileData } from "@obiren/api-client";
 import { Card, ErrorBanner, Loading, StatusPill, SuccessBanner, formatDate, formatDateTime, formatTime } from "@/components/ui";
 
@@ -23,6 +35,8 @@ export default function AppointmentDetailPage() {
   const [reason, setReason] = useState("");
   const [slots, setSlots] = useState<SpecialistSlotData[] | null>(null);
   const [slotError, setSlotError] = useState("");
+  const [meetingUrl, setMeetingUrl] = useState("");
+  const [meetingBusy, setMeetingBusy] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,6 +70,26 @@ export default function AppointmentDetailPage() {
       setError(err instanceof Error ? err.message : "The action could not be completed.");
     } finally {
       setBusy("");
+    }
+  };
+
+  /**
+   * Save or clear the doctor's own room link. The API rejects non-provider or
+   * non-https links, so the message it returns is shown verbatim.
+   */
+  const saveMeetingLink = async (value: string | null) => {
+    setMeetingBusy(value === null ? "remove" : "save");
+    setError("");
+    setNotice("");
+    try {
+      const updated = await doctorApi.setMeetingLink(id, value);
+      setAppointment(updated);
+      setMeetingUrl(updated.meetingUrl ?? "");
+      setNotice(value === null ? "Consultation link removed." : "Consultation link saved. The patient can see it now.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The consultation link could not be saved.");
+    } finally {
+      setMeetingBusy("");
     }
   };
 
@@ -171,6 +205,92 @@ export default function AppointmentDetailPage() {
             </div>
           )}
         </dl>
+      </Card>
+
+      <Card className="p-5 space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-[#F5F2FF] text-[#6C4CF1] flex items-center justify-center shrink-0">
+            <Video className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-bold">Consultation link</p>
+            <p className="text-[10px] text-[#6E6875]">
+              Create the room in Google Meet, Zoom or Microsoft Teams and paste the link here. The patient sees this exact
+              link on their appointment and joins there — Obiren stores the link but does not host or join the call.
+            </p>
+          </div>
+        </div>
+
+        {appointment.meetingUrl ? (
+          <div className="rounded-xl bg-[#F9F7FC] p-3 space-y-1.5">
+            <p className="text-[9px] uppercase font-bold text-[#9B94A3]">Link shared with the patient</p>
+            <a
+              href={appointment.meetingUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6C4CF1] break-all"
+            >
+              <Link2 className="w-3 h-3 shrink-0" />
+              <span className="truncate">{appointment.meetingUrl}</span>
+              <ExternalLink className="w-3 h-3 shrink-0" />
+            </a>
+            {appointment.meetingUrlUpdatedAt && (
+              <p className="text-[10px] text-[#6E6875]">
+                Updated {formatDateTime(appointment.meetingUrlUpdatedAt, timeZone)}
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-[11px] text-[#6E6875] rounded-xl bg-amber-50 border border-amber-200 text-amber-800 p-3">
+            No link yet. The patient sees “Your doctor will share the link” until you add one.
+          </p>
+        )}
+
+        {appointment.meetingLinkEditable ? (
+          <div className="space-y-2">
+            <label htmlFor="meeting-url" className="block text-[11px] font-bold">
+              Meeting URL
+            </label>
+            <input
+              id="meeting-url"
+              type="url"
+              inputMode="url"
+              maxLength={500}
+              value={meetingUrl}
+              onChange={(event) => setMeetingUrl(event.target.value)}
+              placeholder="https://meet.google.com/abc-defg-hij"
+              className="w-full px-3 py-2 rounded-xl border border-[#E7E2EB] text-xs focus:outline-none focus:ring-2 focus:ring-[#6C4CF1]/30"
+            />
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => saveMeetingLink(meetingUrl.trim())}
+                disabled={!!meetingBusy || meetingUrl.trim().length === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#6C4CF1] text-white text-[11px] font-bold disabled:opacity-50"
+              >
+                {meetingBusy === "save" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                {appointment.meetingUrl ? "Update link" : "Save link"}
+              </button>
+              {appointment.meetingUrl && (
+                <button
+                  onClick={() => saveMeetingLink(null)}
+                  disabled={!!meetingBusy}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold disabled:opacity-50"
+                >
+                  {meetingBusy === "remove" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                  Remove
+                </button>
+              )}
+            </div>
+            <p className="text-[10px] text-[#6E6875]">
+              https links on meet.google.com, zoom.us, teams.microsoft.com or teams.live.com only. The patient is notified when a
+              link is added or removed.
+            </p>
+          </div>
+        ) : (
+          <p className="text-[10px] text-[#6E6875]">
+            This appointment is {appointment.status.replace(/_/g, " ")} and no longer accepts a consultation link.
+          </p>
+        )}
       </Card>
 
       {!isClosed && (
