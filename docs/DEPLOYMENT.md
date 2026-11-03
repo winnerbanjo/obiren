@@ -134,6 +134,11 @@ One app owns each surface. The public marketing site exists **only** in
 from the public site. Patients use the mobile app, so there is no patient
 sign-up or patient sign-in on the web.
 
+Typing `obiren.co/user` is a `307` to `<ADMIN_APP_URL>/user`, so a habit-formed
+address still lands on the console. The redirect lives in
+`apps/web/next.config.ts` and publishes nothing: the public site never renders
+the console and carries no link to it.
+
 `obiren.co` resolves to Vercel (`216.150.1.193`), while `api.`, `admin.` and
 `doctors.obiren.co` resolve to the droplet (`164.90.192.242`). `obiren.co`
 must therefore be a Vercel project whose **Root Directory is the repository
@@ -154,6 +159,7 @@ The landing page reads:
 | `NEXT_PUBLIC_IOS_APP_URL` | App Store link. When unset, the badge reads "Coming soon" and the launch-notify form is shown. |
 | `NEXT_PUBLIC_ANDROID_APP_URL` | Google Play link. Same behaviour. |
 | `API_PROXY_TARGET` | Origin the app's `/api/v1/*` rewrite forwards to. Required on the Vercel project, otherwise browser calls hit `localhost:3000`. |
+| `ADMIN_APP_URL` | Origin the console is served from, used only by the `/user` redirect. Defaults to `https://admin.obiren.co` in production and `http://localhost:3002` in development. |
 
 ### Reverse proxy for the app hosts (Caddy)
 
