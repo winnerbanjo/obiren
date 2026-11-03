@@ -595,6 +595,17 @@ export const ClinicianRescheduleSchema = z
   .object({ slotId: objectId, reason: z.string().trim().max(300).optional() })
   .strict();
 
+/**
+ * The doctor's own consultation room link, or `null` to remove it.
+ *
+ * Only the shape is checked here; the provider allow-list, https requirement
+ * and rejection of embedded credentials live in the service, so the error a
+ * doctor sees names the supported providers instead of a regex.
+ */
+export const ClinicianMeetingLinkSchema = z
+  .object({ url: z.string().trim().min(1, 'Paste a meeting link').max(500).nullable() })
+  .strict();
+
 export const ClinicianProfileUpdateSchema = z
   .object({
     displayName: z.string().trim().min(2).max(120).optional(),

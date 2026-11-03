@@ -23,8 +23,15 @@ APP_DIR="${APP_DIR:-/srv/obiren}"
 BRANCH="${BRANCH:-main}"
 
 HEALTH_RETRIES="${HEALTH_RETRIES:-20}"
-HEALTH_DELAY="${HEALTH_DELAY:-3}"
-HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-5}"
+HEALTH_DELAY="${HEALTH_DELAY:-2}"
+HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-3}"
+
+# A failing service is diagnosed on the spot (pm2 state + last log lines); the
+# deploy log is the only place a release engineer can see the host.
+DIAG_LINES="${DIAG_LINES:-40}"
+
+# Next.js telemetry is a network call per process start; nothing here needs it.
+export NEXT_TELEMETRY_DISABLED=1
 
 # When 1, the API probe also requires {"data":{"status":"ok"}}. Leave unset for
 # staging, where missing provider keys intentionally report "degraded".
@@ -37,6 +44,9 @@ API_HEALTH_URL="${API_HEALTH_URL:-http://127.0.0.1:3000/api/v1/health}"
 WEB_HEALTH_URL="${WEB_HEALTH_URL:-}"
 ADMIN_HEALTH_URL="${ADMIN_HEALTH_URL:-}"
 DOCTOR_HEALTH_URL="${DOCTOR_HEALTH_URL:-}"
+
+# Set by probe_apps; declared here so `set -u` is safe before the first probe.
+PROBE_FAILURES=""
 
 log() { printf '\n==> %s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
@@ -102,8 +112,21 @@ log "Releasing apps:${APPS} (current revision ${PREV_REV:0:12})"
 
 # ------------------------------------------------------------------ build stage
 
+# The lockfile is the only thing that can change the installed tree, so a
+# release whose package-lock.json is unchanged reuses node_modules instead of
+# paying ~60 s for npm ci on a 1 vCPU host. The stamp lives inside .git so it
+# survives `git clean` and can never be committed.
+LOCK_STAMP_FILE="$APP_DIR/.git/obiren-deps.sha256"
+
 install_dependencies() {
-  npm ci --include=dev --no-audit --no-fund
+  local current
+  current="$(sha256sum package-lock.json | awk '{print $1}')"
+  if [ -d node_modules ] && [ -f "$LOCK_STAMP_FILE" ] && [ "$(cat "$LOCK_STAMP_FILE")" = "$current" ]; then
+    echo "==> dependencies already match package-lock.json; skipping npm ci"
+    return 0
+  fi
+  npm ci --include=dev --no-audit --no-fund --prefer-offline
+  printf '%s' "$current" > "$LOCK_STAMP_FILE"
 }
 
 # `git reset --hard` restores tracked files but never deletes untracked ones, so
@@ -126,12 +149,38 @@ build_apps() {
   done
 }
 
+# `pm2 startOrReload` only refreshes the environment of an app that already
+# exists: it keeps the script, args and cwd the process was first created with.
+# A process born from an older checkout therefore keeps starting from a path
+# that no longer exists (or with a hard-coded `-p 3002`) and crash-loops while a
+# freshly created app comes up fine. Deleting first makes the manifest in this
+# revision - cwd, args, PORT - authoritative on every release. Downtime is the
+# same restart the deploy already performed.
 reload_apps() {
   for app in $APPS; do
-    log "Reloading ${app} (pm2: $(app_process "$app"))"
-    pm2 startOrReload deploy/ecosystem.config.cjs --only "$(app_process "$app")" --update-env
+    local name
+    name="$(app_process "$app")"
+    log "Restarting ${app} (pm2: ${name})"
+    pm2 delete "$name" >/dev/null 2>&1 || true
+    if ! pm2 start deploy/ecosystem.config.cjs --only "$name" --update-env; then
+      warn "pm2 could not start ${name}"
+      diagnose_app "$app"
+      exit 1
+    fi
   done
   pm2 save >/dev/null 2>&1 || warn "pm2 save failed; process list will not survive a reboot"
+}
+
+# Print why an app is not serving: its pm2 definition (cwd/args/PORT) and the
+# tail of its own log. Without this a failed health check only says "HTTP 000".
+diagnose_app() {
+  local app="$1" name
+  name="$(app_process "$app")"
+  warn "${app} is not healthy - pm2 state and last ${DIAG_LINES} log lines follow"
+  {
+    pm2 describe "$name"
+    pm2 logs "$name" --lines "$DIAG_LINES" --nostream
+  } 2>&1 >&2 || warn "could not read pm2 state for ${name}"
 }
 
 # ----------------------------------------------------------------- health check
@@ -158,27 +207,60 @@ check_health() {
     fi
 
     rm -f "$body"
-    sleep "$HEALTH_DELAY"
+    # No pointless final wait before reporting failure.
+    if [ "$attempt" -lt "$HEALTH_RETRIES" ]; then
+      sleep "$HEALTH_DELAY"
+    fi
   done
 
-  echo "    UNHEALTHY: $url" >&2
+  echo "    UNHEALTHY: $url"
   return 1
 }
 
+# Probing every app one after another serialised the worst case: three apps x
+# 20 attempts x (probe + delay) is minutes of waiting for services that boot in
+# about two seconds. Each probe keeps its own output, so interleaved runs still
+# print a readable report per app.
+#
+# Results go in PROBE_FAILURES, never stdout: the per-app report is streamed to
+# stderr so a caller that captures stdout cannot mistake "healthy" for a
+# failure (which made a perfectly good release roll itself back).
 probe_apps() {
-  local app url failures=""
+  local app url workdir pid
+  local pids=()
+  workdir="$(mktemp -d)"
+  PROBE_FAILURES=""
+
   for app in $APPS; do
     url="$(app_health_url "$app")"
     if [ -z "$url" ]; then
       warn "no health URL configured for ${app}; skipping probe"
       continue
     fi
-    log "Health check: ${app} -> ${url}"
-    if ! check_health "$url"; then
-      failures="${failures} ${app}"
+    log "Health check: ${app} -> ${url}" >&2
+    (
+      check_health "$url" >"${workdir}/${app}.log" 2>&1
+      echo "$?" >"${workdir}/${app}.status"
+    ) &
+    pids+=("$!")
+  done
+
+  for pid in "${pids[@]:-}"; do
+    [ -n "$pid" ] || continue
+    wait "$pid" || true
+  done
+
+  for app in $APPS; do
+    [ -f "${workdir}/${app}.log" ] || continue
+    sed "s/^/  /" "${workdir}/${app}.log" >&2
+    if [ "$(cat "${workdir}/${app}.status" 2>/dev/null)" != "0" ]; then
+      PROBE_FAILURES="${PROBE_FAILURES} ${app}"
+      diagnose_app "$app"
     fi
   done
-  echo "$failures" | xargs
+
+  rm -rf "$workdir"
+  PROBE_FAILURES="$(echo "${PROBE_FAILURES}" | xargs)"
 }
 
 # -------------------------------------------------------------------- rollback
@@ -194,7 +276,8 @@ rollback() {
   reload_apps
 
   local still_failing
-  still_failing="$(probe_apps)"
+  probe_apps
+  still_failing="$PROBE_FAILURES"
   if [ -n "$still_failing" ]; then
     warn "Rollback to ${prev:0:12} completed, but these apps are still failing health checks:${still_failing}"
     warn "The host needs attention (service logs, configuration, database)."
@@ -230,9 +313,9 @@ fi
 reload_apps
 
 log "Verifying health"
-FAILED="$(probe_apps)"
-if [ -n "$FAILED" ]; then
-  rollback "$PREV_REV" "$FAILED"
+probe_apps
+if [ -n "$PROBE_FAILURES" ]; then
+  rollback "$PREV_REV" "$PROBE_FAILURES"
 fi
 
 log "Release ${NEW_REV:0:12} is live for:${APPS}"

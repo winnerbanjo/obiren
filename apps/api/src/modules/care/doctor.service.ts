@@ -49,6 +49,18 @@ const CREDENTIAL_FIELDS = ['licenceNumber', 'certifications'] as const;
 /** Statuses a doctor may still act on. */
 const OPEN_STATUSES = ['pending', 'confirmed', 'reschedule_requested'];
 
+/**
+ * Providers a doctor may bring their own consultation room from.
+ *
+ * The link is stored and handed to the patient, so an arbitrary URL would be a
+ * phishing delivery mechanism: only these hosts are accepted, matched exactly
+ * or as a parent domain (zoom.us also covers us02web.zoom.us).
+ */
+const MEETING_LINK_HOSTS = ['meet.google.com', 'zoom.us', 'teams.microsoft.com', 'teams.live.com'];
+
+/** Statuses where a consultation link is still meaningful to the patient. */
+const MEETING_LINK_STATUSES = ['pending', 'confirmed', 'reschedule_requested'];
+
 const STATUS_LABELS: Record<string, string> = {
   held: 'Awaiting payment',
   pending_payment: 'Awaiting payment',
@@ -290,8 +302,108 @@ export class DoctorService {
         reason: entry.reason ?? null,
         at: new Date(entry.at).toISOString(),
       })),
+      meetingUrl: booking.meetingUrl ?? null,
+      meetingUrlUpdatedAt: booking.meetingUrlUpdatedAt ? new Date(booking.meetingUrlUpdatedAt).toISOString() : null,
+      meetingLinkEditable: MEETING_LINK_STATUSES.includes(booking.status),
       actions: this.allowedActions(booking.status, booking.startsAt),
     };
+  }
+
+  /**
+   * Attach or clear the doctor's own meeting link on one of their appointments.
+   *
+   * Obiren does not run the call: the doctor brings a Google Meet, Zoom or
+   * Microsoft Teams room and this stores the link against the booking the
+   * patient already owns, so both sides read the same authoritative record.
+   * Ownership comes from the `clinicianId` filter - another doctor's booking id
+   * is reported as not found, never as forbidden.
+   */
+  async setMeetingLink(userId: string, bookingId: string, url: string | null) {
+    const clinician = await this.ownDoctor(userId);
+    if (!Types.ObjectId.isValid(bookingId)) throw new NotFoundException('Appointment not found');
+
+    const booking = await this.bookingModel.findOne({
+      _id: new Types.ObjectId(bookingId),
+      clinicianId: clinician._id,
+    });
+    if (!booking) throw new NotFoundException('Appointment not found');
+
+    if (!MEETING_LINK_STATUSES.includes(booking.status)) {
+      throw new ConflictException(`A ${booking.status} appointment cannot carry a consultation link`);
+    }
+
+    const now = new Date();
+    const previous = booking.meetingUrl ?? null;
+    const next = url === null ? null : this.normaliseMeetingUrl(url);
+
+    if (next === previous) {
+      // Idempotent: saving the same link twice must not message the patient again.
+      return this.meetingLinkResponse(booking);
+    }
+
+    if (next === null) {
+      booking.set('meetingUrl', undefined);
+    } else {
+      booking.meetingUrl = next;
+    }
+    booking.meetingUrlUpdatedAt = now;
+    booking.meetingUrlUpdatedBy = new Types.ObjectId(userId);
+    await booking.save();
+
+    // In-app event plus best-effort email. A provider outage must never fail or
+    // undo the appointment change, so the result is reported, not thrown.
+    await this.notifyPatient(
+      booking,
+      next ? 'APPOINTMENT_LINK_ADDED' : 'APPOINTMENT_LINK_REMOVED',
+      next ? 'Your consultation link is ready' : 'Consultation link removed',
+      next
+        ? `Your doctor added the link for your ${booking.sessionType} consultation. Open the appointment to join.`
+        : 'Your doctor removed the consultation link for this appointment. They will share a new one if the session goes ahead.',
+    ).catch(() => undefined);
+
+    return this.meetingLinkResponse(booking);
+  }
+
+  private async meetingLinkResponse(booking: BookingDocument) {
+    const patients = await this.patientSummaries([booking.userId]);
+    return {
+      success: true,
+      data: this.presentAppointment(booking, patients.get(booking.userId.toString())),
+      meta: this.meta(),
+    };
+  }
+
+  /**
+   * Accept only a shareable https link from a recognised provider.
+   *
+   * Rejects `javascript:`, plain http, credentials embedded in the URL and
+   * lookalike hosts (`meet.google.com.evil.example`), because whatever passes
+   * here is displayed to a patient as a trusted way into their consultation.
+   */
+  private normaliseMeetingUrl(raw: string): string {
+    let parsed: URL;
+    try {
+      parsed = new URL(raw.trim());
+    } catch {
+      throw new BadRequestException('That is not a valid link. Paste the full meeting URL.');
+    }
+
+    if (parsed.protocol !== 'https:') {
+      throw new BadRequestException('The meeting link must start with https://');
+    }
+    if (parsed.username || parsed.password) {
+      throw new BadRequestException('Remove any username or password from the meeting link');
+    }
+
+    const host = parsed.hostname.toLowerCase();
+    const allowed = MEETING_LINK_HOSTS.some((domain) => host === domain || host.endsWith(`.${domain}`));
+    if (!allowed) {
+      throw new BadRequestException(
+        `Only ${MEETING_LINK_HOSTS.join(', ')} links are accepted. Create the room with one of those providers.`,
+      );
+    }
+
+    return parsed.toString();
   }
 
   /** Server-computed action list so the portal never offers an invalid action. */

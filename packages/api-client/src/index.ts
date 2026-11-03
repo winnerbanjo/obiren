@@ -397,6 +397,11 @@ export interface DoctorAppointment {
   cancellationReason: string | null;
   rejectionReason: string | null;
   createdAt: string | null;
+  /** The doctor's own Google Meet / Zoom / Teams room for this appointment. */
+  meetingUrl: string | null;
+  meetingUrlUpdatedAt: string | null;
+  /** True while the appointment status still accepts a consultation link. */
+  meetingLinkEditable: boolean;
   statusHistory: Array<{ from: string | null; to: string; actorRole: string; reason: string | null; at: string }>;
   actions: { confirm: boolean; reject: boolean; cancel: boolean; reschedule: boolean; complete: boolean; noShow: boolean };
 }
@@ -494,6 +499,9 @@ export const doctorApi = {
   listAppointments: (query: { status?: string; from?: string; to?: string; sessionType?: string; q?: string; cursor?: string; limit?: number } = {}) =>
     request<{ appointments: DoctorAppointment[]; nextCursor: string | null }>('GET', `/clinician/bookings${queryString(query)}`),
   getAppointment: (id: string) => request<DoctorAppointment>('GET', `/clinician/bookings/${id}`),
+  /** Store or clear the doctor's own room link (null removes it). */
+  setMeetingLink: (id: string, url: string | null) =>
+    request<DoctorAppointment>('PATCH', `/clinician/bookings/${id}/meeting-link`, { url }),
   confirm: (id: string) => request<DoctorAppointment>('POST', `/clinician/bookings/${id}/confirm`, {}),
   reject: (id: string, reason: string) => request<DoctorAppointment>('POST', `/clinician/bookings/${id}/reject`, { reason }),
   cancel: (id: string, reason: string) => request<DoctorAppointment>('POST', `/clinician/bookings/${id}/cancel`, { reason }),
@@ -1033,6 +1041,8 @@ export interface BookingData {
   cancelledAt: string | null;
   refundStatus: 'none' | 'not_required' | 'pending_policy' | 'refunded';
   cancellationReason: string | null;
+  meetingUrl: string | null;
+  meetingUrlUpdatedAt: string | null;
 }
 
 export interface PaymentData {
