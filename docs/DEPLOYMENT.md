@@ -131,6 +131,13 @@ repository root** (empty in project settings), so the root `vercel.json`
 selects `apps/admin`. If the project instead pins Root Directory to `apps/web`,
 `/user` and `/about` will 404 on the public domain.
 
+`apps/admin/vercel.json` covers the other case: a project whose Root Directory
+is `apps/admin`. npm workspaces live outside that directory, so the file
+installs and builds from the monorepo root (`cd ../..`) and forces the Next.js
+framework preset. Without it such a project fails to resolve the `@obiren/*`
+workspace packages on every deploy. The same pattern applies to any other
+app-scoped project.
+
 The landing page reads:
 
 | Variable | Effect |
