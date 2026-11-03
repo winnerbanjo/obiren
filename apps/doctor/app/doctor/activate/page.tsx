@@ -3,8 +3,9 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, Eye, EyeOff, Heart, Loader2, Lock } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import { authApi } from "@obiren/api-client";
+import BrandMark from "@/components/BrandMark";
 
 function ActivateInner() {
   const router = useRouter();
@@ -45,9 +46,7 @@ function ActivateInner() {
     <div className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-md space-y-6">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-2xl bg-[#6C4CF1] text-white flex items-center justify-center">
-            <Heart className="w-4 h-4" />
-          </div>
+          <BrandMark size={36} />
           <div>
             <p className="text-sm font-bold">Obiren</p>
             <p className="text-[10px] uppercase tracking-widest font-bold text-[#6C4CF1]">Doctor Portal</p>

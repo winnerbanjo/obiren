@@ -8,7 +8,7 @@
 export const DOCTOR_PORTAL_URL =
   process.env.NEXT_PUBLIC_DOCTOR_PORTAL_URL?.trim() ||
   (process.env.NODE_ENV === "production"
-    ? "https://doctor.obiren.com/doctor/login"
+    ? "https://doctors.obiren.ng/doctor/login"
     : "http://localhost:3020/doctor/login");
 
 /** Public waitlist page. */

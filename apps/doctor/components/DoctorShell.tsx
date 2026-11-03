@@ -8,7 +8,6 @@ import {
   CalendarDays,
   ChevronDown,
   Clock,
-  Heart,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -29,6 +28,7 @@ import {
   getAuthUser,
   setAccessToken,
 } from "@obiren/api-client";
+import BrandMark from "./BrandMark";
 
 // React Strict Mode mounts effects twice in development. These module-level
 // promises collapse the duplicate session/profile reads into one request each,
@@ -325,9 +325,7 @@ export default function DoctorShell({ children }: { children: React.ReactNode })
       <aside className="hidden lg:flex flex-col justify-between w-64 shrink-0 bg-white border-r border-[#E7E2EB] p-5 h-screen sticky top-0 overflow-y-auto">
         <div className="space-y-6">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-[#6C4CF1] to-[#9B6BFF] text-white flex items-center justify-center">
-              <Heart className="w-4 h-4" />
-            </div>
+            <BrandMark size={36} />
             <div>
               <span className="block text-sm font-bold">Obiren</span>
               <span className="block text-[10px] uppercase tracking-widest font-bold text-[#6C4CF1]">Doctor Portal</span>

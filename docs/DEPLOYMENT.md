@@ -111,15 +111,55 @@ APPS="api" bash -s < scripts/deploy/remote-release.sh
 Useful overrides: `BRANCH`, `HEALTH_RETRIES`, `HEALTH_DELAY`, `RUN_MIGRATIONS=0`,
 `REQUIRE_STATUS_OK=1`.
 
-## 6. Public site configuration
+## 6. Domains and the public site
 
-The landing page (`apps/web/app/page.tsx`) reads:
+Which app answers on which host:
+
+| Host | Serves | App |
+| --- | --- | --- |
+| `obiren.co` | Landing page, `/waitlist`, the unlisted `/user` admin console | `apps/admin` (built by the root `vercel.json`) |
+| `doctors.obiren.ng` | Doctor portal, `/doctor/login` … | `apps/doctor` (PM2 on the droplet) |
+| `api.obiren.co` (or the API host) | `/api/v1/*` | `apps/api` |
+
+The public site is `/` → `/waitlist` → `/user`. `/user` is the admin console
+and is deliberately not linked from any public page; share it only with the
+Obiren team. Patients use the mobile app, so there is no patient sign-up or
+patient sign-in on the web.
+
+`obiren.co` must therefore be a Vercel project whose **Root Directory is the
+repository root** (empty in project settings), so the root `vercel.json`
+selects `apps/admin`. If the project instead pins Root Directory to `apps/web`,
+`/user` and `/about` will 404 on the public domain.
+
+The landing page reads:
 
 | Variable | Effect |
 | --- | --- |
-| `NEXT_PUBLIC_DOCTOR_PORTAL_URL` | Where "Doctor login" points. Defaults to `https://doctors.obiren.com/doctor/login` in production and `http://localhost:3020/doctor/login` in development. |
+| `NEXT_PUBLIC_DOCTOR_PORTAL_URL` | Where "Doctor login" points. Defaults to `https://doctors.obiren.ng/doctor/login` in production and `http://localhost:3020/doctor/login` in development. This is inlined at build time, so redeploy after changing it. |
 | `NEXT_PUBLIC_IOS_APP_URL` | App Store link. When unset, the badge reads "Coming soon" and the launch-notify form is shown. |
 | `NEXT_PUBLIC_ANDROID_APP_URL` | Google Play link. Same behaviour. |
+| `API_PROXY_TARGET` | Origin the app's `/api/v1/*` rewrite forwards to. Required on the Vercel project, otherwise browser calls hit `localhost:3000`. |
 
-The public web surface has no patient sign-up and no patient sign-in; `/home`
-permanently redirects to `/`.
+### Reverse proxy for the doctor portal
+
+DNS for `doctors.obiren.ng` alone is not enough — the portal listens on
+`DOCTOR_PORT` (3020) and needs a proxy in front of it. Minimal nginx server
+block:
+
+```nginx
+server {
+  server_name doctors.obiren.ng;
+  location / {
+    proxy_pass http://127.0.0.1:3020;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+}
+```
+
+Then `certbot --nginx -d doctors.obiren.ng` for TLS. Point the same host's
+`API_PROXY_TARGET` at the API so `/api/v1/*` works from the portal origin.
