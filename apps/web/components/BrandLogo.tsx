@@ -1,7 +1,7 @@
 type BrandLogoProps = {
   /** Render the dancing-figure mark instead of the full wordmark. */
   mark?: boolean;
-  /** Render the primary PFP tile: white wordmark on the violet square. */
+  /** Render the app icon tile: the white "O" ring on the violet square. */
   pfp?: boolean;
   /** Pixel height of the rendered logo. */
   height?: number;
@@ -26,8 +26,9 @@ const MARKS = {
 /**
  * The real Obiren logo (woman + star wordmark, from /public/brand).
  * Transparency means one variant works on any background: `white` on dark or
- * violet surfaces, `violet` on light lilac, `dark` on white. The `pfp` form
- * is the primary brand tile (white wordmark on violet) and needs no variant.
+ * violet surfaces, `violet` on light lilac, `dark` on white. The `pfp` form is
+ * the app icon itself — `app/icon.png`, the mark the browser tab and the app
+ * store listing show — copied to /brand so the web matches the product.
  */
 export default function BrandLogo({
   mark = false,
@@ -41,7 +42,7 @@ export default function BrandLogo({
   let width: number;
 
   if (pfp) {
-    src = "/brand/obiren-pfp.png";
+    src = "/brand/obiren-app-icon.png";
     width = height;
   } else if (mark) {
     src = MARKS[variant];
@@ -61,7 +62,7 @@ export default function BrandLogo({
       width={width}
       height={height}
       fetchPriority={priority ? "high" : undefined}
-      className={pfp ? `rounded-xl ${className}` : className}
+      className={pfp ? `rounded-[22%] ${className}` : className}
       draggable={false}
     />
   );

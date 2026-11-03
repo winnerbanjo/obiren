@@ -3,8 +3,9 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, Heart, Loader2, Lock, Mail, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck } from "lucide-react";
 import { authApi } from "@obiren/api-client";
+import BrandMark from "@/components/BrandMark";
 
 function LoginInner() {
   const router = useRouter();
@@ -42,9 +43,7 @@ function LoginInner() {
     <div className="min-h-screen grid lg:grid-cols-2">
       <div className="hidden lg:flex flex-col justify-between bg-gradient-to-br from-[#2A1A5E] via-[#4B2EA8] to-[#6C4CF1] text-white p-12">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center">
-            <Heart className="w-5 h-5" />
-          </div>
+          <BrandMark size={40} />
           <div>
             <p className="text-lg font-bold">Obiren</p>
             <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-white/60">Doctor Portal</p>
@@ -68,9 +67,7 @@ function LoginInner() {
       <div className="flex items-center justify-center p-6">
         <div className="w-full max-w-sm space-y-6">
           <div className="lg:hidden flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-[#6C4CF1] text-white flex items-center justify-center">
-              <Heart className="w-4 h-4" />
-            </div>
+            <BrandMark size={36} />
             <div>
               <p className="text-sm font-bold">Obiren</p>
               <p className="text-[10px] uppercase tracking-widest font-bold text-[#6C4CF1]">Doctor Portal</p>
