@@ -34,9 +34,13 @@ function promptHtml(hasAttempt: boolean, configured: boolean) {
   h1{font-size:18px;font-weight:800;margin:0 0 6px;letter-spacing:-.01em}
   p{font-size:13px;color:rgba(245,243,250,.55);margin:0 0 24px}
   form{display:flex;gap:8px}
-  input{flex:1;min-width:0;padding:11px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#F5F3FA;font-size:14px;outline:none}
+  .field{position:relative;flex:1;min-width:0}
+  input{width:100%;box-sizing:border-box;padding:11px 40px 11px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#F5F3FA;font-size:14px;outline:none}
   input:focus{border-color:#9B6BFF}
-  button{padding:11px 20px;border-radius:999px;border:none;background:linear-gradient(135deg,#6D4AFF,#9B6BFF);color:#fff;font-weight:700;font-size:14px;cursor:pointer}
+  .reveal{position:absolute;right:6px;top:50%;transform:translateY(-50%);padding:6px;border:none;background:none;color:rgba(245,243,250,.55);cursor:pointer;line-height:0;border-radius:999px}
+  .reveal:hover{color:#F5F3FA}
+  .reveal:focus-visible{outline:2px solid #9B6BFF;outline-offset:2px;color:#F5F3FA}
+  button[type=submit]{padding:11px 20px;border-radius:999px;border:none;background:linear-gradient(135deg,#6D4AFF,#9B6BFF);color:#fff;font-weight:700;font-size:14px;cursor:pointer}
   .err{color:#FF8FA3}
 </style>
 </head>
@@ -46,7 +50,12 @@ function promptHtml(hasAttempt: boolean, configured: boolean) {
     <h1>Obiren</h1>
     <p class="${hasAttempt ? "err" : ""}">${message}</p>
     <form method="get" action="/waitlist/list">
-      <input type="password" name="key" placeholder="Access password" autofocus autocomplete="off" required>
+      <div class="field">
+        <input id="pw" type="password" name="key" placeholder="Access password" autofocus autocomplete="off" required aria-label="Access password">
+        <button type="button" class="reveal" aria-label="Show password" aria-pressed="false" onclick="var i=document.getElementById('pw');var s=i.type==='password';i.type=s?'text':'password';this.setAttribute('aria-pressed',String(s));this.setAttribute('aria-label',s?'Hide password':'Show password');">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
       <button type="submit">Enter</button>
     </form>
   </div>
