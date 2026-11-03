@@ -38,11 +38,18 @@ the deployment host over SSH. On the host the script:
    `.next` survives). A page removed in the repo otherwise lingers on the host
    and breaks the next build - which is exactly how a renamed console route
    once failed a redeploy,
-5. runs `npm ci` once at the repo root,
+5. runs `npm ci` once at the repo root — skipped entirely when `package-lock.json`
+   is byte-identical to the last install (stamp kept in `.git/obiren-deps.sha256`),
 6. builds **only the changed apps**,
 7. runs API migrations when the API changed (`RUN_MIGRATIONS=1` by default),
-8. reloads **only the changed PM2 processes** from `deploy/ecosystem.config.cjs`,
-9. probes health endpoints.
+8. recreates **only the changed PM2 processes** from
+   `deploy/ecosystem.config.cjs` (`pm2 delete` then `pm2 start`, so cwd, args and
+   `PORT` always come from this revision — `pm2 startOrReload` keeps the
+   definition an app was first created with, which is how two apps kept
+   crash-looping from a removed `/srv/obiren` checkout while a never-started app
+   came up fine),
+9. probes health endpoints **in parallel**, and on failure prints that app's pm2
+   state and last log lines before rolling back.
 
 ### Health check and rollback
 
@@ -51,8 +58,8 @@ The API is always probed at `API_HEALTH_URL` (default
 `REQUIRE_STATUS_OK=1` it also requires `"status":"ok"` (leave it unset on
 staging, where missing provider keys intentionally report `degraded`).
 
-If any probe fails after `HEALTH_RETRIES` attempts (default 20 x 3 s), the
-script:
+If any probe fails after `HEALTH_RETRIES` attempts (default 20 x 2 s per app,
+run concurrently), the script:
 
 1. hard-resets the checkout back to the previous revision,
 2. reinstalls, rebuilds and restarts the same apps,
