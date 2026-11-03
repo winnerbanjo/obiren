@@ -118,17 +118,19 @@ One app owns each surface. The public marketing site exists **only** in
 
 | Host | Serves | App |
 | --- | --- | --- |
-| `obiren.co` | Landing page and `/waitlist` | `apps/web` (built by the root `vercel.json`) |
-| `doctors.obiren.ng` | Doctor portal, `/doctor/login` … | `apps/doctor` (PM2 on the droplet) |
-| admin console host | `/user`, the internal operations console | `apps/admin` (its own Vercel project) |
-| `api.obiren.co` (or the API host) | `/api/v1/*` | `apps/api` |
+| `obiren.co` | Landing page and `/waitlist` | `apps/web` (Vercel) |
+| `doctors.obiren.co` | Doctor portal, `/doctor/login` … | `apps/doctor` (:3020 behind Caddy) |
+| `admin.obiren.co` | `/user`, the internal operations console | `apps/admin` (:3030 behind Caddy) |
+| `api.obiren.co` | `/api/v1/*` | `apps/api` (:3000 behind Caddy) |
 
 `apps/admin` has no public surface: `/` redirects to `/user`, the console is
 `noindex`, and its address is shared with the Obiren team rather than linked
 from the public site. Patients use the mobile app, so there is no patient
 sign-up or patient sign-in on the web.
 
-`obiren.co` must be a Vercel project whose **Root Directory is the repository
+`obiren.co` resolves to Vercel (`216.150.1.193`), while `api.`, `admin.` and
+`doctors.obiren.co` resolve to the droplet (`164.90.192.242`). `obiren.co`
+must therefore be a Vercel project whose **Root Directory is the repository
 root** (empty in project settings), so the root `vercel.json` selects
 `apps/web`.
 
@@ -142,31 +144,48 @@ The landing page reads:
 
 | Variable | Effect |
 | --- | --- |
-| `NEXT_PUBLIC_DOCTOR_PORTAL_URL` | Where "Doctor login" points. Defaults to `https://doctors.obiren.ng/doctor/login` in production and `http://localhost:3020/doctor/login` in development. This is inlined at build time, so redeploy after changing it. |
+| `NEXT_PUBLIC_DOCTOR_PORTAL_URL` | Where "Doctor login" points. Defaults to `https://doctors.obiren.co/doctor/login` in production and `http://localhost:3020/doctor/login` in development. This is inlined at build time, so redeploy after changing it. |
 | `NEXT_PUBLIC_IOS_APP_URL` | App Store link. When unset, the badge reads "Coming soon" and the launch-notify form is shown. |
 | `NEXT_PUBLIC_ANDROID_APP_URL` | Google Play link. Same behaviour. |
 | `API_PROXY_TARGET` | Origin the app's `/api/v1/*` rewrite forwards to. Required on the Vercel project, otherwise browser calls hit `localhost:3000`. |
 
-### Reverse proxy for the doctor portal
+### Reverse proxy for the app hosts (Caddy)
 
-DNS for `doctors.obiren.ng` alone is not enough — the portal listens on
-`DOCTOR_PORT` (3020) and needs a proxy in front of it. Minimal nginx server
-block:
+DNS alone is not enough — each app listens on its own port and needs a proxy in
+front of it with a certificate. The droplet runs **Caddy**, so a host whose DNS
+is correct but whose TLS handshake fails (`SSL routines::tlsv1 alert internal
+error`) has a site block whose certificate was never issued.
 
-```nginx
-server {
-  server_name doctors.obiren.ng;
-  location / {
-    proxy_pass http://127.0.0.1:3020;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-  }
+`/etc/caddy/Caddyfile`:
+
+```caddy
+obiren.co, www.obiren.co {
+  reverse_proxy 127.0.0.1:3100
+}
+
+doctors.obiren.co {
+  reverse_proxy 127.0.0.1:3020
+}
+
+admin.obiren.co {
+  reverse_proxy 127.0.0.1:3030
+}
+
+api.obiren.co {
+  reverse_proxy 127.0.0.1:3000
 }
 ```
 
-Then `certbot --nginx -d doctors.obiren.ng` for TLS. Point the same host's
-`API_PROXY_TARGET` at the API so `/api/v1/*` works from the portal origin.
+Apply and check the certificate:
+
+```bash
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+sudo journalctl -u caddy -n 50 --no-pager   # ACME errors show up here
+```
+
+Caddy issues certificates on the first request to a new host, so the DNS record
+must already point at the droplet when the site block is added. Verify with
+`curl -sI https://doctors.obiren.co/doctor/login` (expect `200`, not a TLS
+error). Set `API_PROXY_TARGET` for that app to `https://api.obiren.co` so
+`/api/v1/*` works from the portal origin.
