@@ -96,9 +96,15 @@ the `production` GitHub Environment, so required reviewers can gate a deploy.
 - Each app's environment file present on the host (`apps/api/.env`,
   `apps/web/.env.local`, ...). The release script never writes or prints
   secrets.
-- Ports matching `deploy/ecosystem.config.cjs` (API 3000, web 3100, admin 3030,
-  doctor 3020) or overridden with `API_PORT`, `WEB_PORT`, `ADMIN_PORT`,
-  `DOCTOR_PORT`.
+- Ports matching `deploy/ecosystem.config.cjs` (API 3020, web 3100, admin 3021,
+  doctor 3022) or overridden with `API_PORT`, `WEB_PORT`, `ADMIN_PORT`,
+  `DOCTOR_PORT`. The Next.js apps start with plain `next start`, so the `PORT`
+  PM2 sets is the port they bind - never hardcode `-p` in a `start` script.
+- Free ports. The droplet also runs the kuipid services, which hold
+  `3000`-`3003`, so Obiren owns `3020`-`3022`. Starting an Obiren app on
+  `3002`/`3003` fails to bind (`EADDRINUSE`) and the host serves nothing, which
+  is what previously happened to both app hosts. The `3002`/`3003` ports in the
+  package.json `dev` scripts are local-development only.
 
 ## 5. Running a release by hand
 
@@ -119,9 +125,9 @@ One app owns each surface. The public marketing site exists **only** in
 | Host | Serves | App |
 | --- | --- | --- |
 | `obiren.co` | Landing page and `/waitlist` | `apps/web` (Vercel) |
-| `doctors.obiren.co` | Doctor portal, `/doctor/login` … | `apps/doctor` (:3020 behind Caddy) |
-| `admin.obiren.co` | `/user`, the internal operations console | `apps/admin` (:3030 behind Caddy) |
-| `api.obiren.co` | `/api/v1/*` | `apps/api` (:3000 behind Caddy) |
+| `doctors.obiren.co` | Doctor portal, `/doctor/login` … | `apps/doctor` (:3022 behind Caddy) |
+| `admin.obiren.co` | `/user`, the internal operations console | `apps/admin` (:3021 behind Caddy) |
+| `api.obiren.co` | `/api/v1/*` | `apps/api` (:3020 behind Caddy) |
 
 `apps/admin` has no public surface: `/` redirects to `/user`, the console is
 `noindex`, and its address is shared with the Obiren team rather than linked
@@ -144,7 +150,7 @@ The landing page reads:
 
 | Variable | Effect |
 | --- | --- |
-| `NEXT_PUBLIC_DOCTOR_PORTAL_URL` | Where "Doctor login" points. Defaults to `https://doctors.obiren.co/doctor/login` in production and `http://localhost:3020/doctor/login` in development. This is inlined at build time, so redeploy after changing it. |
+| `NEXT_PUBLIC_DOCTOR_PORTAL_URL` | Where "Doctor login" points. Defaults to `https://doctors.obiren.co/doctor/login` in production and `http://localhost:3003/doctor/login` in development. This is inlined at build time, so redeploy after changing it. |
 | `NEXT_PUBLIC_IOS_APP_URL` | App Store link. When unset, the badge reads "Coming soon" and the launch-notify form is shown. |
 | `NEXT_PUBLIC_ANDROID_APP_URL` | Google Play link. Same behaviour. |
 | `API_PROXY_TARGET` | Origin the app's `/api/v1/*` rewrite forwards to. Required on the Vercel project, otherwise browser calls hit `localhost:3000`. |
@@ -162,20 +168,27 @@ not match what PM2 was started with:
 
 ```caddy
 api.obiren.co {
-  encode gzip
-  reverse_proxy 127.0.0.1:<API_PORT>
+  encode zstd gzip
+  reverse_proxy 127.0.0.1:3020
 }
 
 doctors.obiren.co {
-  encode gzip
-  reverse_proxy 127.0.0.1:<DOCTOR_PORT>
+  encode zstd gzip
+  reverse_proxy 127.0.0.1:3022
 }
 
 admin.obiren.co {
-  encode gzip
-  reverse_proxy 127.0.0.1:<ADMIN_PORT>
+  encode zstd gzip
+  reverse_proxy 127.0.0.1:3021
 }
 ```
+
+| App | Server port | PM2 name | Local dev |
+| --- | --- | --- | --- |
+| `apps/api` | 3020 | `obiren-api` | 3000 |
+| `apps/admin` | 3021 | `obiren-admin` | 3002 |
+| `apps/doctor` | 3022 | `obiren-doctor` | 3003 |
+| `apps/web` | 3100 (or Vercel) | `obiren-web` | 3001 |
 
 Do **not** add a block for `obiren.co` here: that host resolves to Vercel, so a
 site block would shadow the public site.
@@ -184,7 +197,7 @@ Read the real ports off the host rather than guessing:
 
 ```bash
 pm2 list                       # process -> PORT from its env
-ss -ltnp | grep -E ':(3000|3020|3030|3100)\b'
+ss -ltnp | grep -E ':(3020|3021|3022)\b'
 ```
 
 Every app host must proxy to a *different* port. Two blocks pointing at the same

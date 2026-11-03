@@ -27,11 +27,19 @@ function app(name, directory, port) {
   };
 }
 
+// The defaults are the ports Caddy proxies to on the server (see
+// docs/DEPLOYMENT.md). They are deliberately explicit: `pm2 startOrReload ...
+// --update-env` re-reads this file, so a release must not depend on the deploy
+// shell exporting API_PORT/DOCTOR_PORT.
+//
+// The Obiren droplet is shared with the Kubernetes-hosted kuipid services,
+// which already listen on 3000-3003. Obiren therefore owns 3020-3022; the last
+// deploy that used 3002/3003 could never bind and both hosts served nothing.
 module.exports = {
   apps: [
-    app(process.env.PM2_API_NAME || "obiren-api", "apps/api", process.env.API_PORT || 3000),
+    app(process.env.PM2_API_NAME || "obiren-api", "apps/api", process.env.API_PORT || 3020),
     app(process.env.PM2_WEB_NAME || "obiren-web", "apps/web", process.env.WEB_PORT || 3100),
-    app(process.env.PM2_ADMIN_NAME || "obiren-admin", "apps/admin", process.env.ADMIN_PORT || 3030),
-    app(process.env.PM2_DOCTOR_NAME || "obiren-doctor", "apps/doctor", process.env.DOCTOR_PORT || 3020),
+    app(process.env.PM2_ADMIN_NAME || "obiren-admin", "apps/admin", process.env.ADMIN_PORT || 3021),
+    app(process.env.PM2_DOCTOR_NAME || "obiren-doctor", "apps/doctor", process.env.DOCTOR_PORT || 3022),
   ],
 };
