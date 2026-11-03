@@ -113,30 +113,30 @@ Useful overrides: `BRANCH`, `HEALTH_RETRIES`, `HEALTH_DELAY`, `RUN_MIGRATIONS=0`
 
 ## 6. Domains and the public site
 
-Which app answers on which host:
+One app owns each surface. The public marketing site exists **only** in
+`apps/web` — no other app carries a landing page.
 
 | Host | Serves | App |
 | --- | --- | --- |
-| `obiren.co` | Landing page, `/waitlist`, the unlisted `/user` admin console | `apps/admin` (built by the root `vercel.json`) |
+| `obiren.co` | Landing page and `/waitlist` | `apps/web` (built by the root `vercel.json`) |
 | `doctors.obiren.ng` | Doctor portal, `/doctor/login` … | `apps/doctor` (PM2 on the droplet) |
+| admin console host | `/user`, the internal operations console | `apps/admin` (its own Vercel project) |
 | `api.obiren.co` (or the API host) | `/api/v1/*` | `apps/api` |
 
-The public site is `/` → `/waitlist` → `/user`. `/user` is the admin console
-and is deliberately not linked from any public page; share it only with the
-Obiren team. Patients use the mobile app, so there is no patient sign-up or
-patient sign-in on the web.
+`apps/admin` has no public surface: `/` redirects to `/user`, the console is
+`noindex`, and its address is shared with the Obiren team rather than linked
+from the public site. Patients use the mobile app, so there is no patient
+sign-up or patient sign-in on the web.
 
-`obiren.co` must therefore be a Vercel project whose **Root Directory is the
-repository root** (empty in project settings), so the root `vercel.json`
-selects `apps/admin`. If the project instead pins Root Directory to `apps/web`,
-`/user` and `/about` will 404 on the public domain.
+`obiren.co` must be a Vercel project whose **Root Directory is the repository
+root** (empty in project settings), so the root `vercel.json` selects
+`apps/web`.
 
-`apps/admin/vercel.json` covers the other case: a project whose Root Directory
-is `apps/admin`. npm workspaces live outside that directory, so the file
-installs and builds from the monorepo root (`cd ../..`) and forces the Next.js
-framework preset. Without it such a project fails to resolve the `@obiren/*`
-workspace packages on every deploy. The same pattern applies to any other
-app-scoped project.
+`apps/admin/vercel.json` covers the app-scoped project case: npm workspaces
+live outside `apps/admin`, so the file installs and builds from the monorepo
+root (`cd ../..`) and forces the Next.js preset. Without it that project fails
+to resolve the `@obiren/*` workspace packages on every deploy. The same pattern
+applies to any other app-scoped project.
 
 The landing page reads:
 
