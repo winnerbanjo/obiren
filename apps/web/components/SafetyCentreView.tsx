@@ -12,6 +12,8 @@ import {
   Search,
   ShieldCheck,
   MessageSquare,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { getCountryConfig } from "@obiren/localization";
 import {
@@ -40,6 +42,7 @@ export default function SafetyCentreView({ userProfile }: SafetyCentreViewProps)
   // Safety PIN state
   const [hasPin, setHasPin] = useState<boolean | null>(null);
   const [pinInput, setPinInput] = useState("");
+  const [showPin, setShowPin] = useState(false);
   const [pinSetupMode, setPinSetupMode] = useState(false);
   const [pinMessage, setPinMessage] = useState("");
   const [pinError, setPinError] = useState("");
@@ -49,6 +52,7 @@ export default function SafetyCentreView({ userProfile }: SafetyCentreViewProps)
   const [sosActive, setSosActive] = useState<SosIncident | null>(null);
   const [sosLogs, setSosLogs] = useState<Array<{ time: string; msg: string }>>([]);
   const [cancelPin, setCancelPin] = useState("");
+  const [showCancelPin, setShowCancelPin] = useState(false);
   const [sosError, setSosError] = useState("");
   const [acting, setActing] = useState(false);
 
@@ -341,14 +345,29 @@ export default function SafetyCentreView({ userProfile }: SafetyCentreViewProps)
 
             {hasPin === false || pinSetupMode ? (
               <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  placeholder="Set 4-8 digit PIN"
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 8))}
-                  className="flex-1 px-4 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] rounded-xl text-sm tracking-widest focus:outline-none focus:border-[#6C4CF1]"
-                />
+                <div className="relative flex-1">
+                  <label htmlFor="safety-pin" className="sr-only">
+                    Safety PIN
+                  </label>
+                  <input
+                    id="safety-pin"
+                    type={showPin ? "text" : "password"}
+                    inputMode="numeric"
+                    placeholder="Set 4-8 digit PIN"
+                    value={pinInput}
+                    onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                    className="w-full pl-4 pr-11 py-2.5 bg-[#F5F2FF] border border-[#E8E0FF] rounded-xl text-sm tracking-widest focus:outline-none focus:border-[#6C4CF1]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPin((visible) => !visible)}
+                    aria-label={showPin ? "Hide PIN" : "Show PIN"}
+                    aria-pressed={showPin}
+                    className="absolute right-2.5 top-2 rounded-lg p-1 text-[#6E6875] transition-colors hover:text-[#6C4CF1] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6C4CF1]/40"
+                  >
+                    {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
                 <button
                   onClick={handleSavePin}
                   disabled={acting}
@@ -430,14 +449,29 @@ export default function SafetyCentreView({ userProfile }: SafetyCentreViewProps)
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                  <input
-                    type="password"
-                    inputMode="numeric"
-                    placeholder="Enter Safety PIN to cancel"
-                    value={cancelPin}
-                    onChange={(e) => setCancelPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
-                    className="flex-1 px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-sm tracking-widest text-white placeholder-white/50 focus:outline-none focus:border-white/40"
-                  />
+                  <div className="relative flex-1">
+                    <label htmlFor="cancel-pin" className="sr-only">
+                      Safety PIN
+                    </label>
+                    <input
+                      id="cancel-pin"
+                      type={showCancelPin ? "text" : "password"}
+                      inputMode="numeric"
+                      placeholder="Enter Safety PIN to cancel"
+                      value={cancelPin}
+                      onChange={(e) => setCancelPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                      className="w-full pl-4 pr-11 py-3 bg-white/10 border border-white/20 rounded-xl text-sm tracking-widest text-white placeholder-white/50 focus:outline-none focus:border-white/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCancelPin((visible) => !visible)}
+                      aria-label={showCancelPin ? "Hide PIN" : "Show PIN"}
+                      aria-pressed={showCancelPin}
+                      className="absolute right-2.5 top-2.5 rounded-lg p-1 text-white/60 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                    >
+                      {showCancelPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                   <button
                     onClick={cancelSos}
                     disabled={acting}

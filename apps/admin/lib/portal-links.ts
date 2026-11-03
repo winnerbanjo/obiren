@@ -11,8 +11,8 @@ export const DOCTOR_PORTAL_URL =
     ? "https://doctor.obiren.com/doctor/login"
     : "http://localhost:3020/doctor/login");
 
-/** Internal admin console. Served under /user, not /admin, on purpose. */
-export const ADMIN_CONSOLE_URL = "/user";
-
 /** Public waitlist page. */
 export const WAITLIST_URL = "/waitlist";
+
+// The admin console is deliberately NOT linked from the public site. It is
+// served under /user and its address is shared only with the Obiren team.
