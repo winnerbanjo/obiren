@@ -25,10 +25,8 @@ import * as dotenv from 'dotenv';
 import * as argon2 from 'argon2';
 import mongoose, { Types } from 'mongoose';
 import { UserSchema, UserProfileSchema } from '../src/database/schemas/user.schema';
-import {
-  ClinicianSchema,
-  DoctorAvailabilityRuleSchema,
-} from '../src/database/schemas/care.schema';
+import { ClinicianSchema } from '../src/database/schemas/care.schema';
+import * as careSchemaModule from '../src/database/schemas/care.schema';
 
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
@@ -44,6 +42,15 @@ interface SeedAccount {
   timeZone: string;
   label: string;
 }
+
+/**
+ * The weekly-schedule model arrived with the Doctor Portal. A staging copy of
+ * the API that predates it can still take the accounts, so the schedule step is
+ * skipped (with a warning) instead of aborting the whole seed.
+ */
+const doctorAvailabilityRuleSchema = (
+  careSchemaModule as { DoctorAvailabilityRuleSchema?: mongoose.Schema }
+).DoctorAvailabilityRuleSchema;
 
 const ACCOUNTS: SeedAccount[] = [
   {
@@ -171,7 +178,9 @@ export async function seedAccounts(options: SeedOptions): Promise<SeedResult> {
   const users = model('User', UserSchema);
   const profiles = model('UserProfile', UserProfileSchema);
   const clinicians = model('Clinician', ClinicianSchema);
-  const rules = model('DoctorAvailabilityRule', DoctorAvailabilityRuleSchema);
+  const rules = doctorAvailabilityRuleSchema
+    ? model('DoctorAvailabilityRule', doctorAvailabilityRuleSchema)
+    : undefined;
 
   await mongoose.connect(options.uri);
   const passwordHash = await argon2.hash(options.password, { type: argon2.argon2id });
@@ -288,6 +297,10 @@ export async function seedAccounts(options: SeedOptions): Promise<SeedResult> {
     );
 
     const clinicianId = clinician._id as Types.ObjectId;
+    if (!rules) {
+      log(`  ${doctor.displayName}: verified and listed (weekly schedule skipped: this API predates the availability model)`);
+      continue;
+    }
     // Replace the schedule so re-running the script cannot duplicate periods.
     await rules.deleteMany({ clinicianId });
     await rules.insertMany(
@@ -343,6 +356,13 @@ async function main() {
     const state = result.skipped.includes(account.email) ? 'existing password' : result.password;
     console.log(`  ${account.email.padEnd(26)} ${state.padEnd(18)} ${account.label}`);
   }
+  if (!doctorAvailabilityRuleSchema) {
+    console.log('');
+    console.log('WARNING: this API has no doctor-availability model, so no weekly schedule');
+    console.log('was written and the doctors will have no bookable slots. Deploy current');
+    console.log('main to the API to enable availability and slot generation.');
+  }
+
   console.log('');
   console.log('Surfaces:');
   console.log(`  admin console  ${process.env.ADMIN_APP_URL || 'https://admin.obiren.co'}/user`);
