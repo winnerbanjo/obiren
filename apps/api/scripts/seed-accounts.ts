@@ -371,6 +371,8 @@ async function main() {
   console.log('These are development credentials. Change their passwords or delete the');
   console.log('accounts before the platform carries real user data.');
   console.log('Skipped accounts keep their existing password; pass --reset to overwrite it.');
+  console.log('If a sign-in says the password is wrong, that account predates this seed:');
+  console.log('re-run with --force --reset to restore the password printed above.');
 
   await mongoose.disconnect();
 }

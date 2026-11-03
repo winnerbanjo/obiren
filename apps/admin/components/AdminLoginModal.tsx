@@ -33,14 +33,19 @@ export default function AdminLoginModal({ isOpen, onLoginSuccess, notice }: Admi
     e.preventDefault();
     setErrorMsg("");
 
-    if (!email || !password) {
+    // Sign-in is the one place a stray space or a capitalised address is pure
+    // noise: the server normalises the same way, so failing here would only
+    // ever mean "wrong password" reported as "wrong account".
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail || !password) {
       setErrorMsg("Email and password are required.");
       return;
     }
 
     setLoading(true);
     try {
-      const result = await authApi.login(email, password);
+      const result = await authApi.login(normalizedEmail, password);
       const roles: string[] = result.user.roles || [];
       const isAdmin = roles.some((r) =>
         ["super_admin", "platform_admin", "compliance_officer", "emergency_manager", "content_manager", "medical_reviewer", "support_agent"].includes(r),
@@ -51,9 +56,12 @@ export default function AdminLoginModal({ isOpen, onLoginSuccess, notice }: Admi
       }
       onLoginSuccess(result.user);
     } catch (err) {
+      // Name the address that was actually tried. Otherwise a typo, or a
+      // password manager filling a personal email, is indistinguishable from a
+      // genuinely wrong password.
       setErrorMsg(
         err instanceof ApiError
-          ? err.message
+          ? `${err.message} Attempted sign-in as ${normalizedEmail}.`
           : "Unable to sign in right now. Please try again.",
       );
     } finally {
@@ -95,9 +103,12 @@ export default function AdminLoginModal({ isOpen, onLoginSuccess, notice }: Admi
               type="email"
               required
               autoComplete="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@obiren.com"
+              placeholder="you@obiren.co"
               className="w-full px-4 py-3 bg-[#F5F2FF] border border-[#E8E0FF] rounded-2xl text-xs font-bold text-[#17131D] focus:outline-none focus:border-[#6C4CF1]"
             />
           </div>
@@ -111,6 +122,9 @@ export default function AdminLoginModal({ isOpen, onLoginSuccess, notice }: Admi
                 type={showPassword ? "text" : "password"}
                 required
                 autoComplete="current-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"
