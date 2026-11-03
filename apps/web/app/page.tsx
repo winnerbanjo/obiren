@@ -14,8 +14,31 @@ const FALLBACK_DOCTOR_PORTAL =
     ? "https://doctors.obiren.co/doctor/login"
     : "http://localhost:3003/doctor/login";
 
+/**
+ * Hosts that must never be used for the portal link. `obiren.ng` has no DNS
+ * record, so a stale environment value pointing at it produced a dead
+ * "Doctor login" button on the live site. Ignoring it here means a forgotten
+ * Vercel variable cannot break the link again; remove the entry once the
+ * domain actually resolves.
+ */
+const UNREACHABLE_PORTAL_HOSTS = ["obiren.ng"];
+
+function isUnreachablePortalUrl(value: string): boolean {
+  try {
+    const { hostname } = new URL(value);
+    return UNREACHABLE_PORTAL_HOSTS.some(
+      (host) => hostname === host || hostname.endsWith(`.${host}`),
+    );
+  } catch {
+    // Not a URL at all - also unusable as a link.
+    return true;
+  }
+}
+
 function resolveDoctorPortalUrl(): string {
-  return process.env.NEXT_PUBLIC_DOCTOR_PORTAL_URL?.trim() || FALLBACK_DOCTOR_PORTAL;
+  const configured = process.env.NEXT_PUBLIC_DOCTOR_PORTAL_URL?.trim();
+  if (configured && !isUnreachablePortalUrl(configured)) return configured;
+  return FALLBACK_DOCTOR_PORTAL;
 }
 
 function resolveAppUrl(value: string | undefined): string {
