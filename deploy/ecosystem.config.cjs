@@ -16,6 +16,10 @@ function app(name, directory, port) {
     env: {
       NODE_ENV: "production",
       PORT: String(port),
+      // Runtime half of the /api/v1 rewrite: Next bakes the destination at
+      // build time, but server routes read this at request time. Both default
+      // to the loopback API, never the dev default of localhost:3000.
+      API_PROXY_TARGET: process.env.API_PROXY_TARGET || "http://127.0.0.1:3020",
     },
     // A crash loop should not hammer the host; pm2 keeps the last exit state.
     max_restarts: 10,
