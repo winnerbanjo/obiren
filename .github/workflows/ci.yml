@@ -25,6 +25,10 @@ jobs:
       admin: ${{ steps.filter.outputs.admin }}
       doctor: ${{ steps.filter.outputs.doctor }}
       any: ${{ steps.filter.outputs.any }}
+      # A change to the release machinery or the PM2 manifest is itself a
+      # deployment: nothing under apps/ changed, so every app must be rebuilt
+      # and restarted for it to take effect.
+      pipeline: ${{ steps.filter.outputs.pipeline }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -61,6 +65,10 @@ jobs:
               - 'package.json'
               - 'package-lock.json'
               - 'tsconfig.json'
+            pipeline:
+              - 'deploy/**'
+              - 'scripts/deploy/**'
+              - '.github/workflows/**'
 
   api:
     name: API — typecheck, tests, build
@@ -195,7 +203,7 @@ jobs:
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
       needs.changes.result == 'success' &&
-      needs.changes.outputs.any == 'true' &&
+      (needs.changes.outputs.any == 'true' || needs.changes.outputs.pipeline == 'true') &&
       !cancelled() &&
       needs.api.result != 'failure' &&
       needs.web.result != 'failure' &&
@@ -220,6 +228,7 @@ jobs:
       CHANGED_WEB: ${{ needs.changes.outputs.web }}
       CHANGED_ADMIN: ${{ needs.changes.outputs.admin }}
       CHANGED_DOCTOR: ${{ needs.changes.outputs.doctor }}
+      PIPELINE_CHANGED: ${{ needs.changes.outputs.pipeline }}
     steps:
       - uses: actions/checkout@v4
 
@@ -228,10 +237,15 @@ jobs:
         run: |
           set -euo pipefail
           list=""
-          [ "${CHANGED_API}" = "true" ] && list="${list} api"
-          [ "${CHANGED_WEB}" = "true" ] && list="${list} web"
-          [ "${CHANGED_ADMIN}" = "true" ] && list="${list} admin"
-          [ "${CHANGED_DOCTOR}" = "true" ] && list="${list} doctor"
+          if [ "${PIPELINE_CHANGED}" = "true" ]; then
+            echo "Release machinery changed: rebuilding every app."
+            list="api web admin doctor"
+          else
+            [ "${CHANGED_API}" = "true" ] && list="${list} api"
+            [ "${CHANGED_WEB}" = "true" ] && list="${list} web"
+            [ "${CHANGED_ADMIN}" = "true" ] && list="${list} admin"
+            [ "${CHANGED_DOCTOR}" = "true" ] && list="${list} doctor"
+          fi
           list="$(echo "${list}" | xargs)"
           if [ -z "${list}" ]; then
             echo "::error title=Nothing to deploy::No app files changed, but the deploy job was triggered."
