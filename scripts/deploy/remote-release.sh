@@ -142,6 +142,14 @@ clean_checkout() {
   git clean -fd -- "${dirs[@]}"
 }
 
+# Next.js bakes `rewrites()` into .next/routes-manifest.json at build time, and
+# that is what proxies the browser's `/api/v1/*` calls. Building without this
+# variable bakes the dev default `http://localhost:3000`, which on this host is
+# an unrelated service: every sign-in then fails with a 500 while the pages
+# themselves still return 200. The API is always on loopback port 3020 here;
+# override API_PROXY_TARGET only if a host really differs.
+export API_PROXY_TARGET="${API_PROXY_TARGET:-http://127.0.0.1:3020}"
+
 build_apps() {
   for app in $APPS; do
     log "Building ${app} ($(app_dir "$app"))"
@@ -217,6 +225,41 @@ check_health() {
   return 1
 }
 
+# The API health path every frontend proxies. Derived from the app's own health
+# URL so a host that moves ports only has to change one variable.
+proxy_health_url() {
+  local app="$1" url scheme rest host
+  case "$app" in
+    web | admin | doctor) ;;
+    *) return 0 ;;
+  esac
+  url="$(app_health_url "$app")"
+  [ -n "$url" ] || return 0
+  scheme="${url%%://*}"
+  rest="${url#*://}"
+  host="${rest%%/*}"
+  [ -n "$host" ] || return 0
+  echo "${scheme}://${host}/api/v1/health"
+}
+
+# One app: its page, then - because the page is prerendered and stays 200 even
+# when the proxy is broken - the /api/v1 rewrite to the API.
+probe_one_app() {
+  local app="$1" url proxy rc=0
+  url="$(app_health_url "$app")"
+  check_health "$url" || rc=1
+
+  if [ "$rc" -eq 0 ]; then
+    proxy="$(proxy_health_url "$app")"
+    if [ -n "$proxy" ]; then
+      echo "    also checking the /api/v1 rewrite baked into this build"
+      check_health "$proxy" || rc=1
+    fi
+  fi
+
+  return "$rc"
+}
+
 # Probing every app one after another serialised the worst case: three apps x
 # 20 attempts x (probe + delay) is minutes of waiting for services that boot in
 # about two seconds. Each probe keeps its own output, so interleaved runs still
@@ -239,7 +282,7 @@ probe_apps() {
     fi
     log "Health check: ${app} -> ${url}" >&2
     (
-      check_health "$url" >"${workdir}/${app}.log" 2>&1
+      probe_one_app "$app" >"${workdir}/${app}.log" 2>&1
       echo "$?" >"${workdir}/${app}.status"
     ) &
     pids+=("$!")

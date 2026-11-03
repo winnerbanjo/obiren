@@ -241,5 +241,15 @@ block but no certificate — reload Caddy and read the ACME errors. Verify with
 error). If the public site sits behind Cloudflare in Full mode, use
 `tls internal` on the app hosts as well.
 
-Set `API_PROXY_TARGET` for the portal to `https://api.obiren.co` so `/api/v1/*`
-works from the portal origin.
+`API_PROXY_TARGET` decides where each frontend sends `/api/v1/*`. `next build`
+bakes it into `.next/routes-manifest.json`, so it is fixed when the app is built,
+not when it starts. The release script exports
+`API_PROXY_TARGET=http://127.0.0.1:3020` (the loopback API, no Caddy or
+Cloudflare hop) before building, and `deploy/ecosystem.config.cjs` sets the same
+value for runtime server routes; override it only if a host really differs.
+
+Building without it bakes the development default `http://localhost:3000`, which
+on this host belongs to an unrelated service: the pages still return 200 while
+every sign-in fails with `500 Request failed (500)`. The release therefore
+probes `<health origin>/api/v1/health` as well as the page for `web`, `admin`
+and `doctor`, so a broken proxy fails the deploy instead of shipping.
