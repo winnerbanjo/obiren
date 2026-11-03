@@ -169,7 +169,12 @@ export function validateEnv(env: Record<string, string | undefined> = process.en
     recordIssue('CORS_ORIGINS', 'Browser access', 'Browser clients are blocked; native mobile clients are unaffected.', true);
   }
   if (nodeEnv !== 'production' && corsOrigins.length === 0) {
-    corsOrigins = ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'];
+    corsOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'http://localhost:3003',
+    ];
   }
 
   // --- Redis (distributed rate limiting / queues) ---

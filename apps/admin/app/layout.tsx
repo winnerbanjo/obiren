@@ -20,38 +20,14 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+/**
+ * Internal console only. The public site, including its metadata and social
+ * cards, lives in `apps/web`; this app must never be indexed or previewed.
+ */
 export const metadata: Metadata = {
-  title: "Obiren | Health. Safety. Peace of Mind.",
-  description:
-    "Nigeria's integrated telegynecology, reproductive-health and women's safety platform. Speak privately with qualified professionals, track your cycle, follow your pregnancy and access personal safety tools through one connected experience.",
-  keywords: [
-    "women health app",
-    "telegynecology",
-    "period tracker",
-    "pregnancy tracker",
-    "gynecologist consultation",
-    "women safety app",
-    "silent SOS",
-    "health vault",
-    "Obiren",
-    "Nigeria women health",
-  ],
-  authors: [{ name: "Obiren" }],
-  openGraph: {
-    title: "Obiren | Health. Safety. Peace of Mind.",
-    description:
-      "Nigeria's integrated telegynecology, reproductive-health and women's safety platform.",
-    url: "https://obiren.com",
-    siteName: "Obiren",
-    locale: "en_NG",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Obiren | Health. Safety. Peace of Mind.",
-    description:
-      "Nigeria's integrated telegynecology, reproductive-health and women's safety platform.",
-  },
+  title: "Obiren Admin",
+  description: "Internal Obiren operations console.",
+  robots: { index: false, follow: false, nocache: true },
 };
 
 export default function RootLayout({

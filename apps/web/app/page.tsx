@@ -11,8 +11,8 @@ import LandingPage from "@/components/landing/LandingPage";
 
 const FALLBACK_DOCTOR_PORTAL =
   process.env.NODE_ENV === "production"
-    ? "https://doctors.obiren.ng/doctor/login"
-    : "http://localhost:3020/doctor/login";
+    ? "https://doctors.obiren.co/doctor/login"
+    : "http://localhost:3003/doctor/login";
 
 function resolveDoctorPortalUrl(): string {
   return process.env.NEXT_PUBLIC_DOCTOR_PORTAL_URL?.trim() || FALLBACK_DOCTOR_PORTAL;

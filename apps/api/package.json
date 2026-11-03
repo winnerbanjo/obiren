@@ -14,6 +14,7 @@
     "generate:openapi": "ts-node scripts/generate-openapi.ts",
     "verify:sandbox": "ts-node scripts/verify-sandbox-integrations.ts",
     "migrate": "ts-node src/database/migrations/database-migrations.ts",
+    "seed:accounts": "ts-node --transpile-only scripts/seed-accounts.ts",
     "backfill:daily-log-notes": "ts-node scripts/backfill-daily-log-notes.ts"
   },
   "dependencies": {

@@ -71,8 +71,12 @@ The patient product itself (cycle tracking, daily logs, pregnancy, safety SOS,
 health vault, NDPR export/deletion) lives in the mobile app and talks to the
 same API.
 
-### `apps/admin` — Admin & marketing
-The admin control centre signs in through the real API and requires an
+### `apps/admin` — Admin console (internal)
+The console has no public surface: `/` redirects to `/user`, the app is
+`noindex`, and its address is shared with the Obiren team rather than linked
+from the site. The public landing page and waitlist live only in `apps/web`.
+
+The console signs in through the real API and requires an
 administrative role in the database. There is no demo account, no fake 2FA,
 and no auto-created super admin. Modules without backend functionality show an
 honest "coming soon" state instead of simulated data. Its **Doctors** section
