@@ -6644,6 +6644,46 @@
         ]
       }
     },
+    "/bookings/{id}/payment/verify": {
+      "post": {
+        "description": "Asks the provider directly and confirms the booking if the transaction succeeded and its amount and currency match the server quote. The signed webhook remains the primary path; this only recovers a paid booking whose webhook was delayed or missing. Calling it twice never confirms twice.",
+        "operationId": "BookingsController_verifyPayment",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "24-character booking identifier.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current booking and payment state, with whether this call reconciled the payment."
+          },
+          "404": {
+            "description": "Booking not found for this account, or no payment was started."
+          },
+          "409": {
+            "description": "The provider reported a different amount or currency than quoted."
+          },
+          "503": {
+            "description": "Checkout is disabled or the provider is unavailable."
+          }
+        },
+        "security": [
+          {
+            "accessToken": []
+          }
+        ],
+        "summary": "Reconcile a payment when the patient returns from checkout",
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
     "/bookings/{id}/cancel": {
       "post": {
         "description": "Owner-scoped cancellation of a held, unpaid or confirmed future booking. No refund is issued automatically: a paid booking is marked `pending_policy` until the approved refund policy exists.",

@@ -118,6 +118,38 @@ starts with `approved:`.
 | `PAYSTACK_CURRENCY` | ISO-4217, default `NGN`. Amounts are calculated server-side in minor units. |
 | `PAYSTACK_CALLBACK_URL` | Where Paystack returns the user after checkout. |
 
+**Turning checkout on, in order**
+
+1. Create the integration in the Paystack dashboard and copy the secret and public
+   keys (`sk_live_…` / `pk_live_…`; use `sk_test_…` / `pk_test_…` for staging).
+2. Set `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY`, `PAYMENT_ENABLED=true` and
+   `PAYMENT_POLICY_VERSION=approved:<version>` on the API, then restart. The API
+   refuses to boot in production when `PAYMENT_ENABLED=true` without an
+   `approved:` policy version, and checkout returns `503` with the missing names
+   while the key is absent.
+3. In Paystack → Settings → API Keys & Webhooks, set the webhook URL to
+   `https://api.obiren.co/api/v1/webhooks/paystack`. Every delivery is checked
+   against the `x-paystack-signature` HMAC-SHA512 header; unsigned or mis-signed
+   deliveries get `401` and change nothing.
+4. Point `PAYSTACK_CALLBACK_URL` at the patient app's return screen. On return the
+   app calls `POST /bookings/:id/payment/verify`, which asks Paystack directly, so
+   a delayed or missing webhook can never strand a paid booking.
+5. Verify with `npm --prefix apps/api run verify:sandbox` against the deployed API
+   (see the sandbox row above) and a real test-mode card.
+
+**Payment lifecycle.** `POST /bookings/hold` reserves a slot for 10 minutes as
+`held`. `POST /bookings/:id/payment-intent` re-reads the approved price and returns
+the Paystack `authorizationUrl`. The booking moves on only when a server-verified
+`charge.success` matches the quoted amount and currency: it becomes `pending` if
+the doctor requires approval, otherwise `confirmed`, the slot is marked `booked`
+and the doctor is notified. That transition is what unlocks the doctor's
+**Consultation link** card — a `held` or `pending_payment` booking accepts no link,
+so a doctor cannot attach a call link until the patient has paid.
+
+**Testing without money.** Either point `PAYSTACK_API_BASE` at a local stub (the API
+test suite does exactly this) or use test keys with Paystack's documented test
+cards; the signature and verification path is identical.
+
 ### Health Vault storage (Cloudinary, optional)
 
 | Variable | Purpose |

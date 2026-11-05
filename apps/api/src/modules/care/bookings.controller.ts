@@ -71,6 +71,21 @@ export class BookingsController {
     return this.bookingsService.createPaymentIntent(req.user.sub, id);
   }
 
+  @Post(':id/payment/verify')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Reconcile a payment when the patient returns from checkout',
+    description: 'Asks the provider directly and confirms the booking if the transaction succeeded and its amount and currency match the server quote. The signed webhook remains the primary path; this only recovers a paid booking whose webhook was delayed or missing. Calling it twice never confirms twice.',
+  })
+  @ApiParam({ name: 'id', description: '24-character booking identifier.' })
+  @ApiResponse({ status: 200, description: 'Current booking and payment state, with whether this call reconciled the payment.' })
+  @ApiResponse({ status: 404, description: 'Booking not found for this account, or no payment was started.' })
+  @ApiResponse({ status: 409, description: 'The provider reported a different amount or currency than quoted.' })
+  @ApiResponse({ status: 503, description: 'Checkout is disabled or the provider is unavailable.' })
+  async verifyPayment(@Req() req: any, @Param('id', new ZodValidationPipe(MongoIdParam)) id: string) {
+    return this.bookingsService.verifyPayment(req.user.sub, id);
+  }
+
   @Post(':id/cancel')
   @ApiOperation({
     summary: 'Cancel a booking',
