@@ -74,6 +74,15 @@ export function configureApp(app: INestApplication): void {
     ],
   });
 
+  // Caddy terminates TLS on this host, so every request reaches the API from
+  // the loopback address. Without trusting that single hop, `req.ip` is
+  // 127.0.0.1 for every caller and the per-IP throttler becomes one shared
+  // bucket for the whole user base, so a busy minute locks everyone out.
+  // 'loopback' trusts only same-host peers; a header sent by a remote client is
+  // still ignored because its socket address is not loopback.
+  const expressApp = app.getHttpAdapter().getInstance() as { set: (key: string, value: unknown) => void };
+  expressApp.set('trust proxy', 'loopback');
+
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Obiren API')
     .setDescription([
