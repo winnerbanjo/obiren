@@ -66,12 +66,15 @@ interface InvitationState {
 /** Absolute Doctor Portal URL for a one-time activation token. */
 function doctorActivationUrl(token: string): string {
   const configured = process.env.NEXT_PUBLIC_DOCTOR_PORTAL_URL;
+  // In production the portal is its own host. Falling back to this admin origin
+  // produced activation links pointing at admin.obiren.co/doctor/activate, which
+  // does not exist, whenever the variable was not set at build time.
   const fallback =
     typeof window === "undefined"
       ? ""
       : window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
         ? `${window.location.protocol}//${window.location.hostname}:3003`
-        : window.location.origin;
+        : "https://doctors.obiren.co";
   return `${(configured || fallback).replace(/\/$/, "")}/doctor/activate?token=${encodeURIComponent(token)}`;
 }
 
