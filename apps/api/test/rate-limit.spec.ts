@@ -3,6 +3,7 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import * as request from 'supertest';
+import { configureApp } from '../src/common/bootstrap';
 import { ApiExceptionFilter } from '../src/common/http/api-exception.filter';
 import { ApiEnvelopeInterceptor } from '../src/common/http/api-envelope.interceptor';
 import { requestIdMiddleware } from '../src/common/http/request-id.middleware';
@@ -72,6 +73,32 @@ describe('Rate limiting', () => {
     expect(isAuthSensitiveRequest(fakeContext('GET', '/api/v1/auth/login'))).toBe(false);
     expect(isAuthSensitiveRequest(fakeContext('POST', '/api/v1/cycles/start-period'))).toBe(false);
     expect(isAuthSensitiveRequest(fakeContext('POST', '/api/v1/users/me/export'))).toBe(false);
+  });
+
+  it('keeps per-client budgets separate when the API runs behind the reverse proxy', async () => {
+    const proxied = (
+      await Test.createTestingModule({
+        imports: [ThrottlerModule.forRoot([{ ttl: 60_000, limit: 2 }])],
+        controllers: [ProbeController],
+        providers: [
+          { provide: APP_GUARD, useClass: ThrottlerGuard },
+          { provide: APP_FILTER, useClass: ApiExceptionFilter },
+        ],
+      }).compile()
+    ).createNestApplication({ logger: false });
+    configureApp(proxied);
+    await proxied.init();
+
+    const server = proxied.getHttpServer();
+    // Same client twice: its first budget is spent.
+    await request(server).post('/api/v1/probe').set('X-Forwarded-For', '203.0.113.5').expect(201);
+    await request(server).post('/api/v1/probe').set('X-Forwarded-For', '203.0.113.5').expect(201);
+    // A different client behind the same proxy must get its own budget rather
+    // than inheriting the shared loopback bucket.
+    await request(server).post('/api/v1/probe').set('X-Forwarded-For', '198.51.100.7').expect(201);
+    await request(server).post('/api/v1/probe').set('X-Forwarded-For', '203.0.113.5').expect(429);
+
+    await proxied.close();
   });
 
   it('uses an in-memory fallback with correct block semantics when Redis is not configured', async () => {
