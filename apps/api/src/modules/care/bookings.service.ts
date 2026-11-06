@@ -29,7 +29,7 @@ import { User, UserDocument } from '../../database/schemas/user.schema';
 import { Clinician, ClinicianDocument } from '../../database/schemas/care.schema';
 import { CareService } from './care.service';
 import { DoctorService } from './doctor.service';
-import { PaystackProvider } from '../../common/payments/paystack.provider';
+import { PaystackProvider, PaymentVerification } from '../../common/payments/paystack.provider';
 
 const PAYMENT_REUSE_MINUTES = 30;
 
@@ -338,9 +338,34 @@ export class BookingsService {
       return finish('AMOUNT_MISMATCH', 'AMOUNT_MISMATCH');
     }
 
+    const settled = await this.settleVerifiedPayment(payment, verification);
+
+    if (settled.outcome !== 'CONFIRMED') {
+      return finish('PAYMENT_RECEIVED_BOOKING_CLOSED', 'PAYMENT_RECEIVED_BOOKING_CLOSED');
+    }
+
+    return finish('CONFIRMED', settled.nextStatus === 'pending' ? 'AWAITING_DOCTOR' : 'CONFIRMED', {
+      bookingId: settled.booking!._id.toString(),
+      appointmentStatus: settled.nextStatus,
+    });
+  }
+
+  /**
+   * Applies a provider-verified successful payment to its booking. The webhook
+   * and the return-trip verification endpoint share this so both paths confirm
+   * exactly once and preserve the approval policy the doctor configured.
+   */
+  private async settleVerifiedPayment(
+    payment: PaymentDocument,
+    verification: PaymentVerification,
+  ): Promise<{
+    outcome: 'CONFIRMED' | 'PAYMENT_RECEIVED_BOOKING_CLOSED';
+    nextStatus: 'pending' | 'confirmed';
+    booking: BookingDocument | null;
+  }> {
     payment.status = 'succeeded';
-    payment.verifiedAmountMinor = verification.amountMinor;
-    payment.verifiedCurrency = verification.currency;
+    payment.verifiedAmountMinor = verification.amountMinor ?? undefined;
+    payment.verifiedCurrency = verification.currency ?? undefined;
     payment.verifiedAt = new Date();
     payment.gatewayTransactionId = verification.gatewayTransactionId;
     await payment.save();
@@ -380,7 +405,7 @@ export class BookingsService {
       // The money arrived after the booking was cancelled or expired. Record the
       // payment truthfully and flag a manual refund decision; never silently confirm.
       await this.bookingModel.updateOne({ _id: payment.bookingId }, { $set: { refundStatus: 'pending_policy' } });
-      return finish('PAYMENT_RECEIVED_BOOKING_CLOSED', 'PAYMENT_RECEIVED_BOOKING_CLOSED');
+      return { outcome: 'PAYMENT_RECEIVED_BOOKING_CLOSED', nextStatus, booking: null };
     }
 
     await this.slotModel.updateOne(
@@ -390,10 +415,103 @@ export class BookingsService {
     // In-app notification is the reliable channel; email is best-effort and
     // must never fail the payment transaction.
     await this.doctorService.notifyDoctorNewBooking(booking).catch(() => this.logger.warn('Doctor notification failed'));
-    return finish('CONFIRMED', nextStatus === 'pending' ? 'AWAITING_DOCTOR' : 'CONFIRMED', {
-      bookingId: booking._id.toString(),
-      appointmentStatus: nextStatus,
-    });
+
+    return { outcome: 'CONFIRMED', nextStatus, booking };
+  }
+
+  /**
+   * PRD return-trip reconciliation. The webhook stays the primary path, but a
+   * patient who has paid must never be stranded by a delayed or misconfigured
+   * webhook, so the app can ask the provider directly. Only a provider-verified
+   * success whose amount and currency match this server's quote changes state.
+   */
+  async verifyPayment(userId: string, bookingId: string) {
+    if (!this.paystack.isEnabled()) {
+      throw new ServiceUnavailableException({
+        success: false,
+        error: {
+          code: 'PROVIDER_UNAVAILABLE',
+          message: 'Checkout is disabled until payment credentials and an approved pricing/refund policy are configured.',
+          details: missingConfigurationDetails(
+            ['PAYMENT_ENABLED', 'PAYMENT_POLICY_VERSION', 'PAYSTACK_SECRET_KEY'],
+            'Checkout and payments',
+          ),
+        },
+      });
+    }
+
+    const booking = await this.bookingModel
+      .findOne({ _id: new Types.ObjectId(bookingId), userId: new Types.ObjectId(userId) })
+      .exec();
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    const payment = booking.paymentId
+      ? await this.paymentModel.findById(booking.paymentId)
+      : booking.reference
+        ? await this.paymentModel.findOne({ reference: booking.reference })
+        : null;
+    if (!payment) throw new NotFoundException('No payment has been started for this booking');
+
+    if (payment.status === 'succeeded') {
+      return {
+        success: true,
+        data: {
+          booking: this.presentBooking(booking),
+          payment: this.presentPayment(payment),
+          reconciled: true,
+          alreadyVerified: true,
+        },
+        meta: this.meta(),
+      };
+    }
+
+    const verification = await this.paystack.verify(payment.reference);
+
+    if (verification.status !== 'success') {
+      // The patient may still be inside checkout: never fail the payment here.
+      return {
+        success: true,
+        data: {
+          booking: this.presentBooking(booking),
+          payment: this.presentPayment(payment),
+          reconciled: false,
+          providerStatus: verification.status,
+        },
+        meta: this.meta(),
+      };
+    }
+
+    if (verification.amountMinor !== payment.amountMinor || verification.currency !== payment.currency) {
+      payment.status = 'failed';
+      payment.failureReason = 'amount_or_currency_mismatch';
+      payment.verifiedAmountMinor = verification.amountMinor ?? undefined;
+      payment.verifiedCurrency = verification.currency ?? undefined;
+      await payment.save();
+      this.logger.warn(`Payment reference ${payment.reference} rejected on verification: amount/currency mismatch`);
+      throw new ConflictException({
+        success: false,
+        error: {
+          code: 'PAYMENT_MISMATCH',
+          message: 'The provider reported a different amount or currency than quoted. No appointment was confirmed.',
+        },
+      });
+    }
+
+    const settled = await this.settleVerifiedPayment(payment, verification);
+    const current = (await this.bookingModel.findById(booking._id).exec()) ?? booking;
+
+    return {
+      success: true,
+      data: {
+        booking: this.presentBooking(current),
+        payment: this.presentPayment(payment),
+        reconciled: true,
+        alreadyVerified: false,
+        confirmed: settled.outcome === 'CONFIRMED',
+        appointmentStatus: settled.nextStatus,
+      },
+      meta: this.meta(),
+    };
   }
 
   async getBooking(userId: string, bookingId: string) {

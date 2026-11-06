@@ -338,6 +338,72 @@ describe('Specialists, bookings and Paystack payments (e2e)', () => {
     expect(replayed.body.data.duplicate).toBe(true);
   });
 
+  it('recovers a paid booking on the return trip when no webhook arrives', async () => {
+    verifiedAmount = 250_000;
+    const slotId = await seedSlot(clinicianId);
+    const { user } = await registerAndLogin(app);
+
+    const hold = await request(server())
+      .post('/api/v1/bookings/hold')
+      .set(authHeader(user.accessToken!))
+      .set(idempotencyHeader('hold-reconcile'))
+      .send({ slotId })
+      .expect(201);
+    const bookingId = hold.body.data.booking.id;
+
+    const intent = await request(server())
+      .post(`/api/v1/bookings/${bookingId}/payment-intent`)
+      .set(authHeader(user.accessToken!))
+      .set(idempotencyHeader('intent-reconcile'))
+      .send({})
+      .expect(201);
+    const reference = intent.body.data.payment.reference as string;
+
+    // Only the booking owner can reconcile it.
+    const stranger = await registerAndLogin(app);
+    await request(server())
+      .post(`/api/v1/bookings/${bookingId}/payment/verify`)
+      .set(authHeader(stranger.user.accessToken!))
+      .expect(404);
+
+    // A provider amount that differs from the quote never confirms.
+    verifiedAmount = 1_000;
+    const mismatch = await request(server())
+      .post(`/api/v1/bookings/${bookingId}/payment/verify`)
+      .set(authHeader(user.accessToken!))
+      .expect(409);
+    expect(mismatch.body.error.code).toBe('PAYMENT_MISMATCH');
+
+    // A fresh intent at the quoted price, verified on the return trip, confirms.
+    verifiedAmount = 250_000;
+    const retry = await request(server())
+      .post(`/api/v1/bookings/${bookingId}/payment-intent`)
+      .set(authHeader(user.accessToken!))
+      .set(idempotencyHeader('intent-reconcile-retry'))
+      .send({})
+      .expect(201);
+    expect(retry.body.data.payment.reference).not.toBe(reference);
+
+    const verified = await request(server())
+      .post(`/api/v1/bookings/${bookingId}/payment/verify`)
+      .set(authHeader(user.accessToken!))
+      .expect(200);
+    expect(verified.body.data).toMatchObject({ reconciled: true, alreadyVerified: false, confirmed: true, appointmentStatus: 'confirmed' });
+    expect(verified.body.data.booking.status).toBe('confirmed');
+    expect(verified.body.data.payment.status).toBe('succeeded');
+
+    const slot = await getDb(app).collection('availability_slots').findOne({ _id: new mongoose.Types.ObjectId(slotId) });
+    expect(slot!.status).toBe('booked');
+
+    // Reconciliation is idempotent: a second trip confirms nothing twice.
+    const again = await request(server())
+      .post(`/api/v1/bookings/${bookingId}/payment/verify`)
+      .set(authHeader(user.accessToken!))
+      .expect(200);
+    expect(again.body.data).toMatchObject({ alreadyVerified: true });
+    expect(again.body.data.booking.status).toBe('confirmed');
+  });
+
   it('confirms a fresh paid booking and exposes a receipt only after verification', async () => {
     verifiedAmount = 250_000;
     const slotId = await seedSlot(clinicianId);

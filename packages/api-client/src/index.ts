@@ -1085,6 +1085,16 @@ export const bookingsApi = {
       {},
       { idempotencyKey: newIdempotencyKey('intent') },
     ),
+  verifyPayment: (id: string) =>
+    request<{
+      booking: BookingData;
+      payment: PaymentData;
+      reconciled: boolean;
+      alreadyVerified: boolean;
+      confirmed?: boolean;
+      appointmentStatus?: BookingData['status'];
+      providerStatus?: string;
+    }>('POST', `/bookings/${id}/payment/verify`, {}),
   cancel: (id: string, reason?: string) =>
     request<{ booking: BookingData; refund: { status: string; message: string } }>(
       'POST',
