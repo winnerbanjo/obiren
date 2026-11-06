@@ -290,6 +290,21 @@ export const authApi = {
   },
 
   /**
+   * Admin-console sign-in. The API checks the address against its
+   * `admin_accounts` allowlist before it verifies the password, so an address
+   * that is not the console's own administrator is refused server-side and
+   * recorded in the audit log.
+   */
+  async adminLogin(email: string, password: string): Promise<LoginResult | MfaChallengeResult> {
+    const data = await request<LoginResult | MfaChallengeResult>('POST', '/auth/admin/login', { email, password });
+    if ('tokens' in data) {
+      setAccessToken(data.tokens.accessToken);
+      setAuthUser(data.user);
+    }
+    return data;
+  },
+
+  /**
    * Sign in with a Google ID token obtained by the client SDK
    * (Google Identity Services on web, the Google Sign-In SDK on mobile).
    * The API verifies the token server-side; the client sends no profile data.

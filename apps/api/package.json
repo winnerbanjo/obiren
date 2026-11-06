@@ -15,6 +15,7 @@
     "verify:sandbox": "ts-node scripts/verify-sandbox-integrations.ts",
     "migrate": "ts-node src/database/migrations/database-migrations.ts",
     "seed:accounts": "ts-node --transpile-only scripts/seed-accounts.ts",
+    "admin:set": "ts-node --transpile-only scripts/set-admin.ts",
     "backfill:daily-log-notes": "ts-node scripts/backfill-daily-log-notes.ts"
   },
   "dependencies": {

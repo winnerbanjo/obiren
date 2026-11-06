@@ -21,6 +21,8 @@ import { MfaCredential, MfaCredentialDocument } from '../../database/schemas/mfa
 import { decryptHealthNote, encryptHealthNote } from '../../common/crypto/health-data-crypto';
 import { buildOtpauthUrl, generateRecoveryCodes, generateTotpSecret, hashRecoveryCode, verifyTotp } from '../../common/auth/totp';
 import { GoogleTokenVerifier } from './google-token-verifier';
+import { AdminAccess, AdminAccessDocument } from '../../database/schemas/admin-access.schema';
+import { AuditLog, AuditLogDocument } from '../../database/schemas/audit-log.schema';
 
 const ACCESS_TTL_SECONDS = 15 * 60;
 const REFRESH_TTL_DAYS = 30;
@@ -37,6 +39,8 @@ export class AuthService {
     @InjectModel(UserProfile.name) private userProfileModel: Model<UserProfileDocument>,
     @InjectModel(Session.name) private sessionModel: Model<SessionDocument>,
     @InjectModel(MfaCredential.name) private mfaModel: Model<MfaCredentialDocument>,
+    @InjectModel(AdminAccess.name) private adminAccessModel: Model<AdminAccessDocument>,
+    @InjectModel(AuditLog.name) private auditLogModel: Model<AuditLogDocument>,
     private jwtService: JwtService,
     private readonly mail: MailService,
     private readonly googleVerifier: GoogleTokenVerifier,
@@ -134,21 +138,96 @@ export class AuthService {
 
     // Opt-in staff MFA: passwords are verified first, then a short-lived
     // challenge token is returned instead of session tokens.
-    const credential = await this.mfaModel.findOne({ userId: user._id, status: 'enabled' }).lean().exec();
-    if (credential) {
-      return {
-        success: true,
-        data: {
-          mfaRequired: true,
-          mfaToken: this.signMfaToken((user._id as Types.ObjectId).toString()),
-          methods: ['totp'],
-          message: 'Enter the 6-digit authenticator code, or a recovery code, to finish signing in.',
-        },
-        meta: this.meta(),
-      };
-    }
+    const challenge = await this.pendingMfaChallenge(user);
+    if (challenge) return challenge;
 
     return this.issueSession(user, dto.platform);
+  }
+
+  /**
+   * Admin-console sign-in.
+   *
+   * The console is deliberately not an ordinary client. Only the addresses
+   * recorded in `admin_accounts` may enter it, and the allowlist is consulted
+   * *before* the password is verified, so any other address is refused
+   * immediately and the attempt is written to the audit log with the address
+   * that was tried. Admin credentials cannot be created over HTTP at all: the
+   * allowlist row and its password come from `npm run admin:set` on the server.
+   */
+  async adminLogin(
+    dto: { email: string; password: string },
+    context: { ip?: string; userAgent?: string } = {},
+  ) {
+    const emailNormalized = dto.email.trim().toLowerCase();
+
+    const access = await this.adminAccessModel.findOne({ emailNormalized, status: 'active' }).lean().exec();
+    if (!access) {
+      // No account lookup and no password check: a non-allowlisted address must
+      // not learn whether anything exists behind it.
+      await this.recordBlockedAdminLogin('email_not_allowlisted', emailNormalized, context);
+      throw new ForbiddenException({
+        success: false,
+        error: {
+          code: 'AUTH_ADMIN_EMAIL_BLOCKED',
+          message: 'This email address is not permitted to sign in to the admin console.',
+        },
+      });
+    }
+
+    const user = await this.userModel.findById(access.userId);
+    if (!user || !user.passwordHash || !(await argon2.verify(user.passwordHash, dto.password))) {
+      await this.recordBlockedAdminLogin('invalid_credentials', emailNormalized, context);
+      throw new UnauthorizedException({
+        success: false,
+        error: { code: 'AUTH_INVALID_CREDENTIALS', message: 'The email address or password is incorrect.' },
+      });
+    }
+
+    if (user.status === 'suspended' || user.status === 'restricted' || user.status === 'deleted') {
+      throw new ForbiddenException({
+        success: false,
+        error: { code: 'AUTH_ACCOUNT_DISABLED', message: 'This account is not permitted to sign in.' },
+      });
+    }
+
+    const challenge = await this.pendingMfaChallenge(user);
+    if (challenge) return challenge;
+
+    await this.adminAccessModel.updateOne({ _id: access._id }, { $set: { lastConsoleLoginAt: new Date() } });
+    return this.issueSession(user, 'web');
+  }
+
+  /**
+   * Records a refused console sign-in. Never throws: an audit write failure must
+   * not turn a block into a different response, or mask it entirely.
+   */
+  private async recordBlockedAdminLogin(
+    outcome: 'email_not_allowlisted' | 'invalid_credentials',
+    emailNormalized: string,
+    context: { ip?: string; userAgent?: string },
+  ) {
+    const client = (context.userAgent ?? 'unknown').slice(0, 200);
+    this.logger.warn(
+      `Admin console sign-in refused (${outcome}): ${emailNormalized} from ${context.ip ?? 'unknown'}`,
+    );
+
+    try {
+      await this.auditLogModel.create({
+        actorRole: 'unauthenticated',
+        action: 'auth.admin_login.blocked',
+        module: 'auth',
+        targetResourceId: emailNormalized,
+        details: `${outcome}: admin console sign-in attempted with ${emailNormalized}; client=${client}`,
+        ipAddress: context.ip,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      this.logger.error(
+        `Refused admin sign-in for ${emailNormalized} could not be written to the audit log: ${
+          error instanceof Error ? error.message : error
+        }`,
+      );
+    }
   }
 
   /**
@@ -242,21 +321,30 @@ export class AuthService {
 
     // Signing in with Google must never skip a second factor that the account
     // owner enabled for password sign-in.
-    const credential = await this.mfaModel.findOne({ userId: user._id, status: 'enabled' }).lean().exec();
-    if (credential) {
-      return {
-        success: true,
-        data: {
-          mfaRequired: true,
-          mfaToken: this.signMfaToken((user._id as Types.ObjectId).toString()),
-          methods: ['totp'],
-          message: 'Enter the 6-digit authenticator code, or a recovery code, to finish signing in.',
-        },
-        meta: this.meta(),
-      };
-    }
+    const challenge = await this.pendingMfaChallenge(user);
+    if (challenge) return challenge;
 
     return this.issueSession(user, dto.platform);
+  }
+
+  /**
+   * The short-lived challenge payload for an account with an enabled second
+   * factor, or null when the password step is all that is needed.
+   */
+  private async pendingMfaChallenge(user: UserDocument) {
+    const credential = await this.mfaModel.findOne({ userId: user._id, status: 'enabled' }).lean().exec();
+    if (!credential) return null;
+
+    return {
+      success: true as const,
+      data: {
+        mfaRequired: true as const,
+        mfaToken: this.signMfaToken((user._id as Types.ObjectId).toString()),
+        methods: ['totp'],
+        message: 'Enter the 6-digit authenticator code, or a recovery code, to finish signing in.',
+      },
+      meta: this.meta(),
+    };
   }
 
   /** Access/refresh pair; shared by password login and the MFA challenge. */
