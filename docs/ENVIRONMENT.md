@@ -103,6 +103,26 @@ loopback hop, so a forged `X-Forwarded-For` from the internet is ignored.
 | `GOOGLE_CLIENT_IDS` | Accepted alias for the same list. |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Browser (web app) client ID; the Google button renders only when this is set. Must also appear in the API's list. |
 
+Creating the client in Google Cloud Console (one project, one client per platform):
+
+1. <https://console.cloud.google.com> → create or select the Obiren project.
+2. **APIs & Services → OAuth consent screen**: User type *External*, app name `Obiren`, support
+   and developer email. Scopes `openid`, `.../auth/userinfo.email`, `.../auth/userinfo.profile`.
+   While the app is in *Testing*, only listed test users can sign in; publish it before launch.
+3. **Credentials → Create credentials → OAuth client ID**:
+   - *Web application* — authorised JavaScript origins `https://obiren.co`,
+     `https://www.obiren.co` and `http://localhost:3000` for local work. The web app uses
+     Google Identity Services, which returns an ID token, so no redirect URI is needed.
+   - *iOS* — the app bundle identifier.
+   - *Android* — package name plus the SHA-1 of the signing key.
+4. Copy the **client ID** (`…apps.googleusercontent.com`). The client *secret* is not used:
+   the API verifies the ID token's signature, issuer and audience itself.
+5. Serve it: `GOOGLE_CLIENT_ID=<web id>` in `apps/api/.env`, comma-separated if you also list
+   the iOS/Android IDs; `NEXT_PUBLIC_GOOGLE_CLIENT_ID=<web id>` in `apps/web/.env`. Then
+   `pm2 restart obiren-api` and rebuild the web app — `NEXT_PUBLIC_*` is baked in at build time.
+6. Check: `/api/v1/health` no longer lists `GOOGLE_CLIENT_ID`, and `POST /api/v1/auth/google`
+   with a junk token answers `401` instead of `503`.
+
 ### Payments (Paystack, optional and fail-closed)
 
 Checkout stays disabled unless `PAYMENT_ENABLED=true` **and** `PAYMENT_POLICY_VERSION`
@@ -193,6 +213,30 @@ webhooks cannot be verified.
 | `SANDBOX_API_URL`, `SANDBOX_EMAIL`, `SANDBOX_PASSWORD`, `SANDBOX_ACCESS_TOKEN`, `SANDBOX_BOOKING_ID`, `PAYSTACK_TEST_EMAIL` | `npm --prefix apps/api run verify:sandbox` — black-box integration check against a deployed API. |
 
 ---
+
+## Admin console access (database-driven)
+
+The internal console (`admin.obiren.co/user`) does not share the ordinary sign-in path.
+`POST /api/v1/auth/admin/login` reads the `admin_accounts` collection **first**: only the
+address on an active row may enter. Every other email is refused with `403
+AUTH_ADMIN_EMAIL_BLOCKED` before its password is examined, and the attempt is written to
+`audit_logs` (`action: auth.admin_login.blocked`, with the address, IP and user agent) and to
+the API log. `invalid_credentials` attempts against the allowlisted address are logged too.
+
+No HTTP route can create these credentials. `POST /auth/register` always produces a plain
+`user`, and `scripts/set-admin.ts` is the only writer of the allowlist. To set or rotate the
+administrator on the server:
+
+```bash
+cd ~/obiren/apps/api
+npm run admin:set -- --email you@obiren.co --password 'Str0ngPass123'
+```
+
+The script prints the database it is writing to, hashes the password with Argon2id, gives
+the account the `super_admin` role and leaves exactly one active allowlist row (any previous
+row is disabled). Add `--demote-others` once in production: it strips admin roles from any
+other account, so a leftover demo administrator cannot reach the admin API through
+`POST /auth/login`.
 
 ## Frontend apps
 

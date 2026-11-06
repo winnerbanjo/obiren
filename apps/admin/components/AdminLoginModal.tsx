@@ -45,7 +45,15 @@ export default function AdminLoginModal({ isOpen, onLoginSuccess, notice }: Admi
 
     setLoading(true);
     try {
-      const result = await authApi.login(normalizedEmail, password);
+      // The console has its own endpoint: the API refuses any address that is
+      // not on its administrator allowlist, and records the attempt.
+      const result = await authApi.adminLogin(normalizedEmail, password);
+      if (!("tokens" in result)) {
+        setErrorMsg(
+          "This administrator has two-factor authentication enabled, and the console has no code prompt yet.",
+        );
+        return;
+      }
       const roles: string[] = result.user.roles || [];
       const isAdmin = roles.some((r) =>
         ["super_admin", "platform_admin", "compliance_officer", "emergency_manager", "content_manager", "medical_reviewer", "support_agent"].includes(r),

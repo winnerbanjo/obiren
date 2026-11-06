@@ -9,6 +9,8 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { User, UserSchema, UserProfile, UserProfileSchema } from '../../database/schemas/user.schema';
 import { Session, SessionSchema } from '../../database/schemas/session.schema';
 import { MfaCredential, MfaCredentialSchema } from '../../database/schemas/mfa.schema';
+import { AdminAccess, AdminAccessSchema } from '../../database/schemas/admin-access.schema';
+import { AuditLog, AuditLogSchema } from '../../database/schemas/audit-log.schema';
 
 @Module({
   imports: [
@@ -17,6 +19,9 @@ import { MfaCredential, MfaCredentialSchema } from '../../database/schemas/mfa.s
       { name: UserProfile.name, schema: UserProfileSchema },
       { name: Session.name, schema: SessionSchema },
       { name: MfaCredential.name, schema: MfaCredentialSchema },
+      { name: AdminAccess.name, schema: AdminAccessSchema },
+      // Refused console sign-ins are recorded with the address that was tried.
+      { name: AuditLog.name, schema: AuditLogSchema },
     ]),
     JwtModule.register({
       secret: env().jwtAccessSecret,

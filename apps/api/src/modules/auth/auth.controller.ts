@@ -18,6 +18,7 @@ import {
   MfaLoginVerifySchema,
   GoogleSignInSchema,
   DoctorActivationSchema,
+  AdminLoginSchema,
 } from '../../common/validation/api-schemas';
 
 export const REFRESH_COOKIE = 'obiren_refresh';
@@ -62,6 +63,28 @@ export class AuthController {
   async login(@Res({ passthrough: true }) res: Response, @Body(new ZodValidationPipe(LoginSchema)) body) {
     const result = await this.authService.login(body);
     // MFA-enabled accounts receive only a short-lived challenge token here.
+    if ('tokens' in result.data) {
+      setRefreshCookie(res, result.data.tokens.refreshToken);
+    }
+    return result;
+  }
+
+  @Post('admin/login')
+  @ApiOperation({ summary: 'Sign in to the admin console', description: 'Admin-only counterpart of POST /auth/login. The address is checked against the `admin_accounts` allowlist before the password is verified, so any other email is refused with 403 AUTH_ADMIN_EMAIL_BLOCKED and the attempt is written to the audit log. Console credentials are provisioned on the server with `npm run admin:set`; no HTTP route can create them.' })
+  @ApiBody({ schema: { type: 'object', additionalProperties: false, required: ['email', 'password'], properties: { email: { type: 'string', format: 'email', example: 'you@obiren.co' }, password: { type: 'string', format: 'password', example: 'SecurePass1' } } } })
+  @ApiResponse({ status: 200, description: 'Authenticated, or an MFA challenge when the administrator has a second factor enabled. Same payload as POST /auth/login.', content: { 'application/json': { example: { success: true, data: { user: { id: '66a0b6f3e5f21c8e7a112233', email: 'you@obiren.co', countryCode: 'NG', roles: ['user', 'super_admin'], status: 'active', emailVerified: true }, tokens: { accessToken: '<jwt-access-token>', accessTokenExpiresIn: '15m', refreshToken: '<opaque-refresh-token>', refreshTokenExpiresIn: '30d' } }, meta: { requestId: 'req_1729339200000' } } } } })
+  @ApiResponse({ status: 401, description: 'Wrong password for the allowlisted address.' })
+  @ApiResponse({ status: 403, description: 'The email is not on the admin allowlist, or the account is disabled.', content: { 'application/json': { example: { success: false, error: { code: 'AUTH_ADMIN_EMAIL_BLOCKED', message: 'This email address is not permitted to sign in to the admin console.' } } } } })
+  @HttpCode(HttpStatus.OK)
+  async adminConsoleLogin(
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request,
+    @Body(new ZodValidationPipe(AdminLoginSchema)) body,
+  ) {
+    const result = await this.authService.adminLogin(body, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
     if ('tokens' in result.data) {
       setRefreshCookie(res, result.data.tokens.refreshToken);
     }

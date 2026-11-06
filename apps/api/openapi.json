@@ -193,6 +193,95 @@
         ]
       }
     },
+    "/auth/admin/login": {
+      "post": {
+        "description": "Admin-only counterpart of POST /auth/login. The address is checked against the `admin_accounts` allowlist before the password is verified, so any other email is refused with 403 AUTH_ADMIN_EMAIL_BLOCKED and the attempt is written to the audit log. Console credentials are provisioned on the server with `npm run admin:set`; no HTTP route can create them.",
+        "operationId": "AuthController_adminConsoleLogin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "you@obiren.co"
+                  },
+                  "password": {
+                    "type": "string",
+                    "format": "password",
+                    "example": "SecurePass1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated, or an MFA challenge when the administrator has a second factor enabled. Same payload as POST /auth/login.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": true,
+                  "data": {
+                    "user": {
+                      "id": "66a0b6f3e5f21c8e7a112233",
+                      "email": "you@obiren.co",
+                      "countryCode": "NG",
+                      "roles": [
+                        "user",
+                        "super_admin"
+                      ],
+                      "status": "active",
+                      "emailVerified": true
+                    },
+                    "tokens": {
+                      "accessToken": "<jwt-access-token>",
+                      "accessTokenExpiresIn": "15m",
+                      "refreshToken": "<opaque-refresh-token>",
+                      "refreshTokenExpiresIn": "30d"
+                    }
+                  },
+                  "meta": {
+                    "requestId": "req_1729339200000"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Wrong password for the allowlisted address."
+          },
+          "403": {
+            "description": "The email is not on the admin allowlist, or the account is disabled.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_ADMIN_EMAIL_BLOCKED",
+                    "message": "This email address is not permitted to sign in to the admin console."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Sign in to the admin console",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
     "/auth/google": {
       "post": {
         "description": "Exchanges a Google ID token for an Obiren session. The token is verified server-side against Google’s published keys, issuer and the configured client ID audience; profile claims in the request body are ignored. A verified Google email with no existing account creates an active, email-verified account. MFA-enabled accounts still receive an mfaRequired challenge. Returns 503 when GOOGLE_CLIENT_ID is not configured.",
